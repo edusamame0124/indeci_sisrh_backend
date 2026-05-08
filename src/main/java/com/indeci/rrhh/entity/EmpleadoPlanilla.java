@@ -21,7 +21,7 @@ public class EmpleadoPlanilla {
     @Column(name = "SUELDO_BASICO")
     private Double sueldoBasico;
 
-    @Column(name = "ASIGNACION_MOVILIDAD")
+    @Column(name = "ASIGNACION_TRANSPORTE")
     private Double movilidad;
 
     @Column(name = "ASIGNACION_ALIMENTACION")
@@ -36,7 +36,7 @@ public class EmpleadoPlanilla {
     @Column(name = "DESCUENTO_BANCO")
     private Double descuentoBanco;
 
-    @Column(name = "DESCUENTO_INSTITUCION")
+    @Column(name = "DESCUENTO_JUDICIAL")
     private Double descuentoInstitucion;
 
     @Column(name = "ACTIVO")

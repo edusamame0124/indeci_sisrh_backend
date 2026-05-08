@@ -22,6 +22,9 @@ public class User {
     @Column(name = "USERNAME", unique = true)
     private String username;
 
+    @Column(name = "ROLE_ID", nullable = false)
+    private Long roleId;
+
     @Column(name = "PASSWORD")
     private String password;
 

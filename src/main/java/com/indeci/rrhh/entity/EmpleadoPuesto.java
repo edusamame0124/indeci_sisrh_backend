@@ -7,7 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "INDECI_EMPLEADO_PUESTO", schema = "GESTIONRRHH")
+@Table(name = "INDECI_EMPLEADO_PUESTO_HIST", schema = "GESTIONRRHH")
 @Data
 public class EmpleadoPuesto {
 

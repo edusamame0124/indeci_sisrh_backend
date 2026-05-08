@@ -3,6 +3,7 @@ package com.indeci.security.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -12,6 +13,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import com.indeci.security.filter.JwtAuthFilter;
 
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -44,8 +46,8 @@ public class SecurityConfig {
                         "/v3/api-docs/**"
                 ).permitAll()
 
-                // 🔓 LOGIN
-                .requestMatchers("/api/auth/**").permitAll()
+                // 🔓 Autenticación pública y telemetría cliente (FR-040)
+                .requestMatchers("/api/auth/**", "/api/telemetry/client").permitAll()
 
                 // 🔐 TODO LO DEMÁS PROTEGIDO
                 .anyRequest().authenticated()

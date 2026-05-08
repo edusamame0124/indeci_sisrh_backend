@@ -24,9 +24,6 @@ public class PersonaService {
     private final EmpleadoRepository empleadoRepository;
     private final AuditoriaContext auditoriaContext;
 
-    // ============================
-    // CREAR
-    // ============================
     @Auditable(accion = "CREAR_PERSONA_EMPLEADO")
     public void guardar(PersonaEmpleadoDto dto) {
 
@@ -57,77 +54,26 @@ public class PersonaService {
         auditoriaContext.setDetalle("Creación persona DNI: " + dto.getDni());
     }
 
-    // ============================
-    // LISTAR
-    // ============================
     public List<PersonaEmpleadoResponseDto> listar() {
 
         List<Persona> personas = personaRepository.findAll();
 
         return personas.stream().map(p -> {
-
-            Empleado emp = empleadoRepository
-                    .findAll()
-                    .stream()
-                    .filter(e -> e.getPersonaId().equals(p.getId()))
-                    .findFirst()
-                    .orElse(null);
-
-            PersonaEmpleadoResponseDto dto = new PersonaEmpleadoResponseDto();
-            dto.setId(p.getId());
-            dto.setNombreCompleto(p.getNombreCompleto());
-            dto.setDni(p.getDni());
-            dto.setEmail(p.getEmail());
-            dto.setTelefono(p.getTelefono());
-            dto.setDireccion(p.getDireccion());
-            dto.setDistritoId(p.getDistritoId());
-
-            if (emp != null) {
-                dto.setCodigoInterno(emp.getCodigoInterno());
-                dto.setEstado(emp.getEstado());
-            }
-
-            return dto;
-
+            Empleado emp = empleadoRepository.findByPersonaId(p.getId()).orElse(null);
+            return mapearDto(p, emp);
         }).toList();
     }
 
-    // ============================
-    // OBTENER POR ID
-    // ============================
     public PersonaEmpleadoResponseDto obtenerPorId(Long id) {
 
         Persona p = personaRepository.findById(id)
                 .orElseThrow(() -> new NegocioException("Persona no encontrada"));
 
-        Empleado emp = empleadoRepository
-                .findAll()
-                .stream()
-                .filter(e -> e.getPersonaId().equals(id))
-                .findFirst()
-                .orElse(null);
+        Empleado emp = empleadoRepository.findByPersonaId(id).orElse(null);
 
-        PersonaEmpleadoResponseDto dto = new PersonaEmpleadoResponseDto();
-
-        dto.setId(p.getId());
-        dto.setNombreCompleto(p.getNombreCompleto());
-        dto.setDni(p.getDni());
-        dto.setEmail(p.getEmail());
-        dto.setTelefono(p.getTelefono());
-        dto.setDireccion(p.getDireccion());
-        dto.setDistritoId(p.getDistritoId());
-
-        if (emp != null) {
-            dto.setCodigoInterno(emp.getCodigoInterno());
-            dto.setEstado(emp.getEstado());
-        }
-
-        return dto;
+        return mapearDto(p, emp);
     }
 
-    // ============================
-    // ACTUALIZAR
-    // ============================
     @Auditable(accion = "ACTUALIZAR_PERSONA")
     public void actualizar(Long id, PersonaEmpleadoDto dto) {
 
@@ -142,10 +88,7 @@ public class PersonaService {
 
         personaRepository.save(persona);
 
-        Empleado emp = empleadoRepository.findAll()
-                .stream()
-                .filter(e -> e.getPersonaId().equals(id))
-                .findFirst()
+        Empleado emp = empleadoRepository.findByPersonaId(id)
                 .orElseThrow(() -> new NegocioException("Empleado no encontrado"));
 
         emp.setCodigoInterno(dto.getCodigoInterno());
@@ -156,16 +99,10 @@ public class PersonaService {
         auditoriaContext.setDetalle("Actualización persona ID: " + id);
     }
 
-    // ============================
-    // ELIMINAR (lógico)
-    // ============================
     @Auditable(accion = "ELIMINAR_PERSONA")
     public void eliminar(Long id) {
 
-        Empleado emp = empleadoRepository.findAll()
-                .stream()
-                .filter(e -> e.getPersonaId().equals(id))
-                .findFirst()
+        Empleado emp = empleadoRepository.findByPersonaId(id)
                 .orElseThrow(() -> new NegocioException("Empleado no encontrado"));
 
         emp.setEstado("INACTIVO");
@@ -173,5 +110,24 @@ public class PersonaService {
         empleadoRepository.save(emp);
 
         auditoriaContext.setDetalle("Eliminación lógica persona ID: " + id);
+    }
+
+    private static PersonaEmpleadoResponseDto mapearDto(Persona p, Empleado emp) {
+        PersonaEmpleadoResponseDto dto = new PersonaEmpleadoResponseDto();
+        dto.setId(p.getId());
+        dto.setNombreCompleto(p.getNombreCompleto());
+        dto.setDni(p.getDni());
+        dto.setEmail(p.getEmail());
+        dto.setTelefono(p.getTelefono());
+        dto.setDireccion(p.getDireccion());
+        dto.setDistritoId(p.getDistritoId());
+
+        if (emp != null) {
+            dto.setEmpleadoId(emp.getId());
+            dto.setCodigoInterno(emp.getCodigoInterno());
+            dto.setEstado(emp.getEstado());
+        }
+
+        return dto;
     }
 }

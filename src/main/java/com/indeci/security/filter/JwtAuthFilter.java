@@ -21,7 +21,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -36,7 +38,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String header = request.getHeader("Authorization");
 
-        // 🔹 Si no hay token → sigue normal
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -54,30 +55,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             String path = request.getRequestURI();
 
-            /* =====================================================
-             * 🔥 ENDPOINTS AUTH (NO BLOQUEAR)
-             * ===================================================== */
             boolean esAuthEndpoint = path.startsWith("/api/auth/");
 
-            /* =====================================================
-             * 🔐 VALIDACIONES DE FLUJO
-             * ===================================================== */
-
-            // 🔴 FORZAR CAMBIO DE CLAVE
             if (Boolean.FALSE.equals(newPassOk) && !esAuthEndpoint) {
                 sendError(response, 403, "Debe cambiar contraseña");
                 return;
             }
 
-            // 🔴 VALIDAR OTP
             if (Boolean.FALSE.equals(otpValidado) && !esAuthEndpoint) {
                 sendError(response, 403, "Debe validar OTP");
                 return;
             }
 
-            /* =====================================================
-             * 🔑 ROLES
-             * ===================================================== */
             List<String> roles = claims.get("roles", List.class);
 
             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
@@ -88,9 +77,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 );
             }
 
-            /* =====================================================
-             * 🔑 PERMISOS
-             * ===================================================== */
             List<String> permisos = claims.get("permisos", List.class);
 
             if (permisos != null) {
@@ -99,9 +85,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 );
             }
 
-            /* =====================================================
-             * 🔐 AUTENTICACIÓN EN CONTEXTO
-             * ===================================================== */
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(
                             username,
@@ -113,9 +96,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             SecurityContextHolder.getContext().setAuthentication(auth);
 
-            System.out.println("AUTH SETEADO: " + username);
-            System.out.println("PATH: " + path);
-            System.out.println("OTP_VALIDADO: " + otpValidado);
+            log.trace("JWT autenticado: user={}, path={}, otpValidado={}", username, path, otpValidado);
 
         } catch (Exception e) {
             sendError(response, 401, "Token inválido");
@@ -125,9 +106,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    /**
-     * 🔥 Respuesta JSON uniforme
-     */
     private void sendError(HttpServletResponse response,
                            int status,
                            String mensaje) throws IOException {

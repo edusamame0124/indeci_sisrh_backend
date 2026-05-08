@@ -1,10 +1,12 @@
 package com.indeci.auth.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.indeci.auth.dto.ChangePasswordRequest;
 import com.indeci.auth.dto.LoginRequest;
 import com.indeci.auth.dto.LoginResponse;
+import com.indeci.auth.dto.LogoutRequest;
 import com.indeci.auth.dto.OtpEnrollResponseDto;
 import com.indeci.auth.dto.OtpRequest;
 import com.indeci.auth.dto.RefreshRequest;
@@ -12,6 +14,7 @@ import com.indeci.auth.service.AuthService;
 import com.indeci.util.ClientInfoUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -72,7 +75,13 @@ public class AuthController {
 
         return authService.refreshToken(request, ip, userAgent);
     }
-    
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest body) {
+        authService.logout(body);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/test")
     public String test() {
         return "OK";

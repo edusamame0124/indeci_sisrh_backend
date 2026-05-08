@@ -14,6 +14,5 @@ public class LoginResponse {
     private List<String> permisos;
     private boolean requiereOtp;
     private boolean requiereEnroll;
-    private String qrUrl; // 🔥 importante
 
 }

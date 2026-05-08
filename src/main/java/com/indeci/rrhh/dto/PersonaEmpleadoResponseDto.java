@@ -6,6 +6,8 @@ import lombok.Data;
 public class PersonaEmpleadoResponseDto {
 
     private Long id;
+    /** Employee PK when linked; null if no employment row exists yet. */
+    private Long empleadoId;
     private String nombreCompleto;
     private String dni;
     private String email;

@@ -13,12 +13,14 @@ import com.indeci.audit.annotation.Auditable;
 import com.indeci.auth.dto.ChangePasswordRequest;
 import com.indeci.auth.dto.LoginRequest;
 import com.indeci.auth.dto.LoginResponse;
+import com.indeci.auth.dto.LogoutRequest;
 import com.indeci.auth.dto.OtpRequest;
 import com.indeci.auth.dto.RefreshRequest;
 import com.indeci.auth.entity.AuthRefreshToken;
 import com.indeci.auth.repository.AuthRefreshTokenRepository;
 import com.indeci.auth.dto.OtpEnrollResponseDto;
 import com.indeci.exception.NegocioException;
+import com.indeci.exception.RateLimitExceededException;
 import com.indeci.exception.SeguridadException;
 import com.indeci.security.captcha.TurnstileService;
 import com.indeci.security.jwt.JwtProvider;
@@ -64,7 +66,7 @@ public class AuthService {
         }
 
         if (!loginRateLimiter.tryConsume(ip)) {
-            throw new NegocioException("Demasiados intentos, intenta luego");
+            throw new RateLimitExceededException("Demasiados intentos, intenta luego");
         }
 
         User user = userRepository.findByUsername(request.getUsername().trim())
@@ -414,5 +416,19 @@ public class AuthService {
         response.setPermisos(permisos);
 
         return response;
+    }
+
+    @Auditable(accion = "LOGOUT")
+    @Transactional
+    public void logout(LogoutRequest request) {
+        authRefreshTokenRepository.findByToken(request.getRefreshToken()).ifPresent(entity -> {
+            if (!"S".equalsIgnoreCase(entity.getActivo())) {
+                return;
+            }
+            entity.setActivo("N");
+            entity.setFechaRevocacion(LocalDateTime.now());
+            entity.setMotivoRevocacion("LOGOUT");
+            authRefreshTokenRepository.save(entity);
+        });
     }
 }

@@ -18,11 +18,11 @@ public class EmpleadoPension {
     @Column(name = "EMPLEADO_ID")
     private Long empleadoId;
 
-    @Column(name = "AFP_ID")
+    @Column(name = "REGIMEN_PENSIONARIO_ID")
     private Long afpId;
 
-    @Column(name = "TIPO")
-    private String tipo; // AFP / ONP
+    @Column(name = "TIPO_REGIMEN")
+    private String tipo;
 
     @Column(name = "CUSPP")
     private String cuspp;
