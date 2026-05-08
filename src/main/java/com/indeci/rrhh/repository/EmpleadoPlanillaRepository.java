@@ -12,4 +12,6 @@ public interface EmpleadoPlanillaRepository extends JpaRepository<EmpleadoPlanil
     List<EmpleadoPlanilla> findByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 
     Optional<EmpleadoPlanilla> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
+    
+    List<EmpleadoPlanilla> findByActivo(Integer activo);
 }

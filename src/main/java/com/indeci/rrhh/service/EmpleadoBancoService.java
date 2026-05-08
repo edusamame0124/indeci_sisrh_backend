@@ -12,7 +12,11 @@ import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.EmpleadoBancoDto;
 import com.indeci.rrhh.dto.EmpleadoBancoResponseDto;
+import com.indeci.rrhh.entity.Bank;
+import com.indeci.rrhh.entity.BankAccountType;
 import com.indeci.rrhh.entity.EmpleadoBanco;
+import com.indeci.rrhh.repository.BankAccountTypeRepository;
+import com.indeci.rrhh.repository.BankRepository;
 import com.indeci.rrhh.repository.EmpleadoBancoRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -23,6 +27,8 @@ public class EmpleadoBancoService {
 
     private final EmpleadoBancoRepository repository;
     private final AuditoriaContext auditoriaContext;
+    private final BankRepository bankRepository;
+    private final BankAccountTypeRepository bankAccountTypeRepository;
 
     // ============================
     // CREAR
@@ -70,11 +76,53 @@ public class EmpleadoBancoService {
                 .map(e -> {
                     EmpleadoBancoResponseDto dto = new EmpleadoBancoResponseDto();
                     dto.setId(e.getId());
-                    dto.setBankId(e.getBankId());
-                    dto.setNumeroCuenta(e.getNumeroCuenta());
-                    dto.setCci(e.getCci());
-                    dto.setEsCuentaPlanilla(e.getEsCuentaPlanilla());
-                    dto.setActivo(e.getActivo());
+
+                    dto.setBankId(
+                            e.getBankId());
+
+                    dto.setAccountTypeId(
+                            e.getAccountTypeId());
+                    if (e.getBankId() != null) {
+
+                        Bank bank =
+                                bankRepository
+                                        .findById(
+                                                e.getBankId())
+                                        .orElse(null);
+
+                        if (bank != null) {
+
+                            dto.setBank(
+                                    bank.getName());
+                        }
+                    }
+
+                    if (e.getAccountTypeId() != null) {
+
+                        BankAccountType tipoCuenta =
+                                bankAccountTypeRepository
+                                        .findById(
+                                                e.getAccountTypeId())
+                                        .orElse(null);
+
+                        if (tipoCuenta != null) {
+
+                            dto.setAccountType(
+                                    tipoCuenta.getName());
+                        }
+                    }
+
+                    dto.setNumeroCuenta(
+                            e.getNumeroCuenta());
+
+                    dto.setCci(
+                            e.getCci());
+
+                    dto.setEsCuentaPlanilla(
+                            e.getEsCuentaPlanilla());
+
+                    dto.setActivo(
+                            e.getActivo());
                     return dto;
                 }).toList();
     }

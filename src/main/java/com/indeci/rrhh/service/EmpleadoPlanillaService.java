@@ -77,6 +77,9 @@ public class EmpleadoPlanillaService {
                     dto.setTieneAsignacionFamiliar(e.getTieneAsignacionFamiliar());
                     dto.setNumHijos(e.getNumHijos());
                     dto.setActivo(e.getActivo());
+                    dto.setDescuentoBanco(e.getDescuentoBanco());
+                    dto.setDescuentoInstitucion(e.getDescuentoInstitucion());
+                    
                     return dto;
                 }).toList();
     }

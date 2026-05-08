@@ -18,11 +18,8 @@ public class EmpleadoPension {
     @Column(name = "EMPLEADO_ID")
     private Long empleadoId;
 
-    @Column(name = "AFP_ID")
-    private Long afpId;
-
-    @Column(name = "TIPO")
-    private String tipo; // AFP / ONP
+    @Column(name = "REGIMEN_PENSIONARIO_ID")
+    private Long regimenPensionarioId;
 
     @Column(name = "CUSPP")
     private String cuspp;
@@ -47,4 +44,12 @@ public class EmpleadoPension {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+    
+    @Column(name = "TIPO_COMISION_AFP_ID")
+    private Long tipoComisionAfpId;
+
+    @Column(name = "TIPO_REGIMEN")
+    private String tipoRegimen;
+    
+  
 }

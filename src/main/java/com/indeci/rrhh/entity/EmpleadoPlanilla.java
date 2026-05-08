@@ -21,7 +21,7 @@ public class EmpleadoPlanilla {
     @Column(name = "SUELDO_BASICO")
     private Double sueldoBasico;
 
-    @Column(name = "ASIGNACION_MOVILIDAD")
+    @Column(name = "ASIGNACION_TRANSPORTE")
     private Double movilidad;
 
     @Column(name = "ASIGNACION_ALIMENTACION")
@@ -36,7 +36,7 @@ public class EmpleadoPlanilla {
     @Column(name = "DESCUENTO_BANCO")
     private Double descuentoBanco;
 
-    @Column(name = "DESCUENTO_INSTITUCION")
+    @Column(name = "DESCUENTO_JUDICIAL")
     private Double descuentoInstitucion;
 
     @Column(name = "ACTIVO")
@@ -50,4 +50,50 @@ public class EmpleadoPlanilla {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+    
+    @Column(name = "REGIMEN_LABORAL_ID")
+    private Long regimenLaboralId;
+
+    @Column(name = "TIPO_CONTRATO_ID")
+    private Long tipoContratoId;
+
+    @Column(name = "CONDICION_LABORAL_ID")
+    private Long condicionLaboralId;
+
+    @Column(name = "NUMERO_CONTRATO")
+    private String numeroContrato;
+
+    @Column(name = "FECHA_INGRESO")
+    private LocalDate fechaIngreso;
+
+    @Column(name = "FECHA_CESE")
+    private LocalDate fechaCese;
+
+    @Column(name = "ESTADO_LABORAL")
+    private String estadoLaboral;
+
+    @Column(name = "CODIGO_AIRHSP")
+    private String codigoAirhsp;
+
+    @Column(name = "META")
+    private String meta;
+
+    @Column(name = "FUENTE_FINANCIAMIENTO")
+    private String fuenteFinanciamiento;
+
+    @Column(name = "CENTRO_COSTO")
+    private String centroCosto;
+
+    @Column(name = "OBSERVACION")
+    private String observacion;
+
+    @Column(name = "UPDATED_AT")
+    private LocalDateTime updatedAt;
+    
+    
+    @Column(name = "TIENE_AIRHSP")
+    private Integer tieneAirhsp;
+
+    @Column(name = "AIRHSP_VIGENCIA_ID")
+    private Long airhspVigenciaId;
 }

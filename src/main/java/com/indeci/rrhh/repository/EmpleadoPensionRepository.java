@@ -14,4 +14,7 @@ public interface EmpleadoPensionRepository extends JpaRepository<EmpleadoPension
 
     // 🔹 VALIDAR EXISTENCIA (UNO SOLO)
     Optional<EmpleadoPension> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
+    
+    
+    
 }

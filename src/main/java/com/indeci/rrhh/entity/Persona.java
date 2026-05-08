@@ -40,5 +40,40 @@ public class Persona {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+    
+    @Column(name = "CONTACTO_EMERGENCIA_NOMBRE")
+    private String contactoEmergenciaNombre;
+
+    @Column(name = "CONTACTO_EMERGENCIA_PARENTESCO")
+    private String contactoEmergenciaParentesco;
+
+    @Column(name = "CONTACTO_EMERGENCIA_TELEFONO")
+    private String contactoEmergenciaTelefono;
+    
+    
+    @Column(name = "SEXO_ID")
+    private Long sexoId;
+
+    @Column(name = "ESTADO_CIVIL_ID")
+    private Long estadoCivilId;
+
+    @Column(name = "TIPO_DOCUMENTO_ID")
+    private Long tipoDocumentoId;
+    
+    @Column(name = "NACIONALIDAD")
+    private String nacionalidad;
+
+    @Column(name = "RUC")
+    private String ruc;
+
+    @Column(name = "CORREO_INSTITUCIONAL")
+    private String correoInstitucional;
+
+
+
+    @Column(name = "FOTO_PERFIL")
+    private String fotoPerfil;
+    
+    
 
 }
