@@ -23,6 +23,7 @@ import com.indeci.admin.dto.AdminUserSummaryResponse;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
+import com.indeci.user.entity.Permiso;
 import com.indeci.user.entity.Rol;
 import com.indeci.user.entity.User;
 import com.indeci.user.entity.UsuarioPermisoDeny;

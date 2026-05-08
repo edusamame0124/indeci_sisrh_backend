@@ -13,7 +13,11 @@ import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.EmpleadoPensionDto;
 import com.indeci.rrhh.dto.EmpleadoPensionResponseDto;
 import com.indeci.rrhh.entity.EmpleadoPension;
+import com.indeci.rrhh.entity.RegimenPensionario;
+import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
+import com.indeci.rrhh.repository.RegimenPensionarioRepository;
+import com.indeci.rrhh.repository.TipoComisionAfpRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -23,6 +27,9 @@ public class EmpleadoPensionService {
 
     private final EmpleadoPensionRepository repository;
     private final AuditoriaContext auditoriaContext;
+    private final RegimenPensionarioRepository regimenPensionarioRepository;
+    private final TipoComisionAfpRepository tipoComisionAfpRepository;
+    
 
     // ============================
     // CREAR
@@ -30,20 +37,7 @@ public class EmpleadoPensionService {
     @Auditable(accion = "CREAR_PENSION")
     public void guardar(EmpleadoPensionDto dto) {
 
-        // 🔥 VALIDACIÓN TIPO
-        if (dto.getTipo() == null || dto.getTipo().isBlank()) {
-            auditoriaContext.setDetalle("Tipo de pensión no enviado");
-            throw new NegocioException("Debe indicar tipo de pensión (AFP/ONP)");
-        }
-
-        // 🔥 NORMALIZAR (opcional pero PRO)
-        dto.setTipo(dto.getTipo().toUpperCase());
-
-        // 🔥 VALIDAR VALORES PERMITIDOS
-        if (!dto.getTipo().equals("AFP") && !dto.getTipo().equals("ONP")) {
-            auditoriaContext.setDetalle("Tipo inválido: " + dto.getTipo());
-            throw new NegocioException("Tipo de pensión inválido (solo AFP o ONP)");
-        }
+     
 
         // 🔥 VALIDACIÓN EXISTENTE
         Optional<EmpleadoPension> existente =
@@ -57,8 +51,15 @@ public class EmpleadoPensionService {
         // 🔹 guardar normal
         EmpleadoPension entity = new EmpleadoPension();
         entity.setEmpleadoId(dto.getEmpleadoId());
-        entity.setAfpId(dto.getAfpId());
-        entity.setTipo(dto.getTipo());
+        entity.setRegimenPensionarioId(
+                dto.getRegimenPensionarioId());
+
+        entity.setTipoComisionAfpId(
+                dto.getTipoComisionAfpId());
+
+        entity.setTipoRegimen(
+                dto.getTipoRegimen());
+       
         entity.setCuspp(dto.getCuspp());
         entity.setPorcentajeAporte(dto.getPorcentajeAporte());
         entity.setPorcentajeComision(dto.getPorcentajeComision());
@@ -81,11 +82,62 @@ public class EmpleadoPensionService {
                 .map(e -> {
                     EmpleadoPensionResponseDto dto = new EmpleadoPensionResponseDto();
                     dto.setId(e.getId());
-                    dto.setAfpId(e.getAfpId());
-                    dto.setTipo(e.getTipo());
-                    dto.setCuspp(e.getCuspp());
-                    dto.setPorcentajeAporte(e.getPorcentajeAporte());
-                    dto.setActivo(e.getActivo());
+
+                    dto.setRegimenPensionarioId(
+                            e.getRegimenPensionarioId());
+
+                    if (e.getRegimenPensionarioId() != null) {
+
+                        RegimenPensionario regimen =
+                                regimenPensionarioRepository
+                                        .findById(
+                                                e.getRegimenPensionarioId())
+                                        .orElse(null);
+
+                        if (regimen != null) {
+
+                            dto.setRegimenPensionario(
+                                    regimen.getNombre());
+                        }
+                    }
+
+                    if (e.getTipoComisionAfpId() != null) {
+
+                        TipoComisionAfp tipoComision =
+                                tipoComisionAfpRepository
+                                        .findById(
+                                                e.getTipoComisionAfpId())
+                                        .orElse(null);
+
+                        if (tipoComision != null) {
+
+                            dto.setTipoComisionAfp(
+                                    tipoComision.getNombre());
+                        }
+                    }
+
+                    dto.setCuspp(
+                            e.getCuspp());
+
+                    dto.setPorcentajeAporte(
+                            e.getPorcentajeAporte());
+
+                    dto.setPorcentajeComision(
+                            e.getPorcentajeComision());
+
+                    dto.setPorcentajeSeguro(
+                            e.getPorcentajeSeguro());
+
+                    dto.setTipoComisionAfpId(
+                            e.getTipoComisionAfpId());
+                    
+                    
+
+                    dto.setTipoRegimen(
+                            e.getTipoRegimen());
+
+                    dto.setActivo(
+                            e.getActivo());
                     return dto;
                 }).toList();
     }
@@ -99,18 +151,17 @@ public class EmpleadoPensionService {
         EmpleadoPension entity = repository.findById(id)
                 .orElseThrow(() -> new NegocioException("Pensión no encontrada"));
         
-        if (dto.getTipo() == null || dto.getTipo().isBlank()) {
-            throw new NegocioException("Debe indicar tipo de pensión");
-        }
+   
 
-        dto.setTipo(dto.getTipo().toUpperCase());
+        entity.setRegimenPensionarioId(
+                dto.getRegimenPensionarioId());
 
-        if (!dto.getTipo().equals("AFP") && !dto.getTipo().equals("ONP")) {
-            throw new NegocioException("Tipo inválido");
-        }
+        entity.setTipoComisionAfpId(
+                dto.getTipoComisionAfpId());
 
-        entity.setAfpId(dto.getAfpId());
-        entity.setTipo(dto.getTipo());
+        entity.setTipoRegimen(
+                dto.getTipoRegimen());
+     
         entity.setCuspp(dto.getCuspp());
         entity.setPorcentajeAporte(dto.getPorcentajeAporte());
         entity.setPorcentajeComision(dto.getPorcentajeComision());

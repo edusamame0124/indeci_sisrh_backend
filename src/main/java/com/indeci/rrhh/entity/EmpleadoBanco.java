@@ -44,4 +44,7 @@ public class EmpleadoBanco {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+    
+    @Column(name = "NUMERO_CUENTA_TESORERIA")
+    private String numeroCuentaTesoreria;
 }
