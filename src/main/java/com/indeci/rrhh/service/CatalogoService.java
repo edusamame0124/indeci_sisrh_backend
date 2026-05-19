@@ -69,6 +69,9 @@ public class CatalogoService {
     private final SedeRepository sedeRepository;
 
     private final OficinaRepository oficinaRepository;
+    private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
+
+private final EstadoSolicitudRepository estadoSolicitudRepository;
 
     public List<UbigeoDto> listarUbigeo() {
         return districtRepository.listarUbigeoCompleto();
@@ -249,6 +252,18 @@ public class CatalogoService {
 
         return oficinaRepository
                 .findBySedeId(sedeId);
+    }
+    
+    public List<TipoSolicitudRrhh>
+    listarTiposSolicitudRrhh() {
+
+        return tipoSolicitudRrhhRepository.findAll();
+    }
+
+    public List<EstadoSolicitud>
+    listarEstadosSolicitud() {
+
+        return estadoSolicitudRepository.findAll();
     }
     
 }

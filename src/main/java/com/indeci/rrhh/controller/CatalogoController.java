@@ -21,6 +21,7 @@ import com.indeci.rrhh.entity.BankAccountType;
 import com.indeci.rrhh.entity.CondicionLaboral;
 import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.entity.EstadoCivil;
+import com.indeci.rrhh.entity.EstadoSolicitud;
 import com.indeci.rrhh.entity.EstructuraOrganica;
 import com.indeci.rrhh.entity.Nivel;
 import com.indeci.rrhh.entity.RegimenLaboral;
@@ -30,6 +31,7 @@ import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.entity.TipoContrato;
 import com.indeci.rrhh.entity.TipoDocumento;
 import com.indeci.rrhh.entity.TipoPersonal;
+import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
 import com.indeci.rrhh.entity.GradoAcademico;
@@ -276,6 +278,27 @@ public class CatalogoController {
                 catalogoService
                         .listarOficinasPorSede(
                                 sedeId));
+    }
+    
+    @GetMapping("/tipos-solicitud-rrhh")
+    public ApiResponse<List<TipoSolicitudRrhh>>
+    tiposSolicitudRrhh() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Lista tipos solicitud RRHH",
+                catalogoService
+                        .listarTiposSolicitudRrhh());
+    }
+    @GetMapping("/estados-solicitud")
+    public ApiResponse<List<EstadoSolicitud>>
+    estadosSolicitud() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Lista estados solicitud",
+                catalogoService
+                        .listarEstadosSolicitud());
     }
     
 }

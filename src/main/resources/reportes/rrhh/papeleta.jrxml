@@ -1,0 +1,154 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="papeleta" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="ccd6e39f-12a0-4dbe-bdc7-6d3069aa1b00">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
+	<parameter name="INSTITUCION" class="java.lang.String"/>
+	<parameter name="LOGO" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRES" class="java.lang.String"/>
+	<parameter name="P_AREA" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
+	<parameter name="P_TIPO" class="java.lang.String"/>
+	<parameter name="P_DIAS" class="java.lang.String"/>
+	<parameter name="P_HORAS" class="java.lang.String"/>
+	<parameter name="P_DESDE" class="java.lang.String"/>
+	<parameter name="P_HASTA" class="java.lang.String"/>
+	<parameter name="P_HORA_INICIO" class="java.lang.String"/>
+	<parameter name="P_HORA_FIN" class="java.lang.String"/>
+	<parameter name="P_MOTIVO" class="java.lang.String"/>
+	<parameter name="P_FECHA_PAPELETA" class="java.lang.String"/>
+	<parameter name="P_SHOW_TIME" class="java.lang.Boolean"/>
+	<query language="sql"><![CDATA[]]></query>
+	<background splitType="Stretch"/>
+	<title height="120" splitType="Stretch">
+		<element kind="staticText" uuid="3fa1a19a-9795-47b5-ab93-19c3491a2187" x="100" y="6" width="350" height="34" fontSize="24.0" bold="true" italic="false" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE RRHH]]></text>
+		</element>
+		<element kind="textField" uuid="99b18c82-9c1b-4815-adfc-ae1312b66c31" x="100" y="40" width="350" height="30" fontSize="14.0" hTextAlign="Center">
+			<expression><![CDATA["SERVIDOR DE " + String.valueOf($P{INSTITUCION})]]></expression>
+		</element>
+		<element kind="image" uuid="eacff77f-c9cd-49f9-8e3a-d44721601a2d" x="460" y="0" width="70" height="90" onErrorType="Blank">
+			<expression><![CDATA[$P{LOGO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="d2043bda-6c5f-4aa9-9623-84d2d1452242" x="22" y="100" width="510" height="20" fontSize="14.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[Datos del Empleado]]></text>
+		</element>
+		<property name="com.jaspersoft.studio.unit.height" value="px"/>
+	</title>
+	<pageHeader splitType="Stretch">
+		<property name="com.jaspersoft.studio.unit.height" value="px"/>
+	</pageHeader>
+	<columnHeader splitType="Stretch">
+		<property name="com.jaspersoft.studio.unit.height" value="px"/>
+	</columnHeader>
+	<detail>
+		<band height="500" splitType="Stretch">
+			<element kind="rectangle" uuid="6212d999-43d5-4e98-94c3-ee09b769daea" x="22" y="2" width="510" height="120" radius="16"/>
+			<element kind="rectangle" uuid="fc118524-9ea4-4751-92c8-6e989f05bd95" x="20" y="280" width="510" height="169" radius="16"/>
+			<element kind="staticText" uuid="f9576d6d-e802-4a95-8fda-b138151ddf56" x="80" y="16" width="99" height="22" fontSize="12.0">
+				<text><![CDATA[Nombres]]></text>
+			</element>
+			<element kind="staticText" uuid="3843a6b2-8f4b-4a7b-9c26-8cd12b5a83ee" x="80" y="46" width="99" height="22" fontSize="12.0">
+				<text><![CDATA[Area]]></text>
+			</element>
+			<element kind="staticText" uuid="9d7c902e-b6f3-4737-b518-1b0e20c27ced" x="80" y="73" width="99" height="22" fontSize="12.0">
+				<text><![CDATA[Cargo]]></text>
+			</element>
+			<element kind="textField" uuid="12f23141-19f5-4706-9047-717bf86dad8d" x="180" y="16" width="298" height="21">
+				<expression><![CDATA[$P{P_NOMBRES}]]></expression>
+			</element>
+			<element kind="textField" uuid="2ead5ccf-797e-4686-9b28-aabf6b65143e" x="180" y="47" width="298" height="21">
+				<expression><![CDATA[$P{P_AREA}]]></expression>
+			</element>
+			<element kind="textField" uuid="b933122b-265e-4a28-a52a-86c76a806472" x="180" y="74" width="298" height="21">
+				<expression><![CDATA[$P{P_CARGO}]]></expression>
+			</element>
+			<element kind="rectangle" uuid="68a07672-c397-4843-9030-52a3cd14cdf2" x="22" y="160" width="510" height="80" radius="16"/>
+			<element kind="staticText" uuid="164fba1a-85bd-4027-8c95-fdba5a5ff14d" x="20" y="260" width="510" height="20" fontSize="14.0" bold="true" hTextAlign="Center">
+				<text><![CDATA[Detalle del Permiso]]></text>
+			</element>
+			<element kind="staticText" uuid="a0139273-2ddf-43eb-895c-2006b78b6693" x="24" y="140" width="506" height="20" fontSize="14.0" bold="true" hTextAlign="Center">
+				<text><![CDATA[Detalle del Periodo]]></text>
+			</element>
+			<element kind="staticText" uuid="ea2f8cc1-6c71-40d5-bd61-3321fc5c5ac7" x="79" y="169" width="99" height="22" fontSize="12.0">
+				<text><![CDATA[Tipo]]></text>
+			</element>
+			<element kind="textField" uuid="9c3eeb49-52f8-4cca-bdfe-aa42f3a0ea87" x="180" y="170" width="298" height="21">
+				<expression><![CDATA[$P{P_TIPO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="f5ff72a1-b888-4c68-906e-36e0f0f39b5f" x="80" y="198" width="99" height="22" fontSize="12.0">
+				<text><![CDATA[Dias]]></text>
+			</element>
+			<element kind="textField" uuid="aead8aa3-4a0a-4f2b-948a-1ca3143d5b83" x="180" y="199" width="99" height="21">
+				<expression><![CDATA[$P{P_DIAS}]]></expression>
+			</element>
+			<element kind="staticText" uuid="da68cd8e-d56a-456d-bc16-6541f2ed6c70" x="309" y="198" width="70" height="22" fontSize="12.0">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<text><![CDATA[Horas]]></text>
+			</element>
+			<element kind="textField" uuid="18017ccb-e780-40c8-86d1-133062017b35" x="379" y="199" width="99" height="21">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<expression><![CDATA[$P{P_HORAS}]]></expression>
+			</element>
+			<element kind="textField" uuid="89255aa9-f3e9-46ce-bfc0-b660e657fee3" x="184" y="331" width="91" height="21">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == false]]></printWhenExpression>
+				<expression><![CDATA[$P{P_HASTA}]]></expression>
+			</element>
+			<element kind="staticText" uuid="bc60a94c-5e14-4c6e-8283-1b377db7c1bd" x="306" y="290" width="73" height="22" fontSize="12.0">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<text><![CDATA[Hora Inicio]]></text>
+			</element>
+			<element kind="textField" uuid="14e6495e-b0f8-4428-84a5-c89d37b9e909" x="379" y="291" width="99" height="21">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<expression><![CDATA[$P{P_HORA_INICIO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="b326d069-515e-4663-a869-3176b629d2b1" x="76" y="330" width="108" height="22" fontSize="12.0">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == false]]></printWhenExpression>
+				<text><![CDATA[Hasta]]></text>
+			</element>
+			<element kind="textField" uuid="bf783346-8687-4f9a-9a25-a824369db75e" x="184" y="290" width="91" height="21">
+				<expression><![CDATA[$P{P_DESDE}]]></expression>
+			</element>
+			<element kind="staticText" uuid="2f351912-8bb5-4d3b-bd63-bb411f364a57" x="305" y="330" width="74" height="22" fontSize="12.0">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<text><![CDATA[Hora Fin]]></text>
+			</element>
+			<element kind="textField" uuid="fa2ff07d-7429-4a58-94ec-17e10248c96a" x="379" y="331" width="99" height="21">
+				<printWhenExpression><![CDATA[$P{P_SHOW_TIME} == true]]></printWhenExpression>
+				<expression><![CDATA[$P{P_HORA_FIN}]]></expression>
+			</element>
+			<element kind="staticText" uuid="439f72cd-71f8-415f-b675-fad8f61e8e8d" x="76" y="370" width="108" height="22" fontSize="12.0">
+				<text><![CDATA[Motivo]]></text>
+			</element>
+			<element kind="textField" uuid="40472de1-e27d-4267-a764-896958a7ccad" x="184" y="370" width="290" height="70">
+				<expression><![CDATA[$P{P_MOTIVO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c3ebc0e0-a3f0-4803-af43-e628d237608d" x="76" y="291" width="108" height="20">
+				<expression><![CDATA[$P{P_SHOW_TIME} ? "Fecha" : "Desde"]]></expression>
+			</element>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+		</band>
+	</detail>
+	<columnFooter height="45" splitType="Stretch">
+		<element kind="textField" uuid="1b740118-ef06-4313-aabf-11bf436ea6b0" x="24" y="-4" width="154" height="30">
+			<expression><![CDATA[$P{P_FECHA_PAPELETA}]]></expression>
+		</element>
+	</columnFooter>
+	<pageFooter height="64" splitType="Stretch">
+		<element kind="line" uuid="c276f75f-5ef9-4ea2-9194-1581d2e6c8a4" x="50" y="31" width="177" height="1">
+			<property name="com.jaspersoft.studio.unit.y" value="pixel"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<pen lineStyle="Solid"/>
+		</element>
+		<element kind="staticText" uuid="6ca9f032-7353-4786-852f-b1767216dfa1" x="50" y="40" width="176" height="19">
+			<text><![CDATA[Firma del Jefe Inmediato Superior]]></text>
+		</element>
+		<element kind="line" uuid="462e33b2-29d7-4cf4-8a43-d35c75bc341d" x="350" y="31" width="177" height="1">
+			<property name="com.jaspersoft.studio.unit.y" value="pixel"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<pen lineStyle="Solid"/>
+		</element>
+		<element kind="staticText" uuid="10b7bd73-a955-4160-8759-8c4957ccdc91" x="350" y="40" width="176" height="19" hTextAlign="Center">
+			<text><![CDATA[Firma del Servidor]]></text>
+		</element>
+	</pageFooter>
+	<summary height="42" splitType="Stretch"/>
+</jasperReport>

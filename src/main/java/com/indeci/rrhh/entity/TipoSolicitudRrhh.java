@@ -1,0 +1,33 @@
+package com.indeci.rrhh.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+@Entity
+@Table(
+        name = "INDECI_TIPO_SOLICITUD_RRHH",
+        schema = "GESTIONRRHH"
+)
+@Data
+public class TipoSolicitudRrhh {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "NOMBRE")
+    private String nombre;
+
+    @Column(name = "CODIGO")
+    private String codigo;
+
+    @Column(name = "ACTIVO")
+    private Integer activo;
+    
+    @Column(name = "MOSTRAR_HORAS")
+    private Integer mostrarHoras;
+
+    @Column(name = "REQUIERE_SUSTENTO")
+    private Integer requiereSustento;
+    
+}
