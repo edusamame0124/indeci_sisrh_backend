@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
+import com.indeci.admin.dto.AdminUserEmpleadoPutRequest;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
 import com.indeci.admin.dto.AdminUserRolesPutRequest;
 import com.indeci.admin.dto.AdminUserStatusPatchRequest;
@@ -77,6 +78,15 @@ public class AdminUserController {
     public ApiResponse<Void> resetPassword(@PathVariable Long id) {
         adminUserService.resetPassword(id);
         return new ApiResponse<>("OK", "Clave marcada para renovación", null);
+    }
+
+    /** Spec 011 / B2 — vincula (o desvincula) la cuenta con un empleado. */
+    @PutMapping("/{id}/empleado")
+    public ApiResponse<Void> empleado(
+            @PathVariable Long id,
+            @RequestBody AdminUserEmpleadoPutRequest body) {
+        adminUserService.asignarEmpleado(id, body.getEmpleadoId());
+        return new ApiResponse<>("OK", "Empleado vinculado", null);
     }
 
     @GetMapping("/{id}/permiso-denegados")

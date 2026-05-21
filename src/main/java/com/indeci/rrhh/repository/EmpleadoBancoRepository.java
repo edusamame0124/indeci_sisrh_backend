@@ -18,4 +18,6 @@ public interface EmpleadoBancoRepository extends JpaRepository<EmpleadoBanco, Lo
     	    Integer activo
     	);
 
+    /** Spec 012 / C3 (BKD-006) — paso «banco» del flujo de empleado. */
+    boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 }

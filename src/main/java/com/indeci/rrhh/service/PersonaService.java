@@ -101,7 +101,8 @@ public class PersonaService {
         // ============================
         Empleado empleado = new Empleado();
         empleado.setPersonaId(persona.getId());
-        empleado.setEstado(dto.getEstado());
+        empleado.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
+        empleado.setHasEps("N");
         empleado.setCreatedAt(LocalDateTime.now());
         empleado.setTipoPersonalId(dto.getTipoPersonalId());
         empleado.setProfesionId(dto.getProfesionId());
@@ -240,6 +241,7 @@ public class PersonaService {
         }
 
         if (emp != null) {
+            dto.setEmpleadoId(emp.getId());
             dto.setCodigoInterno(emp.getCodigoInterno());
             dto.setEstado(emp.getEstado());
             dto.setProfesionId(emp.getProfesionId());

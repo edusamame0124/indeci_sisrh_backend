@@ -14,4 +14,7 @@ public interface EmpleadoPlanillaRepository extends JpaRepository<EmpleadoPlanil
     Optional<EmpleadoPlanilla> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
     
     List<EmpleadoPlanilla> findByActivo(Integer activo);
+
+    /** Spec 012 / C3 (BKD-006) — paso «planilla» del flujo de empleado. */
+    boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 }

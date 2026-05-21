@@ -12,4 +12,15 @@ public interface EmpleadoConceptoRepository
     findByEmpleadoIdAndActivo(
             Long empleadoId,
             Integer activo);
+
+    /** Spec 012 / C3 (BKD-006) — paso «conceptos» del flujo de empleado. */
+    boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
+
+    /** Spec 013 / C1 — VALIDACIÓN 2: detecta un duplicado activo del concepto. */
+    boolean existsByEmpleadoIdAndConceptoPlanillaIdAndActivo(
+            Long empleadoId, Long conceptoPlanillaId, Integer activo);
+
+    /** Spec 013 / C1 — duplicado activo excluyendo el registro en edición. */
+    boolean existsByEmpleadoIdAndConceptoPlanillaIdAndActivoAndIdNot(
+            Long empleadoId, Long conceptoPlanillaId, Integer activo, Long id);
 }

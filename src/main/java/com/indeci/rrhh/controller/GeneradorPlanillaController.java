@@ -1,6 +1,7 @@
 package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.GeneracionMasivaResultDto;
 import com.indeci.rrhh.dto.ResumenPlanillaDto;
 import com.indeci.rrhh.service.GeneradorPlanillaService;
 
@@ -31,15 +32,17 @@ public class GeneradorPlanillaController {
     }
     
     @PostMapping("/masivo/{periodo}")
-    public ApiResponse<Void> generarMasivo(
+    public ApiResponse<GeneracionMasivaResultDto> generarMasivo(
             @PathVariable String periodo) {
 
-        service.generarTodoPeriodo(periodo);
+        GeneracionMasivaResultDto resultado =
+                service.generarTodoPeriodo(periodo);
 
         return new ApiResponse<>(
                 "OK",
-                "Planilla masiva generada",
-                null);
+                "Generación masiva ejecutada: " + resultado.getExitosos()
+                        + " de " + resultado.getTotal(),
+                resultado);
     }
     
     @GetMapping("/resumen/{empleadoId}/{periodo}")

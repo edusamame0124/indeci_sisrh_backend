@@ -102,6 +102,40 @@ public class EmpleadoPuestoService {
     }
 
     // ============================
+    // ACTUALIZAR PUESTO VIGENTE (sin nuevo movimiento)
+    // ============================
+    @Auditable(accion = "ACTUALIZAR_PUESTO")
+    public void actualizar(Long id, EmpleadoPuestoDto dto) {
+
+        if (dto.getCargo() == null || dto.getCargo().isBlank()) {
+            throw new NegocioException("Debe indicar el cargo");
+        }
+
+        EmpleadoPuesto entity = repository.findById(id)
+                .orElseThrow(() -> new NegocioException("Puesto no encontrado"));
+
+        if (entity.getActivo() == null || entity.getActivo() != 1) {
+            throw new NegocioException("Solo puede editarse el puesto vigente");
+        }
+
+        if (!entity.getEmpleadoId().equals(dto.getEmpleadoId())) {
+            throw new NegocioException("El puesto no corresponde al empleado indicado");
+        }
+
+        entity.setCargo(dto.getCargo().trim());
+        entity.setNivelId(dto.getNivelId());
+        entity.setSedeId(dto.getSedeId());
+        entity.setOficinaId(dto.getOficinaId());
+        entity.setEstructuraOrganicaId(dto.getEstructuraOrganicaId());
+        entity.setDependenciaId(dto.getDependenciaId());
+        entity.setJefeId(dto.getJefeId());
+
+        repository.save(entity);
+
+        auditoriaContext.setDetalle("Puesto actualizado ID: " + id);
+    }
+
+    // ============================
     // LISTAR HISTORIAL
     // ============================
     public List<EmpleadoPuestoResponseDto> listar(Long empleadoId) {

@@ -3,6 +3,7 @@ package com.indeci.rrhh.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -20,6 +21,7 @@ public class ConceptoPlanilla {
     @Column(name = "NOMBRE")
     private String nombre;
 
+    /** Tipo legacy free-form: INGRESO|DESCUENTO|APORTE. Mantener por compat con frontend Spec 009. */
     @Column(name = "TIPO")
     private String tipo;
 
@@ -31,4 +33,58 @@ public class ConceptoPlanilla {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+
+    // ============================================================
+    // Spec 010 — campos MEF (Ley 32448 / SPEC §6.1)
+    // ============================================================
+
+    /** Código oficial AIRHSP. Obligatorio para pagar (LEY-01). */
+    @Column(name = "CODIGO_MEF")
+    private String codigoMef;
+
+    /** Código SISPER del concepto (V010_08 / SPEC §6.3). Ej: 905, 816, 071. */
+    @Column(name = "CODIGO_SISPER")
+    private String codigoSisper;
+
+    /** Código Anexo 2 SUNAT para el PDT 601 (V010_27 / B3). Ej: 0601, 0618, 1019, 2039. */
+    @Column(name = "CODIGO_PLAME_SUNAT")
+    private String codigoPlameSunat;
+
+    /** Código MCPP Web para los archivos PLL*.TXT (V010_27 / B3). Ej: 0131, 0668, 0210. */
+    @Column(name = "CODIGO_MCPP")
+    private String codigoMcpp;
+
+    /** REMUNERATIVO | NO_REMUNERATIVO | DESCUENTO | APORTE_TRABAJADOR | APORTE_EMPLEADOR. */
+    @Column(name = "TIPO_CONCEPTO")
+    private String tipoConcepto;
+
+    /** S/N — afecto a retención 5ta categoría. */
+    @Column(name = "AFECTO_IR_5TA")
+    private String afectoIr5ta;
+
+    /** S/N — afecto a aporte pensionario (ONP/AFP). */
+    @Column(name = "AFECTO_APORTE_PENS")
+    private String afectoAportePens;
+
+    /** S/N — afecto a ESSALUD (base aporte empleador). */
+    @Column(name = "AFECTO_ESSALUD")
+    private String afectoEssalud;
+
+    /** S/N — Monto Único Consolidado (LEY-07). */
+    @Column(name = "ES_MUC")
+    private String esMuc;
+
+    /** S/N — Costo Único Consolidado (LEY-07). */
+    @Column(name = "ES_CUC")
+    private String esCuc;
+
+    /** 276 | 728 | 1057 | SERVIR | TODOS. */
+    @Column(name = "REGIMEN_APLICABLE")
+    private String regimenAplicable;
+
+    @Column(name = "FECHA_VIG_INI")
+    private LocalDate fechaVigIni;
+
+    @Column(name = "FECHA_VIG_FIN")
+    private LocalDate fechaVigFin;
 }

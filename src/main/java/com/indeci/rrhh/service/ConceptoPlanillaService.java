@@ -65,6 +65,11 @@ public class ConceptoPlanillaService {
                     dto.setNaturaleza(e.getNaturaleza());
                     dto.setActivo(e.getActivo());
 
+                    // Spec 013 / C1 — campos MEF para el dropdown del modal.
+                    dto.setCodigoMef(e.getCodigoMef());
+                    dto.setCodigoSisper(e.getCodigoSisper());
+                    dto.setTipoConcepto(e.getTipoConcepto());
+
                     return dto;
 
                 }).toList();

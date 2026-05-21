@@ -3,6 +3,7 @@ package com.indeci.rrhh.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -31,6 +32,14 @@ public class EmpleadoConcepto {
 
     @Column(name = "FORMULA")
     private String formula;
+
+    /** Spec 013/C1 — mes/año desde el que aplica el concepto. */
+    @Column(name = "FECHA_INICIO")
+    private LocalDate fechaInicio;
+
+    /** Spec 013/C1 — mes/año hasta el que aplica. NULL = indefinido. */
+    @Column(name = "FECHA_FIN")
+    private LocalDate fechaFin;
 
     @Column(name = "ACTIVO")
     private Integer activo;

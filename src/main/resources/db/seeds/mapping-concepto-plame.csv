@@ -1,0 +1,50 @@
+CODIGO_INTERNO,CODIGO_MEF,NOMBRE,REGIMEN,TIPO,CODIGO_PLAME_SUNAT,AFECTACION_SUNAT,CONFIANZA,NOTA
+00301,00301,Sueldo Basico,728,INGRESO,0601,ONP/AFP+ESSALUD,ALTA,Remuneracion basica Anexo2-0601
+00101,00101,Remuneracion Principal,276,INGRESO,0601,ONP/AFP+ESSALUD,ALTA,Remuneracion basica Anexo2-0601
+00102,00102,Monto Unico Consolidado (MUC),276,INGRESO,0601,ONP/AFP+ESSALUD,ALTA,MUC base=0601; el incremento al MUC va a 1019
+00501,00501,Remuneracion CAS,1057,INGRESO,0601,ONP/AFP+ESSALUD,ALTA,Base CAS=0601 (cross-ref MCPP 0131)
+00302,00302,Asignacion Familiar,728,INGRESO,0605,segun regla AF,ALTA,Asignacion familiar
+00502,00502,Asignacion Familiar CAS,1057,INGRESO,0605,segun regla AF,ALTA,Asignacion familiar CAS
+11051,11051,Incremento DS 265-2024-EF,SERVIR,INGRESO,1019,pensionable+ESSALUD,ALTA,Incremento por DS negociacion colectiva Anexo2-1019
+11053,11053,Incremento DS 279-2024-EF,SERVIR,INGRESO,1019,pensionable+ESSALUD,ALTA,Incremento por DS negociacion colectiva Anexo2-1019
+11214,11214,Incremento DS 327-2025-EF,SERVIR,INGRESO,1019,pensionable+ESSALUD,ALTA,Correccion v3 confirmada: 1019 NO 1030
+00103,00103,Bonificacion Personal (5pct quinquenio),276,INGRESO,1028,base imponible aportes,MEDIA,Otras asignaciones Anexo2-1028 - validar
+00303,00303,Horas Extras,728,INGRESO,1028,base imponible aportes,MEDIA,Validar si SUNAT tiene codigo propio para sobretiempo
+00505,00505,Pago Diferencial (059),SERVIR,INGRESO,1028,base imponible aportes,MEDIA,Componente diferencial remuneracion SERVIR
+00506,00506,Pago Diferencial (060),SERVIR,INGRESO,1028,base imponible aportes,MEDIA,Validar
+00507,00507,Reintegro SISPER-041,SERVIR,INGRESO,1028,base imponible aportes,MEDIA,Reintegro - validar si va a 1028 o codigo reintegro propio
+00201,00201,Aguinaldo Julio,276,INGRESO,1030,reglas variables,DEFERIDO,Estacional - no se paga marzo2026 - resolver en mes de pago
+00202,00202,Aguinaldo Diciembre,276,INGRESO,1030,reglas variables,DEFERIDO,Estacional - resolver en mes de pago
+00508,00508,Aguinaldo Julio SERVIR,SERVIR,INGRESO,1030,reglas variables,DEFERIDO,Estacional - resolver en mes de pago
+00509,00509,Aguinaldo Diciembre SERVIR,SERVIR,INGRESO,1030,reglas variables,DEFERIDO,Estacional - resolver en mes de pago
+00401,00401,Gratificacion Julio,728,INGRESO,1030,reglas variables,DEFERIDO,Estacional - resolver en mes de pago
+00402,00402,Gratificacion Diciembre,728,INGRESO,1030,reglas variables,DEFERIDO,Estacional - resolver en mes de pago
+00403,00403,Bonificacion Extraordinaria 9pct,728,INGRESO,1030,reglas variables,DEFERIDO,Estacional (ligada a gratificacion) - resolver en mes de pago
+NUEVO_VACTRUNCAS,PENDIENTE,Vacaciones Truncas,TODOS,INGRESO,1016,IR5ta+previsional INAFECTO ESSALUD,ALTA,Anexo2-1016; concepto NUEVO a crear en B3-1 (CODIGO_MEF oficial pendiente RRHH)
+05001,05001,Aporte ONP 13pct,TODOS,DESCUENTO,0608,aporte trabajador,ALTA,SNP/ONP
+05002,05002,Aporte AFP 10pct,TODOS,DESCUENTO,0608,aporte trabajador,ALTA,Cross-ref .rem 0608=236.42=AP.OBLIG
+05003,05003,Comision AFP,TODOS,DESCUENTO,0611,aporte trabajador,ALTA,Comision AFP
+05004,05004,Prima Seguro AFP,TODOS,DESCUENTO,0606,aporte trabajador,ALTA,Cross-ref .rem 0606=32.39=TASA EFEC
+05101,05101,Retencion 5ta Categoria,728,DESCUENTO,0618,renta 5ta,ALTA,Cross-ref .rem 0618
+NUEVO_5TA_CAS,PENDIENTE,Retencion 5ta CAS,1057,DESCUENTO,0618,renta 5ta,ALTA,Decision v3: CAS afecto 5ta (Informe 110-2012). Concepto NUEVO a crear en B3-1
+05201,05201,Pension Alimentaria,TODOS,DESCUENTO,2051,descuento judicial,ALTA,Mandato judicial
+05202,05202,Embargo Judicial,TODOS,DESCUENTO,2051,descuento judicial,ALTA,Mandato judicial
+05303,05303,FESALUD S.A.,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Seguro voluntario Anexo2-2039
+05304,05304,Inter/Sura Seguro,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Seguro voluntario
+05308,05308,Rimac Seguros,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Seguro voluntario
+05306,05306,Coop. San Miguel,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Cooperativa
+05307,05307,Coop. SERFINCO,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Cooperativa
+05301,05301,Cuota Prestamo Interno,TODOS,DESCUENTO,2039,descuento no deducible,MEDIA,Prestamo por convenio - validar 2039 vs 0706
+05302,05302,Campana Navarrete,TODOS,DESCUENTO,2039,descuento no deducible,MEDIA,Descuento por convenio
+05312,05312,Campana Tai Loy,TODOS,DESCUENTO,2039,descuento no deducible,MEDIA,Descuento por convenio
+05305,05305,+Vida EsSalud,TODOS,DESCUENTO,2039,descuento no deducible,MEDIA,Seguro - validar
+05310,05310,Otros Descuentos,TODOS,DESCUENTO,2039,descuento no deducible,MEDIA,Generico
+05309,05309,Copago EPS (trabajador),TODOS,DESCUENTO,0703,descuento deducible salud,MEDIA,Copago EPS - validar 0703 vs 2039
+05311,05311,Aporte Facultativo 0.5pct,TODOS,DESCUENTO,PENDIENTE,por definir,DEFERIDO,Validar codigo SUNAT aporte facultativo - poco frecuente
+05401,05401,Descuento por Tardanza,TODOS,DESCUENTO,2046,inasistencias,ALTA,Faltas/tardanzas Anexo2-2046
+05402,05402,Descuento por Falta,TODOS,DESCUENTO,2046,inasistencias,ALTA,Faltas Anexo2-2046; vinculado a suspension cod 23
+NUEVO_CUOTA_SINDICAL,PENDIENTE,Cuota Sindical,TODOS,DESCUENTO,2039,descuento no deducible,ALTA,Concepto NUEVO a crear en B3-1; aparece en archivos CAS
+06001,06001,ESSALUD 9pct (Empleador),TODOS,APORTE,0915,aporte empleador,ALTA,ESSALUD empleador (LEY-02 no descuento)
+06002,06002,ESSALUD 6.75pct (con EPS),TODOS,APORTE,0915,aporte empleador,MEDIA,Variante EPS - validar subcodigo
+06003,06003,EPS 2.25pct (empleador con EPS),TODOS,APORTE,PENDIENTE,aporte empleador EPS,DEFERIDO,Validar codigo SUNAT aporte EPS entidad
+06004,06004,CUC Total,TODOS,APORTE,N/A,no aplica,ALTA,Agregado interno - NO va a PLAME

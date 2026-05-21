@@ -147,6 +147,16 @@
         </dependency>
 
         <!-- ========================================= -->
+        <!-- 📄 PDF — Boleta de pago (Spec 011 / B1 — M06) -->
+        <!-- OpenPDF: fork LGPL de iText, gratis para uso comercial. -->
+        <!-- ========================================= -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.43</version>
+        </dependency>
+
+        <!-- ========================================= -->
         <!-- 🚦 RATE LIMIT (Bucket4j) -->
         <!-- ========================================= -->
     <dependency>

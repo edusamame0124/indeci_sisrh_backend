@@ -41,4 +41,29 @@ public class EmpleadoConceptoController {
                 service.listarEmpleado(
                         empleadoId));
     }
+
+    @PutMapping("/{id}")
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody EmpleadoConceptoDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Concepto actualizado",
+                null);
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> eliminar(
+            @PathVariable Long id) {
+
+        service.eliminar(id);
+
+        return new ApiResponse<>(
+                "OK",
+                "Concepto eliminado",
+                null);
+    }
 }

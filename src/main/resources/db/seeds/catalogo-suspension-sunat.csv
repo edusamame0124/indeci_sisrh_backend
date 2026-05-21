@@ -1,0 +1,12 @@
+COD_SUSPENSION,DESCRIPCION,TIPO_PLAME,REQUIERE_CMP,REQUIERE_RESOLUCION,VA_EN_SNL,COD_DESCUENTO_PLAME,SUSTENTO_LEGAL
+01,Incapacidad Temporal (primeros 20 dias),NO_LABORADO_NO_SUB,S,N,S,,Asumido por INDECI empleador
+02,Maternidad (subsidio EsSalud),SUBSIDIADO,S,N,S,,98 dias regulares (128 parto multiple)
+03,Descanso Medico (dia 21 en adelante),SUBSIDIADO,S,N,S,,Reembolso EsSalud
+05,Licencia con goce de haber (general),NO_LABORADO_NO_SUB,N,S,S,,Permisos oficiales por Ley
+06,Licencia sin goce de haber (general),NO_LABORADO_NO_SUB,N,S,S,,Suspension perfecta afecta neto a pagar
+07,Sancion Disciplinaria (suspension),NO_LABORADO_NO_SUB,N,S,S,,Medida correctiva regimen disciplinario
+09,Fallecimiento de familiares directos,NO_LABORADO_NO_SUB,N,S,S,,Licencia con goce obligatoria por ley
+21,Lactancia Materna (hora diaria),ESPECIAL,N,S,N,,No reduce dias - solo archivo .jor
+23,Inasistencia Injustificada (faltas),NO_LABORADO_NO_SUB,N,N,S,2046,Activa descuento directo concepto 2046
+25,Licencia por Paternidad,NO_LABORADO_NO_SUB,N,S,S,,10 dias calendario con goce de haber
+31,Huelga / Paro de Labores,NO_LABORADO_NO_SUB,N,N,S,,Suspension calificada por MTPE

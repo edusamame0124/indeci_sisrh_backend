@@ -1,0 +1,42 @@
+CODIGO_INTERNO,CODIGO_MEF,NOMBRE,REGIMEN,TIPO,CODIGO_MCPP,ROL_MCPP,CONFIANZA,NOTA
+00501,00501,Remuneracion CAS,1057,INGRESO,0131,base,ALTA,Confirmado archivos plametxt CAS file 0032-0038
+00301,00301,Sueldo Basico,728,INGRESO,0131,base,MEDIA,PENDIENTE_VALIDAR_ARCHIVO_REAL - inferencia 728
+00101,00101,Remuneracion Principal,276,INGRESO,0131,base,MEDIA,PENDIENTE_VALIDAR_ARCHIVO_REAL - inferencia 276
+00102,00102,Monto Unico Consolidado (MUC),276,INGRESO,0131,base,MEDIA,PENDIENTE_VALIDAR_ARCHIVO_REAL - inferencia 276
+NUEVO_SERVIR_BASE,PENDIENTE,Compensacion SERVIR,SERVIR,INGRESO,0668,base,ALTA,Confirmado archivos SERVIR file 0019-0024 - concepto NUEVO a crear en B3-1 (GAP A)
+11051,11051,Incremento DS 265-2024-EF,SERVIR,INGRESO,0131,incremento,ALTA,En SERVIR los DS 265/279 van bajo 0131 (descripcion discrimina)
+11053,11053,Incremento DS 279-2024-EF,SERVIR,INGRESO,0131,incremento,ALTA,Confirmado archivos SERVIR
+11214,11214,Incremento DS 327-2025-EF,SERVIR,INGRESO,1053,incremento,ALTA,Confirmado: DS 327 va a 1053 en MCPP
+NUEVO_VACTRUNCAS,PENDIENTE,Vacaciones Truncas,TODOS,INGRESO,0131,base,MEDIA,Hoy planilla aparte bajo 0131; concepto NUEVO a crear en B3-1
+00302,00302,Asignacion Familiar,728,INGRESO,PENDIENTE,ingreso,BAJA,No aparece en archivos - validar codigo MCPP asig familiar
+00502,00502,Asignacion Familiar CAS,1057,INGRESO,PENDIENTE,ingreso,BAJA,No aparece en archivos CAS - validar
+00303,00303,Horas Extras,728,INGRESO,PENDIENTE,ingreso,BAJA,No aparece - validar
+00505,00505,Pago Diferencial (059),SERVIR,INGRESO,PENDIENTE,ingreso,BAJA,No aparece - validar
+00507,00507,Reintegro SISPER-041,SERVIR,INGRESO,0236,ingreso,MEDIA,MCPP 0236=REINTEGRO observado en archivos CAS
+05001,05001,Aporte ONP 13pct,TODOS,DESCUENTO,0002,descuento,ALTA,MCPP 0002=O.N.P. CAS confirmado
+05002,05002,Aporte AFP 10pct,TODOS,DESCUENTO,0009,descuento,ALTA,MCPP 0009=AP.OBLIG confirmado
+05003,05003,Comision AFP,TODOS,DESCUENTO,0008,descuento,ALTA,MCPP 0008=COM.PORC confirmado
+05004,05004,Prima Seguro AFP,TODOS,DESCUENTO,0010,descuento,ALTA,MCPP 0010=TASA EFEC confirmado
+05101,05101,Retencion 5ta Categoria,728,DESCUENTO,0007,descuento,ALTA,MCPP 0007=RENTA DE QUINTA (SERVIR/728) confirmado
+NUEVO_5TA_CAS,PENDIENTE,Retencion 5ta CAS,1057,DESCUENTO,0006,descuento,ALTA,Decision v3: reusa code 0006 (era 4ta) ahora como 5ta CAS; concepto NUEVO a crear en B3-1
+05201,05201,Pension Alimentaria,TODOS,DESCUENTO,0210,descuento,ALTA,MCPP 0210=Monto Mandato judicial confirmado
+05202,05202,Embargo Judicial,TODOS,DESCUENTO,0210,descuento,ALTA,MCPP 0210 confirmado
+05303,05303,FESALUD S.A.,TODOS,DESCUENTO,0089,descuento,ALTA,MCPP 0089=SEGURO FESALUD confirmado
+05304,05304,Inter/Sura Seguro,TODOS,DESCUENTO,0066,descuento,ALTA,MCPP 0066=SEGURO SURA confirmado
+05308,05308,Rimac Seguros,TODOS,DESCUENTO,0030,descuento,ALTA,MCPP 0030=SEGURO RIMAC confirmado
+05306,05306,Coop. San Miguel,TODOS,DESCUENTO,0075,descuento,ALTA,MCPP 0075 (descripcion discrimina cooperativa)
+05307,05307,Coop. SERFINCO,TODOS,DESCUENTO,0075,descuento,ALTA,MCPP 0075
+05301,05301,Cuota Prestamo Interno,TODOS,DESCUENTO,0075,descuento,MEDIA,MCPP 0075 (banco/prestamo) - validar
+05302,05302,Campana Navarrete,TODOS,DESCUENTO,0075,descuento,MEDIA,MCPP 0075 - validar
+05312,05312,Campana Tai Loy,TODOS,DESCUENTO,0075,descuento,MEDIA,MCPP 0075 - validar
+05310,05310,Otros Descuentos,TODOS,DESCUENTO,0053,descuento,MEDIA,MCPP 0053=OTROS DESCUENTOS CAS observado
+05305,05305,+Vida EsSalud,TODOS,DESCUENTO,PENDIENTE,descuento,BAJA,Validar
+05309,05309,Copago EPS (trabajador),TODOS,DESCUENTO,PENDIENTE,descuento,BAJA,Validar
+05311,05311,Aporte Facultativo 0.5pct,TODOS,DESCUENTO,PENDIENTE,descuento,DEFERIDO,Validar - poco frecuente
+05401,05401,Descuento por Tardanza,TODOS,DESCUENTO,PENDIENTE,descuento,BAJA,No aparece en MCPP - validar si MCPP lo incluye
+05402,05402,Descuento por Falta,TODOS,DESCUENTO,PENDIENTE,descuento,BAJA,No aparece en MCPP - validar
+NUEVO_CUOTA_SINDICAL,PENDIENTE,Cuota Sindical,TODOS,DESCUENTO,0067,descuento,ALTA,MCPP 0067=CUOTA SINDICAL CAS observado; concepto NUEVO a crear en B3-1 (GAP C)
+06001,06001,ESSALUD 9pct (Empleador),TODOS,APORTE,N/A,no aplica,ALTA,Empleador - NO va a MCPP (no se paga a banco del trabajador)
+06002,06002,ESSALUD 6.75pct (con EPS),TODOS,APORTE,N/A,no aplica,ALTA,Empleador - NO va a MCPP
+06003,06003,EPS 2.25pct,TODOS,APORTE,N/A,no aplica,ALTA,Empleador - NO va a MCPP
+06004,06004,CUC Total,TODOS,APORTE,N/A,no aplica,ALTA,Agregado interno - NO va a MCPP

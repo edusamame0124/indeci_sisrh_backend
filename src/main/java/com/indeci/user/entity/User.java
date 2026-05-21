@@ -47,5 +47,9 @@ public class User {
     @Column(name = "PASSWORD_HASH")
     private String passwordHash;
 
-    
+    /** Spec 011 / B2 — empleado vinculado a la cuenta (INDECI_EMPLEADO.ID). */
+    @Column(name = "EMPLEADO_ID")
+    private Long empleadoId;
+
+
 }

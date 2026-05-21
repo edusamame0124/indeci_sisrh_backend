@@ -65,6 +65,8 @@ public class JwtProvider {
                 .claim("permisos", permisos)
                 .claim("otpValidado", true)
                 .claim("newPassOk", "N".equalsIgnoreCase(usuario.getNewClave()))
+                // Spec 011 / B2 — empleado vinculado a la cuenta (null si no tiene).
+                .claim("empleadoId", usuario.getEmpleadoId())
                 .setIssuedAt(ahora)
                 .setExpiration(expiracion)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS384)

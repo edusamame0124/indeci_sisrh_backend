@@ -22,5 +22,10 @@ public class PeriodoPlanillaResponseDto {
 
     private LocalDateTime fechaCierre;
 
+    /** Spec 011 — certificación presupuestal y fecha de aprobación. */
+    private String nroCertPresup;
+
+    private LocalDateTime fechaAprobacion;
+
     private Integer activo;
 }

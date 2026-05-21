@@ -15,4 +15,22 @@ public interface ConceptoPlanillaRepository
     findByCodigoAndActivo(
             String codigo,
             Integer activo);
+
+    /** Spec 010 — búsqueda por código MEF oficial (LEY-01). */
+    Optional<ConceptoPlanilla>
+    findByCodigoMefAndActivo(
+            String codigoMef,
+            Integer activo);
+
+    /** B3 — conceptos activos con un código PLAME SUNAT dado (muchos-a-uno). */
+    List<ConceptoPlanilla>
+    findByCodigoPlameSunatAndActivo(
+            String codigoPlameSunat,
+            Integer activo);
+
+    /** B3 — conceptos activos con un código MCPP dado (muchos-a-uno). */
+    List<ConceptoPlanilla>
+    findByCodigoMcppAndActivo(
+            String codigoMcpp,
+            Integer activo);
 }

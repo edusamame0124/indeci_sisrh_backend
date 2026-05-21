@@ -12,4 +12,7 @@ public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, 
     List<EmpleadoPuesto> findByEmpleadoIdOrderByFechaInicioDesc(Long empleadoId);
 
     Optional<EmpleadoPuesto> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
+
+    /** Spec 012 / C3 (BKD-006) — paso «puesto» del flujo de empleado. */
+    boolean existsByEmpleadoId(Long empleadoId);
 }

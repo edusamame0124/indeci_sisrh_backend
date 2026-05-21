@@ -1,6 +1,7 @@
 package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.AprobacionPeriodoDto;
 import com.indeci.rrhh.dto.PeriodoPlanillaDto;
 import com.indeci.rrhh.dto.PeriodoPlanillaResponseDto;
 import com.indeci.rrhh.service.PeriodoPlanillaService;
@@ -38,6 +39,31 @@ public class PeriodoPlanillaController {
                 "OK",
                 "Lista periodos",
                 service.listar());
+    }
+
+    @PutMapping("/enviar-revision/{id}")
+    public ApiResponse<Void> enviarRevision(
+            @PathVariable Long id) {
+
+        service.enviarRevision(id);
+
+        return new ApiResponse<>(
+                "OK",
+                "Periodo enviado a revisión",
+                null);
+    }
+
+    @PutMapping("/aprobar/{id}")
+    public ApiResponse<Void> aprobar(
+            @PathVariable Long id,
+            @RequestBody AprobacionPeriodoDto dto) {
+
+        service.aprobar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Periodo aprobado",
+                null);
     }
 
     @PutMapping("/cerrar/{id}")

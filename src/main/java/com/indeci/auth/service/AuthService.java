@@ -232,6 +232,7 @@ public class AuthService {
      response.setRefreshToken(refreshToken);
      response.setRoles(roles);
      response.setPermisos(permisos);
+     response.setEmpleadoId(user.getEmpleadoId());
      response.setNewPass("N");
      response.setRequiereOtp(false);
      response.setRequiereEnroll(false);
@@ -277,10 +278,11 @@ public class AuthService {
         response.setRefreshToken(refreshToken);
         response.setRoles(roles);
         response.setPermisos(permisos);
+        response.setEmpleadoId(user.getEmpleadoId());
         response.setNewPass("N");
         response.setRequiereOtp(false);
         response.setRequiereEnroll(false);
-        
+
 
         return response;
     }
@@ -414,6 +416,7 @@ public class AuthService {
         response.setRefreshToken(nuevoRefresh);
         response.setRoles(roles);
         response.setPermisos(permisos);
+        response.setEmpleadoId(user.getEmpleadoId());
 
         return response;
     }

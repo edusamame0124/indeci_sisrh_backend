@@ -22,4 +22,10 @@ public class MovimientoPlanillaResponseDto {
     private String observacion;
 
     private Integer activo;
+
+    // Spec 010 §5.4 / SERVIR-07 — validación neto 50% (semáforo PANTALLA-01)
+    private Double neto50pctMinimo;
+
+    /** 'BIEN' | 'NETO_NO_VA'. */
+    private String estadoNeto;
 }

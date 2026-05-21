@@ -14,5 +14,7 @@ public class LoginResponse {
     private List<String> permisos;
     private boolean requiereOtp;
     private boolean requiereEnroll;
+    /** Spec 011 / B2 — empleado vinculado a la cuenta (null si no tiene). */
+    private Long empleadoId;
 
 }

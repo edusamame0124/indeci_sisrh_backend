@@ -144,6 +144,19 @@ public class AdminUserService {
         userRepository.save(u);
     }
 
+    /**
+     * Spec 011 / B2 — Vincula (o desvincula con {@code null}) la cuenta con un
+     * empleado. Habilita el self-service del Portal del Empleado (PANTALLA-08).
+     */
+    @Auditable(accion = "ADMIN_USER_EMPLEADO")
+    @Transactional
+    public void asignarEmpleado(Long id, Long empleadoId) {
+        User u = userRepository.findById(id)
+                .orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+        u.setEmpleadoId(empleadoId);
+        userRepository.save(u);
+    }
+
     @Auditable(accion = "ADMIN_USER_ROLES")
     @Transactional
     public void putRoles(Long id, AdminUserRolesPutRequest req) {

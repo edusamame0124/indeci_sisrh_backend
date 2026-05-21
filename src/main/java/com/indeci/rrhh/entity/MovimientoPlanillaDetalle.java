@@ -34,4 +34,48 @@ public class MovimientoPlanillaDetalle {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+
+    // ============================================================
+    // Spec 010 / V010_09 — campos v2 del detalle de planilla
+    // ============================================================
+
+    /** SPEC §5.4 — diferencial pagado adicional (SISPER-059/060). */
+    @Column(name = "PAGO_DIFERENCIAL")
+    private Double pagoDiferencial;
+
+    /** SPEC §5.4 — días reintegrados. */
+    @Column(name = "DIAS_REINTEGRO")
+    private Integer diasReintegro;
+
+    /** SPEC §5.4 — monto de reintegro: (remun/30) * dias (SISPER-041). */
+    @Column(name = "MONTO_REINTEGRO")
+    private Double montoReintegro;
+
+    /** SPEC §5.7 — BW: IR 5ta sobre remuneración mensual. */
+    @Column(name = "IR_5TA_REMUNERACION")
+    private Double ir5taRemuneracion;
+
+    /** SPEC §5.7 — BX: IR 5ta sobre aguinaldo (jul/dic). */
+    @Column(name = "IR_5TA_AGUINALDO")
+    private Double ir5taAguinaldo;
+
+    /** SPEC §5.7 — BY = BW + BX (SISPER-820). */
+    @Column(name = "IR_5TA_TOTAL")
+    private Double ir5taTotal;
+
+    /** SPEC §5.5 — ESSALUD empleador 6.75% cuando el trabajador tiene EPS (SISPER-907). */
+    @Column(name = "ESSALUD_6_75")
+    private Double essalud675;
+
+    /** SPEC §5.5 — copago EPS 2.25% del trabajador (SISPER-725). */
+    @Column(name = "COPAGO_EPS")
+    private Double copagoEps;
+
+    /** SPEC §5.4 — umbral mínimo para validar el neto (REGLA SERVIR-07). */
+    @Column(name = "NETO_50PCT_MINIMO")
+    private Double neto50pctMinimo;
+
+    /** SPEC §5.4 — 'BIEN' | 'NETO_NO_VA'. */
+    @Column(name = "ESTADO_NETO")
+    private String estadoNeto;
 }

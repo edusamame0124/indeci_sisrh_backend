@@ -14,7 +14,7 @@ public interface EmpleadoPensionRepository extends JpaRepository<EmpleadoPension
 
     // 🔹 VALIDAR EXISTENCIA (UNO SOLO)
     Optional<EmpleadoPension> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
-    
-    
-    
+
+    /** Spec 012 / C3 (BKD-006) — paso «pensión» del flujo de empleado. */
+    boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 }

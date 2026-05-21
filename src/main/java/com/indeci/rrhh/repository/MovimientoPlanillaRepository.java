@@ -19,4 +19,10 @@ public interface MovimientoPlanillaRepository
     findByPeriodoAndActivo(
             String periodo,
             Integer activo);
+
+    /** Historial de movimientos de un empleado en todos los períodos (PANTALLA-08). */
+    List<MovimientoPlanilla>
+    findByEmpleadoIdAndActivo(
+            Long empleadoId,
+            Integer activo);
 }

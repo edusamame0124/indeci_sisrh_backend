@@ -58,6 +58,36 @@ public class GlobalExceptionHandler {
     }
 
     // ============================
+    // CONCEPTO NO ASIGNABLE MANUALMENTE (422) — Spec 013 / C1
+    // ============================
+    @ExceptionHandler(ConceptoNoAsignableManualmenteException.class)
+    public ResponseEntity<?> handleConceptoNoAsignable(
+            ConceptoNoAsignableManualmenteException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 422);
+        response.put("mensaje", ex.getMessage());
+        response.put("requiereCaptcha", false);
+
+        return ResponseEntity.status(422).body(response);
+    }
+
+    // ============================
+    // CONCEPTO YA ASIGNADO / DUPLICADO (409) — Spec 013 / C1
+    // ============================
+    @ExceptionHandler(ConceptoYaAsignadoException.class)
+    public ResponseEntity<?> handleConceptoYaAsignado(
+            ConceptoYaAsignadoException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 409);
+        response.put("mensaje", ex.getMessage());
+        response.put("requiereCaptcha", false);
+
+        return ResponseEntity.status(409).body(response);
+    }
+
+    // ============================
     // VALIDACIÓN @VALID (400)
     // ============================
     @ExceptionHandler(MethodArgumentNotValidException.class)

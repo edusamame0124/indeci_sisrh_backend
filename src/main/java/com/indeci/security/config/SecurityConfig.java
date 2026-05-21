@@ -49,6 +49,9 @@ public class SecurityConfig {
                 // 🔓 Autenticación pública y telemetría cliente (FR-040)
                 .requestMatchers("/api/auth/**", "/api/telemetry/client").permitAll()
 
+                // 🔓 Transparencia pública — Ley 27806 (Spec 011 / B4 — M10)
+                .requestMatchers("/api/transparencia/**").permitAll()
+
                 // 🔐 TODO LO DEMÁS PROTEGIDO
                 .anyRequest().authenticated()
             )

@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.EmpleadoPensionDto;
 import com.indeci.rrhh.dto.EmpleadoPensionResponseDto;
+import com.indeci.rrhh.dto.TasasVigentesPensionDto;
 import com.indeci.rrhh.service.EmpleadoPensionService;
 
 import lombok.RequiredArgsConstructor;
@@ -50,5 +52,15 @@ public class EmpleadoPensionController {
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return new ApiResponse<>("OK", "Pensión desactivada", null);
+    }
+
+    // Spec 013 / C1 — TASAS VIGENTES (autocomplete del modal "Registrar pensión")
+    @GetMapping("/tasas-vigentes")
+    public ApiResponse<TasasVigentesPensionDto> tasasVigentes(
+            @RequestParam Long regimenPensionarioId,
+            @RequestParam(required = false) Long tipoComisionAfpId,
+            @RequestParam(required = false) Integer anio) {
+        return new ApiResponse<>("OK", "Tasas vigentes",
+                service.tasasVigentes(regimenPensionarioId, tipoComisionAfpId, anio));
     }
 }

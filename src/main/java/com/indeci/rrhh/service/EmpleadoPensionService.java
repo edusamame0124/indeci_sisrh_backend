@@ -12,12 +12,15 @@ import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.EmpleadoPensionDto;
 import com.indeci.rrhh.dto.EmpleadoPensionResponseDto;
+import com.indeci.rrhh.dto.TasasVigentesPensionDto;
 import com.indeci.rrhh.entity.EmpleadoPension;
 import com.indeci.rrhh.entity.RegimenPensionario;
 import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
 import com.indeci.rrhh.repository.RegimenPensionarioRepository;
 import com.indeci.rrhh.repository.TipoComisionAfpRepository;
+
+import java.math.BigDecimal;
 
 import lombok.RequiredArgsConstructor;
 
@@ -29,6 +32,7 @@ public class EmpleadoPensionService {
     private final AuditoriaContext auditoriaContext;
     private final RegimenPensionarioRepository regimenPensionarioRepository;
     private final TipoComisionAfpRepository tipoComisionAfpRepository;
+    private final ParametroRemunerativoService parametroService;
     
 
     // ============================
@@ -187,5 +191,81 @@ public class EmpleadoPensionService {
         repository.save(entity);
 
         auditoriaContext.setDetalle("Pensión desactivada ID: " + id);
+    }
+
+    // ============================
+    // Spec 013 / C1 — TASAS VIGENTES (autocomplete del modal)
+    // ============================
+
+    /**
+     * Devuelve las tasas pensionarias vigentes (aporte / comisión / prima)
+     * para el régimen y, si aplica, el tipo de comisión AFP elegido. Solo
+     * lectura — no modifica nada.
+     *
+     * <p>ONP: aporte = TASA_ONP global; comisión y prima quedan en null.
+     * <br>AFP: aporte = TASA_AFP_APORTE, prima = PRIMA_AFP. La comisión sale
+     * del parámetro {@code COMISION_AFP_<REGIMEN_CODIGO>_<TIPO_COMISION_CODIGO>}
+     * sembrado por V010_26; si no está parametrizada, queda en null y
+     * {@code comisionParametrizada=false} para que el frontend lo señale.
+     */
+    public TasasVigentesPensionDto tasasVigentes(
+            Long regimenPensionarioId, Long tipoComisionAfpId, Integer anioFiscal) {
+
+        if (regimenPensionarioId == null) {
+            throw new NegocioException("regimenPensionarioId es obligatorio");
+        }
+        int anio = anioFiscal != null ? anioFiscal : LocalDate.now().getYear();
+
+        RegimenPensionario regimen = regimenPensionarioRepository.findById(regimenPensionarioId)
+                .orElseThrow(() -> new NegocioException(
+                        "Régimen pensionario no existe: id=" + regimenPensionarioId));
+
+        String tipo = regimen.getTipo() != null ? regimen.getTipo().toUpperCase() : "";
+
+        TasasVigentesPensionDto dto = new TasasVigentesPensionDto();
+        dto.setTipoRegimen(tipo);
+
+        if ("ONP".equals(tipo)) {
+            // ONP: solo aporte. Comisión y prima no aplican.
+            dto.setAporte(parametroService.obtenerValorOpcional("TASA_ONP", anio, null)
+                    .orElse(null));
+            dto.setComision(null);
+            dto.setPrima(null);
+            dto.setComisionParametrizada(true); // no aplica el concepto
+            return dto;
+        }
+
+        // AFP: aporte y prima son globales; comisión depende de AFP + tipo.
+        dto.setAporte(parametroService.obtenerValorOpcional("TASA_AFP_APORTE", anio, null)
+                .orElse(null));
+        dto.setPrima(parametroService.obtenerValorOpcional("PRIMA_AFP", anio, null)
+                .orElse(null));
+
+        if (tipoComisionAfpId == null) {
+            // No se eligió tipo todavía — el modal aún no puede autocompletar comisión.
+            dto.setComision(null);
+            dto.setComisionParametrizada(false);
+            return dto;
+        }
+
+        TipoComisionAfp tipoComision = tipoComisionAfpRepository.findById(tipoComisionAfpId)
+                .orElseThrow(() -> new NegocioException(
+                        "Tipo de comisión AFP no existe: id=" + tipoComisionAfpId));
+
+        String codigoParam = "COMISION_AFP_"
+                + safeUpper(regimen.getCodigo()) + "_"
+                + safeUpper(tipoComision.getCodigo());
+
+        BigDecimal comision = parametroService
+                .obtenerValorOpcional(codigoParam, anio, null)
+                .orElse(null);
+
+        dto.setComision(comision);
+        dto.setComisionParametrizada(comision != null);
+        return dto;
+    }
+
+    private static String safeUpper(String s) {
+        return s == null ? "" : s.toUpperCase();
     }
 }

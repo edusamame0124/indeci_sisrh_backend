@@ -2,6 +2,7 @@ package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.MovimientoPlanillaResponseDto;
+import com.indeci.rrhh.dto.ResumenMetaDto;
 import com.indeci.rrhh.service.MovimientoPlanillaService;
 
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,36 @@ public class MovimientoPlanillaController {
                 "OK",
                 "Planillas periodo",
                 service.listarPeriodo(periodo));
+    }
+
+    // ==========================================
+    // LISTAR POR EMPLEADO (historial — PANTALLA-08)
+    // ==========================================
+
+    @GetMapping("/empleado/{empleadoId}")
+    public ApiResponse<List<MovimientoPlanillaResponseDto>>
+    listarPorEmpleado(
+            @PathVariable Long empleadoId) {
+
+        return new ApiResponse<>(
+                "OK",
+                "Historial de planillas del empleado",
+                service.listarPorEmpleado(empleadoId));
+    }
+
+    // ==========================================
+    // RESUMEN POR META PRESUPUESTAL (PANTALLA-05)
+    // ==========================================
+
+    @GetMapping("/resumen-por-meta/{periodo}")
+    public ApiResponse<List<ResumenMetaDto>>
+    resumenPorMeta(
+            @PathVariable String periodo) {
+
+        return new ApiResponse<>(
+                "OK",
+                "Resumen por meta",
+                service.resumenPorMeta(periodo));
     }
 
     // ==========================================

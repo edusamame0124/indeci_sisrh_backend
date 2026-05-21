@@ -33,6 +33,14 @@ public class PeriodoPlanilla {
     @Column(name = "FECHA_CIERRE")
     private LocalDateTime fechaCierre;
 
+    /** Spec 011 / LEY-05 — número de certificación presupuestal (Ley 28411). */
+    @Column(name = "NRO_CERT_PRESUP")
+    private String nroCertPresup;
+
+    /** Spec 011 — fecha/hora en que el período pasó a APROBADO. */
+    @Column(name = "FECHA_APROBACION")
+    private LocalDateTime fechaAprobacion;
+
     @Column(name = "ACTIVO")
     private Integer activo;
 
