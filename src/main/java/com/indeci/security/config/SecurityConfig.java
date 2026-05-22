@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -14,6 +15,7 @@ import com.indeci.security.filter.JwtAuthFilter;
 
 @Configuration
 @EnableMethodSecurity
+@EnableWebSecurity
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -26,8 +28,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-            // 🔐 SIN CSRF (API REST)
+
+            // 🔐 SIN CSRF
             .csrf(AbstractHttpConfigurer::disable)
+
+            // 🚫 DESACTIVAR LOGIN HTML
+            .formLogin(AbstractHttpConfigurer::disable)
+
+            // 🚫 DESACTIVAR BASIC AUTH
+            .httpBasic(AbstractHttpConfigurer::disable)
 
             // 📦 SIN SESIONES
             .sessionManagement(sm ->
@@ -40,23 +49,29 @@ public class SecurityConfig {
             // 🔐 AUTORIZACIÓN
             .authorizeHttpRequests(auth -> auth
 
-                // 🔓 Swagger (opcional)
                 .requestMatchers(
                         "/swagger-ui/**",
-                        "/v3/api-docs/**"
+                        "/v3/api-docs/**",
+                        "/actuator/**"
                 ).permitAll()
 
-                // 🔓 Autenticación pública y telemetría cliente (FR-040)
-                .requestMatchers("/api/auth/**", "/api/telemetry/client").permitAll()
+                .requestMatchers(
+                        "/api/auth/**",
+                        "/api/telemetry/client"
+                ).permitAll()
+                
+
 
                 // 🔓 Transparencia pública — Ley 27806 (Spec 011 / B4 — M10)
                 .requestMatchers("/api/transparencia/**").permitAll()
 
                 // 🔐 TODO LO DEMÁS PROTEGIDO
+
+
                 .anyRequest().authenticated()
             )
 
-            // 🛡️ JWT FILTER
+            // 🛡️ JWT
             .addFilterBefore(
                     jwtAuthFilter,
                     UsernamePasswordAuthenticationFilter.class

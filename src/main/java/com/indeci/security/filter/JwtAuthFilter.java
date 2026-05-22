@@ -37,6 +37,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String header = request.getHeader("Authorization");
+        
+        String path = request.getRequestURI();
+
+        if (
+                path.startsWith("/api/auth/")
+                || path.startsWith("/actuator")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs")
+        ) {
+
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
@@ -53,7 +66,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             Boolean otpValidado = claims.get("otpValidado", Boolean.class);
             Boolean newPassOk = claims.get("newPassOk", Boolean.class);
 
-            String path = request.getRequestURI();
+          
 
             boolean esAuthEndpoint = path.startsWith("/api/auth/");
 
