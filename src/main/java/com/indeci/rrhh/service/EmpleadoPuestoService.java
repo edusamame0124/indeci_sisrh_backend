@@ -12,22 +12,25 @@ import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.EmpleadoPuestoDto;
 import com.indeci.rrhh.dto.EmpleadoPuestoResponseDto;
-import com.indeci.rrhh.entity.Dependencia;
+import com.indeci.rrhh.entity.Cargo;
+
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPuesto;
-import com.indeci.rrhh.entity.EstructuraOrganica;
+
 import com.indeci.rrhh.entity.Nivel;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
-import com.indeci.rrhh.entity.Sede;
-import com.indeci.rrhh.repository.DependenciaRepository;
+
+import com.indeci.rrhh.entity.TipoCargo;
+import com.indeci.rrhh.repository.CargoRepository;
+
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
-import com.indeci.rrhh.repository.EstructuraOrganicaRepository;
+
 import com.indeci.rrhh.repository.NivelRepository;
-import com.indeci.rrhh.repository.OficinaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
-import com.indeci.rrhh.repository.SedeRepository;
+
+import com.indeci.rrhh.repository.TipoCargoRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -39,21 +42,17 @@ public class EmpleadoPuestoService {
     private final AuditoriaContext auditoriaContext;
     private final NivelRepository nivelRepository;
 
-    private final SedeRepository sedeRepository;
 
-    private final OficinaRepository oficinaRepository;
 
-    private final EstructuraOrganicaRepository
-            estructuraOrganicaRepository;
-
-    private final DependenciaRepository
-            dependenciaRepository;
 
     private final EmpleadoRepository
             empleadoRepository;
 
     private final PersonaRepository
             personaRepository;
+    private final CargoRepository cargoRepository;
+    
+    private final TipoCargoRepository tipoCargoRepository;
 
     // ============================
     // CREAR NUEVO PUESTO (MOVIMIENTO)
@@ -62,10 +61,12 @@ public class EmpleadoPuestoService {
     public void guardar(EmpleadoPuestoDto dto) {
 
         // 🔥 VALIDAR
-        if (dto.getCargo() == null || dto.getCargo().isBlank()) {
-            throw new NegocioException("Debe indicar el cargo");
-        }
+     	if (dto.getCargoId() == null) {
 
+    	    throw new NegocioException(
+    	            "Debe indicar el cargo");
+    	}
+     
         // 🔥 CERRAR PUESTO ACTUAL
         Optional<EmpleadoPuesto> actual =
                 repository.findFirstByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1);
@@ -77,19 +78,24 @@ public class EmpleadoPuestoService {
 
             repository.save(puestoActual);
         }
+        
+        cargoRepository
+        .findById(
+                dto.getCargoId())
+        .orElseThrow(() ->
+                new NegocioException(
+                        "Cargo no encontrado"));
 
         // 🔥 CREAR NUEVO
         EmpleadoPuesto nuevo = new EmpleadoPuesto();
         nuevo.setEmpleadoId(dto.getEmpleadoId());
-        nuevo.setCargo(dto.getCargo());
+        nuevo.setCargoId(dto.getCargoId());
         nuevo.setNivelId(dto.getNivelId());
-        nuevo.setSedeId(dto.getSedeId());
+   
         nuevo.setOficinaId(dto.getOficinaId());
-        nuevo.setEstructuraOrganicaId(
-                dto.getEstructuraOrganicaId());
+ 
 
-        nuevo.setDependenciaId(
-                dto.getDependenciaId());
+   
         nuevo.setJefeId(dto.getJefeId());
         nuevo.setActivo(1);
         nuevo.setFechaInicio(LocalDate.now());
@@ -107,10 +113,11 @@ public class EmpleadoPuestoService {
     @Auditable(accion = "ACTUALIZAR_PUESTO")
     public void actualizar(Long id, EmpleadoPuestoDto dto) {
 
-        if (dto.getCargo() == null || dto.getCargo().isBlank()) {
-            throw new NegocioException("Debe indicar el cargo");
-        }
+    	if (dto.getCargoId() == null) {
 
+    	    throw new NegocioException(
+    	            "Debe indicar el cargo");
+    	}
         EmpleadoPuesto entity = repository.findById(id)
                 .orElseThrow(() -> new NegocioException("Puesto no encontrado"));
 
@@ -122,12 +129,19 @@ public class EmpleadoPuestoService {
             throw new NegocioException("El puesto no corresponde al empleado indicado");
         }
 
-        entity.setCargo(dto.getCargo().trim());
+        cargoRepository
+        .findById(
+                dto.getCargoId())
+        .orElseThrow(() ->
+                new NegocioException(
+                        "Cargo no encontrado"));
+        
+        entity.setCargoId(dto.getCargoId());
         entity.setNivelId(dto.getNivelId());
-        entity.setSedeId(dto.getSedeId());
+      
         entity.setOficinaId(dto.getOficinaId());
-        entity.setEstructuraOrganicaId(dto.getEstructuraOrganicaId());
-        entity.setDependenciaId(dto.getDependenciaId());
+     
+    
         entity.setJefeId(dto.getJefeId());
 
         repository.save(entity);
@@ -145,8 +159,36 @@ public class EmpleadoPuestoService {
                 .map(e -> {
                     EmpleadoPuestoResponseDto dto = new EmpleadoPuestoResponseDto();
                     dto.setId(e.getId());
-                    dto.setCargo(e.getCargo());
+
+                    dto.setCargoId(
+                            e.getCargoId());
+                    
+                    
+                    if (e.getCargo() != null) {
+
+                        Cargo cargo =
+                                e.getCargo();
+
+                        dto.setCargoId(
+                                cargo.getId());
+
+                        dto.setCargo(
+                                cargo.getNombre());
+
+                        if (cargo.getTipoCargo() != null) {
+
+                            dto.setTipoCargoId(
+                                    cargo.getTipoCargo().getId());
+
+                            dto.setTipoCargo(
+                                    cargo.getTipoCargo().getNombre());
+                        }
+                    }
+                    
+                    
+                    
                     dto.setNivelId(e.getNivelId());
+                    
                     if (e.getNivelId() != null) {
 
                         Nivel nivel =
@@ -161,35 +203,35 @@ public class EmpleadoPuestoService {
                                     nivel.getNombre());
                         }
                     }
-                    dto.setSedeId(e.getSedeId());
-                    if (e.getSedeId() != null) {
-
-                        Sede sede =
-                                sedeRepository
-                                        .findById(
-                                                e.getSedeId())
-                                        .orElse(null);
-
-                        if (sede != null) {
-
-                            dto.setSede(
-                                    sede.getNombre());
-                        }
-                    }
+                
                     dto.setOficinaId(e.getOficinaId());
                     if (e.getOficinaId() != null) {
 
-                        Oficina oficina =
-                                oficinaRepository
-                                        .findById(
-                                                e.getOficinaId())
-                                        .orElse(null);
+                    	Oficina oficina =
+                    	        e.getOficina();
 
-                        if (oficina != null) {
+                    	if (oficina != null) {
 
-                            dto.setOficina(
-                                    oficina.getNombre());
-                        }
+                    	    dto.setOficina(
+                    	            oficina.getNombre());
+
+                    	    if (oficina.getSede() != null) {
+
+                    	        dto.setSede(
+                    	                oficina
+                    	                        .getSede()
+                    	                        .getNombre());
+                    	    }
+
+                    	    if (oficina.getEstructuraOrganica() != null) {
+
+                    	        dto.setEstructuraOrganica(
+                    	                oficina
+                    	                        .getEstructuraOrganica()
+                    	                        .getNombre());
+                    	    }
+                    	}
+                        
                     }
                     dto.setJefeId(e.getJefeId());
                     if (e.getJefeId() != null) {
@@ -217,39 +259,9 @@ public class EmpleadoPuestoService {
                         }
                     }
                     dto.setActivo(e.getActivo());
-                    dto.setEstructuraOrganicaId(
-                            e.getEstructuraOrganicaId());
-                    if (e.getEstructuraOrganicaId() != null) {
+            
 
-                        EstructuraOrganica estructura =
-                                estructuraOrganicaRepository
-                                        .findById(
-                                                e.getEstructuraOrganicaId())
-                                        .orElse(null);
-
-                        if (estructura != null) {
-
-                            dto.setEstructuraOrganica(
-                                    estructura.getNombre());
-                        }
-                    }
-
-                    dto.setDependenciaId(
-                            e.getDependenciaId());
-                    if (e.getDependenciaId() != null) {
-
-                        Dependencia dependencia =
-                                dependenciaRepository
-                                        .findById(
-                                                e.getDependenciaId())
-                                        .orElse(null);
-
-                        if (dependencia != null) {
-
-                            dto.setDependencia(
-                                    dependencia.getNombre());
-                        }
-                    }
+                
                     return dto;
                 }).toList();
     }

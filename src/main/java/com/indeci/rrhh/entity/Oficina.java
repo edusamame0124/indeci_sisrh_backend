@@ -24,4 +24,24 @@ public class Oficina {
 
     @Column(name = "ACTIVO")
     private Integer activo;
+    
+    @Column(name = "ESTRUCTURA_ORGANICA_ID")
+    private Long estructuraOrganicaId;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "SEDE_ID",
+            insertable = false,
+            updatable = false)
+    private Sede sede;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "ESTRUCTURA_ORGANICA_ID",
+            insertable = false,
+            updatable = false)
+    private EstructuraOrganica estructuraOrganica;
+    
+    
+    
 }

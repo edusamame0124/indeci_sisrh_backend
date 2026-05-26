@@ -7,11 +7,11 @@ public class EmpleadoPuestoDto {
 
     private Long empleadoId;
 
-    private String cargo;
+    private Long cargoId;
 
     private Long nivelId;
 
-    private Long sedeId;
+
 
     private Long oficinaId;
 
@@ -21,7 +21,7 @@ public class EmpleadoPuestoDto {
     // NUEVOS
     // =====================================
 
-    private Long estructuraOrganicaId;
 
-    private Long dependenciaId;
+
+
 }

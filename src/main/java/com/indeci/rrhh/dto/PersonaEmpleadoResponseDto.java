@@ -83,6 +83,7 @@ public class PersonaEmpleadoResponseDto {
     private String gradoAcademico;
 
     private String conadisCodigo;
+    private String registroAirhsp;
 
 
 

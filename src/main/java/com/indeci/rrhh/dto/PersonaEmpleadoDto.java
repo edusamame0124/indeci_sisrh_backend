@@ -56,5 +56,6 @@ public class PersonaEmpleadoDto {
     private String conadisCodigo;
 
     private Long tipoPersonalId;
+    private String registroAirhsp;
     
 }

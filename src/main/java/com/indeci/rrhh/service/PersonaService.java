@@ -93,6 +93,7 @@ public class PersonaService {
         persona.setContactoEmergenciaNombre(dto.getContactoEmergenciaNombre());
         persona.setContactoEmergenciaParentesco(dto.getContactoEmergenciaParentesco());
         persona.setContactoEmergenciaTelefono(dto.getContactoEmergenciaTelefono());
+        
 
         persona = personaRepository.save(persona);
 
@@ -108,6 +109,7 @@ public class PersonaService {
         empleado.setProfesionId(dto.getProfesionId());
         empleado.setGradoAcademicoId(dto.getGradoAcademicoId());
         empleado.setConadisCodigo(dto.getConadisCodigo());
+        empleado.setRegistroAirhsp(dto.getRegistroAirhsp());
 
         empleado = empleadoRepository.save(empleado);
 
@@ -171,6 +173,7 @@ public class PersonaService {
         emp.setGradoAcademicoId(dto.getGradoAcademicoId());
         emp.setConadisCodigo(dto.getConadisCodigo());
         emp.setTipoPersonalId(dto.getTipoPersonalId());
+        emp.setRegistroAirhsp(dto.getRegistroAirhsp());
         
         empleadoRepository.save(emp);
 
@@ -214,6 +217,8 @@ public class PersonaService {
         dto.setRuc(p.getRuc());
         dto.setCorreoInstitucional(p.getCorreoInstitucional());
         dto.setFotoPerfil(p.getFotoPerfil());
+        dto.setRegistroAirhsp(
+                emp.getRegistroAirhsp());
 
         // ======================================
         // CATALOGOS

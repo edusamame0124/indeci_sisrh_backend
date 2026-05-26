@@ -60,5 +60,12 @@ public class Empleado {
     /** Monto de remuneración vigente del empleado en AIRHSP (MEF) — PASO 16 / M13. */
     @Column(name = "AIRHSP_MONTO")
     private Double airhspMonto;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "PERSONA_ID",
+            insertable = false,
+            updatable = false)
+    private Persona persona;
 
 }
