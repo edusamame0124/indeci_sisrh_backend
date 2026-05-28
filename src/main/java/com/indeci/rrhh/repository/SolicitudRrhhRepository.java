@@ -25,4 +25,9 @@ public interface SolicitudRrhhRepository
 	        LocalDate fechaFin,
 	        LocalDate fechaInicio
 	);
+	
+	List<SolicitudRrhh>
+	findByEmpleadoIdInAndActivo(
+	        List<Long> empleadoIds,
+	        Integer activo);
 }

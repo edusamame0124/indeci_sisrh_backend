@@ -15,4 +15,10 @@ public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, 
 
     /** Spec 012 / C3 (BKD-006) — paso «puesto» del flujo de empleado. */
     boolean existsByEmpleadoId(Long empleadoId);
+    
+    
+    List<EmpleadoPuesto>
+    findByJefeIdAndActivo(
+            Long jefeId,
+            Integer activo);
 }

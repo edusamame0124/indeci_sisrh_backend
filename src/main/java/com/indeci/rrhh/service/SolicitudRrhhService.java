@@ -11,6 +11,7 @@ import com.indeci.rrhh.repository.*;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -35,6 +36,8 @@ public class SolicitudRrhhService {
     private final EstadoSolicitudRepository estadoSolicitudRepository;
     private final SolicitudRrhhHistRepository historialRepository;
     private final SolicitudRrhhDocRepository solicitudRrhhDocRepository;
+    private final EmpleadoPuestoRepository empleadoPuestoRepository;
+    private final FtpService ftpService;
 
     // ==========================================
     // REGISTRAR
@@ -397,11 +400,14 @@ public class SolicitudRrhhService {
     
     @Auditable(
             accion = "ENVIAR_SOLICITUD_RRHH")
-    public void enviar(Long solicitudId,SolicitudWorkflowDocumentoDto dto) {
+    public void enviar(
+            Long id,
+            MultipartFile file,
+            String observacion) {
 
         SolicitudRrhh solicitud =
                 repository
-                        .findById(solicitudId)
+                        .findById(id)
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
@@ -413,44 +419,17 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Estado no encontrado"));
-        
-        if (dto.getRutaArchivo() == null
-                || dto.getRutaArchivo().isBlank()) {
+
+        // ==========================================
+        // VALIDAR ARCHIVO
+        // ==========================================
+
+        if (file == null
+                || file.isEmpty()) {
 
             throw new NegocioException(
                     "Documento firmado es obligatorio");
         }
-        
-        //GUARDADO DE PAPELETA
-        SolicitudRrhhDoc doc =
-                new SolicitudRrhhDoc();
-
-        doc.setSolicitudId(
-                solicitudId);
-
-        doc.setEtapa(
-                "EMPLEADO");
-
-        doc.setNombreArchivo(
-                dto.getNombreArchivo());
-
-        doc.setRutaArchivo(
-                dto.getRutaArchivo());
-
-        doc.setVersionDoc(1);
-
-        doc.setObservacion(
-                dto.getObservacion());
-
-        doc.setUsuarioUpload(
-                "ADMIN");
-
-        doc.setCreatedAt(
-                LocalDateTime.now());
-
-        doc.setActivo(1);
-
-        solicitudRrhhDocRepository.save(doc);
 
         // ==========================================
         // VALIDAR BORRADOR
@@ -464,8 +443,59 @@ public class SolicitudRrhhService {
         }
 
         // ==========================================
+        // SUBIR FTP
+        // ==========================================
+
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
+
+        // ==========================================
+        // GUARDAR DOCUMENTO
+        // ==========================================
+
+        SolicitudRrhhDoc doc =
+                new SolicitudRrhhDoc();
+
+        doc.setSolicitudId(
+                id);
+
+        doc.setEtapa(
+                "EMPLEADO");
+
+        doc.setNombreArchivo(
+                file.getOriginalFilename());
+
+        doc.setRutaArchivo(
+                rutaArchivo);
+
+        doc.setMimeType(
+                file.getContentType());
+
+        doc.setTamanioBytes(
+                file.getSize());
+
+        doc.setVersionDoc(1);
+
+        doc.setObservacion(
+                observacion);
+
+        doc.setUsuarioUpload(
+                "ADMIN");
+
+        doc.setCreatedAt(
+                LocalDateTime.now());
+
+        doc.setActivo(1);
+
+        solicitudRrhhDocRepository.save(doc);
+
+        // ==========================================
         // OBTENER ESTADO ENVIADO
         // ==========================================
+
         Long estadoOrigen =
                 solicitud.getEstadoSolicitudId();
 
@@ -484,6 +514,7 @@ public class SolicitudRrhhService {
                 estadoEnviado.getId());
 
         repository.save(solicitud);
+
         registrarHistorial(
                 solicitud.getId(),
                 estadoOrigen,
@@ -492,9 +523,13 @@ public class SolicitudRrhhService {
                 "Solicitud enviada");
     }
     
+
     @Auditable(
             accion = "APROBAR_SOLICITUD_JEFE")
-    public void aprobarSupervisor(Long solicitudId,SolicitudWorkflowDocumentoDto dto) {
+    public void aprobarSupervisor(
+            Long solicitudId,
+            MultipartFile file,
+            String observacion) {
 
         SolicitudRrhh solicitud =
                 repository
@@ -510,7 +545,7 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Estado no encontrado"));
-        
+
         // ==========================================
         // VALIDAR ESTADO
         // ==========================================
@@ -523,15 +558,25 @@ public class SolicitudRrhhService {
         }
 
         // ==========================================
-        // VALIDAR DOCUMENTO
+        // VALIDAR ARCHIVO
         // ==========================================
 
-        if (dto.getRutaArchivo() == null
-                || dto.getRutaArchivo().isBlank()) {
+        if (file == null
+                || file.isEmpty()) {
 
             throw new NegocioException(
                     "Documento firmado por jefe es obligatorio");
         }
+
+        // ==========================================
+        // SUBIR FTP
+        // ==========================================
+
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -547,15 +592,21 @@ public class SolicitudRrhhService {
                 "JEFE");
 
         doc.setNombreArchivo(
-                dto.getNombreArchivo());
+                file.getOriginalFilename());
 
         doc.setRutaArchivo(
-                dto.getRutaArchivo());
+                rutaArchivo);
+
+        doc.setMimeType(
+                file.getContentType());
+
+        doc.setTamanioBytes(
+                file.getSize());
 
         doc.setVersionDoc(2);
 
         doc.setObservacion(
-                dto.getObservacion());
+                observacion);
 
         doc.setUsuarioUpload(
                 "ADMIN");
@@ -567,23 +618,15 @@ public class SolicitudRrhhService {
 
         solicitudRrhhDocRepository.save(doc);
 
-        // =======================================
+        // ==========================================
+        // OBTENER ESTADO ORIGEN
+        // ==========================================
 
-        // ==========================================
-        // VALIDAR ENVIADO
-        // ==========================================
         Long estadoOrigen =
                 solicitud.getEstadoSolicitudId();
 
-        if (!estadoActual.getCodigo()
-                .equals("ENVIADO")) {
-
-            throw new NegocioException(
-                    "Solo solicitudes enviadas pueden aprobarse");
-        }
-
         // ==========================================
-        // BUSCAR ESTADO
+        // BUSCAR ESTADO APROBADO_JEFE
         // ==========================================
 
         EstadoSolicitud estado =
@@ -594,20 +637,36 @@ public class SolicitudRrhhService {
                                 new NegocioException(
                                         "Estado no existe"));
 
+        // ==========================================
+        // ACTUALIZAR SOLICITUD
+        // ==========================================
+
         solicitud.setEstadoSolicitudId(
                 estado.getId());
 
         repository.save(solicitud);
+
+        // ==========================================
+        // HISTORIAL
+        // ==========================================
+
         registrarHistorial(
                 solicitud.getId(),
                 estadoOrigen,
                 estado.getId(),
                 "APROBAR_JEFE",
                 "Solicitud aprobada por jefe");
+
+        // ==========================================
+        // AUDITORIA
+        // ==========================================
+
         auditoriaContext.setDetalle(
                 "Solicitud aprobada por jefe ID: "
                         + solicitudId);
     }
+    
+
     
     @Auditable(
             accion = "RECHAZAR_SOLICITUD_JEFE")
@@ -1074,4 +1133,36 @@ public class SolicitudRrhhService {
 
         historialRepository.save(hist);
     }
+    public List<SolicitudRrhhResponseDto>
+    listarPorJefe(Long jefeId) {
+
+        List<Long> empleadosIds =
+                empleadoPuestoRepository
+                        .findByJefeIdAndActivo(
+                                jefeId,
+                                1)
+                        .stream()
+                        .map(
+                            EmpleadoPuesto::getEmpleadoId)
+                        .toList();
+
+        return repository
+                .findByEmpleadoIdInAndActivo(
+                        empleadosIds,
+                        1)
+                .stream()
+                .map(this::convertir)
+                .toList();
+    }
+    
+    public List<SolicitudRrhhResponseDto>
+    listarTodas() {
+
+        return repository
+                .findByActivo(1)
+                .stream()
+                .map(this::convertir)
+                .toList();
+    }
+    
 }

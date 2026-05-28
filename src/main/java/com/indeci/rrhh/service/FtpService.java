@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 @Service
@@ -41,15 +42,37 @@ private FTPClient conectar()
     ftp.connect(
             host,
             port);
+    
+    System.out.println(
+            "FTP reply: "
+                    + ftp.getReplyString());
 
     ftp.login(
             user,
             password);
+    
+    boolean login =
+            ftp.login(
+                    user,
+                    password);
+    
+  
+
+    if (!login) {
+
+        throw new RuntimeException(
+                "No se pudo autenticar en FTP");
+    }
+    
+    System.out.println(
+            "FTP login OK");
 
     ftp.enterLocalPassiveMode();
 
     ftp.setFileType(
             FTP.BINARY_FILE_TYPE);
+    
+   
 
     return ftp;
 }
@@ -61,6 +84,17 @@ public String subirArchivo(
         String nombreArchivo) {
 
     FTPClient ftp = null;
+    
+    if (file.isEmpty()) {
+
+        throw new RuntimeException(
+                "Archivo vacío");
+    }
+    
+    String nombreFinal =
+            System.currentTimeMillis()
+            + "_"
+            + nombreArchivo;
 
     try {
 
@@ -79,10 +113,14 @@ public String subirArchivo(
 
         try (InputStream input =
                      file.getInputStream()) {
+        	
+        	
+        	System.out.println(
+        	        "Subiendo archivo...");
 
             boolean ok =
                     ftp.storeFile(
-                            nombreArchivo,
+                    		nombreFinal,
                             input);
 
             if (!ok) {
@@ -94,7 +132,7 @@ public String subirArchivo(
 
         return rutaCompleta
                 + "/"
-                + nombreArchivo;
+                + nombreFinal;
 
     } catch (Exception e) {
 
@@ -143,4 +181,54 @@ private void crearDirectorios(
         ftp.makeDirectory(ruta);
     }
 }
+
+public byte[] descargarArchivo(
+        String rutaArchivo) {
+
+    FTPClient ftp = null;
+
+    try {
+
+        ftp = conectar();
+
+        ByteArrayOutputStream output =
+                new ByteArrayOutputStream();
+
+        boolean ok =
+                ftp.retrieveFile(
+                        rutaArchivo,
+                        output);
+
+        if (!ok) {
+
+            throw new RuntimeException(
+                    "No se pudo descargar archivo FTP");
+        }
+
+        return output.toByteArray();
+
+    } catch (Exception e) {
+
+        throw new RuntimeException(
+                "Error descargando FTP: "
+                        + e.getMessage());
+
+    } finally {
+
+        try {
+
+            if (ftp != null
+                    && ftp.isConnected()) {
+
+                ftp.logout();
+                ftp.disconnect();
+            }
+
+        } catch (Exception ex) {
+
+            ex.printStackTrace();
+        }
+    }
+}
+
 }

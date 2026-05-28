@@ -217,9 +217,7 @@ public class PersonaService {
         dto.setRuc(p.getRuc());
         dto.setCorreoInstitucional(p.getCorreoInstitucional());
         dto.setFotoPerfil(p.getFotoPerfil());
-        dto.setRegistroAirhsp(
-                emp.getRegistroAirhsp());
-
+      
         // ======================================
         // CATALOGOS
         // ======================================
@@ -251,6 +249,9 @@ public class PersonaService {
             dto.setEstado(emp.getEstado());
             dto.setProfesionId(emp.getProfesionId());
             dto.setGradoAcademicoId(emp.getGradoAcademicoId());
+            dto.setRegistroAirhsp(
+                    emp.getRegistroAirhsp());
+
             
             if (emp.getProfesionId() != null) {
                 Profesion profesion = profesionRepository.findById(emp.getProfesionId()).orElse(null);

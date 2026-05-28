@@ -10,6 +10,7 @@ import com.indeci.rrhh.service
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -40,10 +41,10 @@ public class SolicitudRrhhController {
     // LISTAR EMPLEADO
     // ==========================================
 
-    @GetMapping("/{empleadoId}")
+    @GetMapping("/empleado/{empleadoId}")
     public ApiResponse<
             List<SolicitudRrhhResponseDto>>
-    listar(@PathVariable Long empleadoId) {
+    listarEmpleado(@PathVariable Long empleadoId) {
 
         return new ApiResponse<>(
                 "OK",
@@ -55,12 +56,21 @@ public class SolicitudRrhhController {
     @PutMapping("/enviar/{id}")
     public ApiResponse<Void>
     enviar(
+
             @PathVariable Long id,
 
-            @RequestBody
-            SolicitudWorkflowDocumentoDto dto) {
+            @RequestParam("file")
+            MultipartFile file,
 
-        service.enviar(id, dto);
+            @RequestParam(
+                    value = "observacion",
+                    required = false)
+            String observacion) {
+
+    	service.enviar(
+    	        id,
+    	        file,
+    	        observacion);
 
         return new ApiResponse<>(
                 "OK",
@@ -71,14 +81,21 @@ public class SolicitudRrhhController {
     @PutMapping("/aprobar-jefe/{id}")
     public ApiResponse<Void>
     aprobarJefe(
+
             @PathVariable Long id,
 
-            @RequestBody
-            SolicitudWorkflowDocumentoDto dto) {
+            @RequestParam("file")
+            MultipartFile file,
+
+            @RequestParam(
+                    value = "observacion",
+                    required = false)
+            String observacion) {
 
         service.aprobarSupervisor(
                 id,
-                dto);
+                file,
+                observacion);
 
         return new ApiResponse<>(
                 "OK",
@@ -150,5 +167,27 @@ public class SolicitudRrhhController {
                 "OK",
                 "Solicitud anulada",
                 null);
+    }
+    
+    @GetMapping("/jefe/{jefeId}")
+    public ApiResponse<List<SolicitudRrhhResponseDto>>
+    listarJefe(
+            @PathVariable Long jefeId) {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                service.listarPorJefe(
+                        jefeId));
+    }
+    
+    @GetMapping("/todas")
+    public ApiResponse<List<SolicitudRrhhResponseDto>>
+    listarTodas() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                service.listarTodas());
     }
 }

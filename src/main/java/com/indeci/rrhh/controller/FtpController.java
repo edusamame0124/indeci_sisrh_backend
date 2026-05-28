@@ -1,5 +1,6 @@
 package com.indeci.rrhh.controller;
 
+import com.indeci.rrhh.dto.ArchivoResponseDto;
 import com.indeci.rrhh.service.FtpService;
 
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class FtpController {
             ftpService;
 
     @PostMapping("/upload")
-    public ResponseEntity<String>
+    public ResponseEntity<ArchivoResponseDto>
     upload(
 
             @RequestParam("file")
@@ -29,13 +30,50 @@ public class FtpController {
             @RequestParam("nombreArchivo")
             String nombreArchivo) {
 
-        String ruta =
-                ftpService.subirArchivo(
-                        file,
-                        carpeta,
-                        nombreArchivo);
+    	String ruta =
+    	        ftpService.subirArchivo(
+    	                file,
+    	                carpeta,
+    	                nombreArchivo);
 
-        return ResponseEntity.ok(
-                ruta);
+    	ArchivoResponseDto dto =
+    	        new ArchivoResponseDto();
+
+    	dto.setRutaArchivo(
+    	        ruta);
+
+    	dto.setNombreArchivo(
+    	        nombreArchivo);
+
+    	dto.setMimeType(
+    	        file.getContentType());
+
+    	dto.setTamanioBytes(
+    	        file.getSize());
+
+    	return ResponseEntity.ok(
+    	        dto);
+    }
+    
+    @GetMapping("/download")
+    public ResponseEntity<byte[]>
+    download(
+
+            @RequestParam
+            String rutaArchivo) {
+
+        byte[] archivo =
+                ftpService
+                        .descargarArchivo(
+                                rutaArchivo);
+
+        return ResponseEntity
+                .ok()
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(
+                        "Content-Disposition",
+                        "inline; filename=documento.pdf")
+                .body(archivo);
     }
 }
