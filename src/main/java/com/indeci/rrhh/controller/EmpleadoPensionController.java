@@ -2,6 +2,7 @@ package com.indeci.rrhh.controller;
 
 import java.util.List;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,44 +18,44 @@ import com.indeci.rrhh.dto.EmpleadoPensionDto;
 import com.indeci.rrhh.dto.EmpleadoPensionResponseDto;
 import com.indeci.rrhh.dto.TasasVigentesPensionDto;
 import com.indeci.rrhh.service.EmpleadoPensionService;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/rrhh/pension")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class EmpleadoPensionController {
 
     private final EmpleadoPensionService service;
 
-    // CREAR
     @PostMapping
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> guardar(@RequestBody EmpleadoPensionDto dto) {
         service.guardar(dto);
         return new ApiResponse<>("OK", "Pensión registrada", null);
     }
 
-    // LISTAR
     @GetMapping("/{empleadoId}")
     public ApiResponse<List<EmpleadoPensionResponseDto>> listar(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Pensión del empleado", service.listar(empleadoId));
     }
 
-    // ACTUALIZAR
     @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> actualizar(@PathVariable Long id, @RequestBody EmpleadoPensionDto dto) {
         service.actualizar(id, dto);
         return new ApiResponse<>("OK", "Pensión actualizada", null);
     }
 
-    // ELIMINAR
     @DeleteMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return new ApiResponse<>("OK", "Pensión desactivada", null);
     }
 
-    // Spec 013 / C1 — TASAS VIGENTES (autocomplete del modal "Registrar pensión")
     @GetMapping("/tasas-vigentes")
     public ApiResponse<TasasVigentesPensionDto> tasasVigentes(
             @RequestParam Long regimenPensionarioId,

@@ -1,23 +1,23 @@
 package com.indeci.rrhh.controller;
 
-import com.indeci.common.dto.ApiResponse;
-
-import com.indeci.rrhh.dto.*;
-
-import com.indeci.rrhh.service
-        .SolicitudRrhhService;
-
-import lombok.RequiredArgsConstructor;
-
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
-import org.springframework.security.access.prepost.PreAuthorize;
+
+import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.SolicitudRrhhDto;
+import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
+import com.indeci.rrhh.service.SolicitudRrhhService;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/rrhh/solicitudes")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class SolicitudRrhhController {
 
     private final SolicitudRrhhService service;
@@ -28,20 +28,16 @@ public class SolicitudRrhhController {
 
     @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     @PostMapping
-    public ApiResponse<Void> registrar(
-            @RequestBody SolicitudRrhhDto dto) {
-
+    //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> registrar(@RequestBody SolicitudRrhhDto dto) {
         service.registrar(dto);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud registrada",
-                null);
+        return new ApiResponse<>("OK", "Solicitud registrada", null);
     }
 
     // ==========================================
     // LISTAR EMPLEADO
     // ==========================================
+
 
     @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     @GetMapping("/mis-solicitudes")
@@ -52,71 +48,47 @@ public class SolicitudRrhhController {
                 "OK",
                 "Solicitudes empleado",
                 service.listarMisSolicitudes());
+        }
+
+    @GetMapping("/empleado/{empleadoId}")
+    public ApiResponse<List<SolicitudRrhhResponseDto>> listarEmpleado(@PathVariable Long empleadoId) {
+        return new ApiResponse<>("OK", "Solicitudes empleado", service.listarPorEmpleado(empleadoId));
+
     }
-    
+
     @PutMapping("/enviar/{id}")
-    public ApiResponse<Void>
-    enviar(
-
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> enviar(
             @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "observacion", required = false) String observacion) {
 
-            @RequestParam("file")
-            MultipartFile file,
-
-            @RequestParam(
-                    value = "observacion",
-                    required = false)
-            String observacion) {
-
-    	service.enviar(
-    	        id,
-    	        file,
-    	        observacion);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud enviada",
-                null);
+        service.enviar(id, file, observacion);
+        return new ApiResponse<>("OK", "Solicitud enviada", null);
     }
+
     
     @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/aprobar-jefe/{id}")
-    public ApiResponse<Void>
-    aprobarJefe(
-
+    //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> aprobarJefe(
             @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "observacion", required = false) String observacion) {
 
-            @RequestParam("file")
-            MultipartFile file,
-
-            @RequestParam(
-                    value = "observacion",
-                    required = false)
-            String observacion) {
-
-        service.aprobarSupervisor(
-                id,
-                file,
-                observacion);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud aprobada por jefe",
-                null);
+        service.aprobarSupervisor(id, file, observacion);
+        return new ApiResponse<>("OK", "Solicitud aprobada por jefe", null);
     }
+
     
     @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/rechazar-jefe/{id}")
-    public ApiResponse<Void>
-    rechazarJefe(@PathVariable Long id) {
-
+   // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> rechazarJefe(@PathVariable Long id) {
         service.rechazarSupervisor(id);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud rechazada por jefe",
-                null);
+        return new ApiResponse<>("OK", "Solicitud rechazada por jefe", null);
     }
+
     
     @PreAuthorize("hasAuthority('PAP_RRHH')")
     @PutMapping("/aprobar-rrhh/{id}")
@@ -143,45 +115,31 @@ public class SolicitudRrhhController {
                 "Solicitud aprobada por RRHH",
                 null);
     }
-    
+
+  
     @PreAuthorize("hasAuthority('PAP_RRHH')")
     @PutMapping("/rechazar-rrhh/{id}")
-    public ApiResponse<Void>
-    rechazarRrhh(@PathVariable Long id) {
-
+   // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> rechazarRrhh(@PathVariable Long id) {
         service.rechazarRrhh(id);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud rechazada por RRHH",
-                null);
+        return new ApiResponse<>("OK", "Solicitud rechazada por RRHH", null);
     }
-    
+
     @PutMapping("/editar/{id}")
-    public ApiResponse<Void>
-    editar(@PathVariable Long id,
-           @RequestBody SolicitudRrhhDto dto) {
-
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> editar(@PathVariable Long id, @RequestBody SolicitudRrhhDto dto) {
         service.editar(id, dto);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud editada",
-                null);
+        return new ApiResponse<>("OK", "Solicitud editada", null);
     }
-    
+
     @PutMapping("/anular/{id}")
-    public ApiResponse<Void>
-    anular(@PathVariable Long id) {
-
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> anular(@PathVariable Long id) {
         service.anular(id);
-
-        return new ApiResponse<>(
-                "OK",
-                "Solicitud anulada",
-                null);
+        return new ApiResponse<>("OK", "Solicitud anulada", null);
     }
     
+
     @PreAuthorize("hasAuthority('PAP_JEFE')")
     @GetMapping("/mis-colaboradores")
     public ApiResponse<List<SolicitudRrhhResponseDto>>
@@ -191,16 +149,18 @@ public class SolicitudRrhhController {
                 "OK",
                 "Listado correcto",
                 service.listarMisColaboradores());
+        
+    }
+        
+    @GetMapping("/jefe/{jefeId}")
+    public ApiResponse<List<SolicitudRrhhResponseDto>> listarJefe(@PathVariable Long jefeId) {
+        return new ApiResponse<>("OK", "Listado correcto", service.listarPorJefe(jefeId));
+
     }
     
     @PreAuthorize("hasAuthority('PAP_RRHH')")
     @GetMapping("/todas")
-    public ApiResponse<List<SolicitudRrhhResponseDto>>
-    listarTodas() {
-
-        return new ApiResponse<>(
-                "OK",
-                "Listado correcto",
-                service.listarTodas());
+    public ApiResponse<List<SolicitudRrhhResponseDto>> listarTodas() {
+        return new ApiResponse<>("OK", "Listado correcto", service.listarTodas());
     }
 }

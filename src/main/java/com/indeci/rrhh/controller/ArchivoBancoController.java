@@ -1,5 +1,8 @@
 package com.indeci.rrhh.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/archivo-banco")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
 public class ArchivoBancoController {
 
     private final ArchivoBancoService archivoBancoService;

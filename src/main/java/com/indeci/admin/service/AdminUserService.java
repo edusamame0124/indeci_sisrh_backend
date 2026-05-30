@@ -53,6 +53,10 @@ public class AdminUserService {
     @Value("${indeci.admin.new-user-default-role-codigo:}")
     private String newUserDefaultRoleCodigo;
 
+    /** FK legacy USERS.ROLE_ID → catálogo padre (distinto del rol en SS_USUARIO_ROL). */
+    @Value("${indeci.admin.new-user-legacy-role-codigo:ADMIN}")
+    private String newUserLegacyRoleCodigo;
+
     @Transactional(readOnly = true)
     public Page<AdminUserSummaryResponse> listUsers(String q, Pageable pageable) {
         Page<User> users = (q == null || q.isBlank())
@@ -81,12 +85,19 @@ public class AdminUserService {
         if (userRepository.existsByUsernameIgnoreCase(username)) {
             throw new NegocioException("El nombre de usuario ya existe");
         }
-        Long defaultRolId = resolveNewUserDefaultRolId();
+        Long assignedRolId = resolveNewUserDefaultRolId();
+        Long legacyRoleId = resolveLegacyUsersRoleId();
 
         User u = new User();
         u.setUsername(username);
-        u.setRoleId(defaultRolId);
-        u.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        u.setRoleId(legacyRoleId);
+        String initialPassword = req.getPassword();
+        if (initialPassword == null || initialPassword.isEmpty()) {
+            initialPassword = UUID.randomUUID().toString();
+        }
+        String encoded = passwordEncoder.encode(initialPassword);
+        u.setPassword(encoded);
+        u.setPasswordHash(encoded);
         u.setStatus("ACTIVE");
         u.setNewClave("S");
         u.setOtpHabilitado("N");
@@ -95,10 +106,27 @@ public class AdminUserService {
 
         UsuarioRol ur = new UsuarioRol();
         ur.setUserId(saved.getId());
-        ur.setRolId(defaultRolId);
+        ur.setRolId(assignedRolId);
+        ur.setSistema("SISRH");
         usuarioRolRepository.save(ur);
 
         return getUser(saved.getId());
+    }
+
+    /**
+     * USERS.ROLE_ID tiene FK legacy (FK_USERS_USERS_IBFK_1). Los roles nuevos Fase 1
+     * pueden no existir en esa tabla padre; se usa un código histórico (ADMIN).
+     * Los permisos reales vienen de SS_USUARIO_ROL.
+     */
+    private Long resolveLegacyUsersRoleId() {
+        String raw = newUserLegacyRoleCodigo != null ? newUserLegacyRoleCodigo.trim() : "";
+        final String cod = raw.isEmpty() ? "ADMIN" : raw;
+        return rolRepository.findFirstByCodigoIgnoreCase(cod)
+                .map(Rol::getId)
+                .orElseThrow(() -> new NegocioException(
+                        "El rol legacy para USERS.ROLE_ID ("
+                                + cod
+                                + ") no existe. Revise indeci.admin.new-user-legacy-role-codigo."));
     }
 
     private Long resolveNewUserDefaultRolId() {
@@ -171,6 +199,7 @@ public class AdminUserService {
             UsuarioRol ur = new UsuarioRol();
             ur.setUserId(id);
             ur.setRolId(rid);
+            ur.setSistema("SISRH");
             usuarioRolRepository.save(ur);
         }
     }
@@ -181,7 +210,6 @@ public class AdminUserService {
         User u = userRepository.findById(id)
                 .orElseThrow(() -> new NegocioException("Usuario no encontrado"));
         u.setNewClave("S");
-        u.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
         userRepository.save(u);
     }
 

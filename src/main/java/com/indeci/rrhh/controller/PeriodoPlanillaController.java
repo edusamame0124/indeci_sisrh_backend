@@ -1,6 +1,9 @@
 package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.indeci.rrhh.dto.AprobacionPeriodoDto;
 import com.indeci.rrhh.dto.PeriodoPlanillaDto;
 import com.indeci.rrhh.dto.PeriodoPlanillaResponseDto;
@@ -15,11 +18,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/rrhh/periodo-planilla")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.PLA_READ)
 public class PeriodoPlanillaController {
 
     private final PeriodoPlanillaService service;
 
     @PostMapping
+    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
     public ApiResponse<Void> guardar(
             @RequestBody PeriodoPlanillaDto dto) {
 
@@ -42,6 +47,7 @@ public class PeriodoPlanillaController {
     }
 
     @PutMapping("/enviar-revision/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
     public ApiResponse<Void> enviarRevision(
             @PathVariable Long id) {
 
@@ -54,6 +60,7 @@ public class PeriodoPlanillaController {
     }
 
     @PutMapping("/aprobar/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
     public ApiResponse<Void> aprobar(
             @PathVariable Long id,
             @RequestBody AprobacionPeriodoDto dto) {
@@ -67,6 +74,7 @@ public class PeriodoPlanillaController {
     }
 
     @PutMapping("/cerrar/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
     public ApiResponse<Void> cerrar(
             @PathVariable Long id) {
 
@@ -79,6 +87,7 @@ public class PeriodoPlanillaController {
     }
 
     @PutMapping("/reabrir/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
     public ApiResponse<Void> reabrir(
             @PathVariable Long id) {
 
@@ -91,6 +100,7 @@ public class PeriodoPlanillaController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
     public ApiResponse<Void> eliminar(
             @PathVariable Long id) {
 

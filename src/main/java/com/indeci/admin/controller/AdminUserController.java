@@ -24,6 +24,7 @@ import com.indeci.admin.dto.AdminUserSummaryResponse;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.admin.service.AdminUserService;
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +32,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+@PreAuthorize(SisrhSecurityExpressions.ADM_USERS)
 public class AdminUserController {
 
     private final AdminUserService adminUserService;

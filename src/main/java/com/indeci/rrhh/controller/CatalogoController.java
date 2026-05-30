@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 import com.indeci.rrhh.dto.CatalogoNombreRequest;
 import com.indeci.rrhh.dto.UbigeoDto;
 import com.indeci.rrhh.entity.AirhspVigencia;
@@ -44,6 +45,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/catalogos")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.CAT_READ)
 public class CatalogoController {
 
     private final CatalogoService catalogoService;
@@ -67,14 +69,14 @@ public class CatalogoController {
     }
 
     @PostMapping("/bancos")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<Bank> crearBanco(@Valid @RequestBody CatalogoNombreRequest body) {
         Bank saved = catalogoService.crearBanco(body);
         return new ApiResponse<>("OK", "Banco registrado", saved);
     }
 
     @PutMapping("/bancos/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<Bank> actualizarBanco(
             @PathVariable Long id,
             @Valid @RequestBody CatalogoNombreRequest body) {
@@ -83,21 +85,21 @@ public class CatalogoController {
     }
 
     @DeleteMapping("/bancos/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<Void> eliminarBanco(@PathVariable Long id) {
         catalogoService.eliminarBanco(id);
         return new ApiResponse<>("OK", "Banco dado de baja", null);
     }
 
     @PostMapping("/tipos-cuenta")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<BankAccountType> crearTipoCuenta(@Valid @RequestBody CatalogoNombreRequest body) {
         BankAccountType saved = catalogoService.crearTipoCuenta(body);
         return new ApiResponse<>("OK", "Tipo de cuenta registrado", saved);
     }
 
     @PutMapping("/tipos-cuenta/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<BankAccountType> actualizarTipoCuenta(
             @PathVariable Long id,
             @Valid @RequestBody CatalogoNombreRequest body) {
@@ -106,7 +108,7 @@ public class CatalogoController {
     }
 
     @DeleteMapping("/tipos-cuenta/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(SisrhSecurityExpressions.CAT_WRITE)
     public ApiResponse<Void> eliminarTipoCuenta(@PathVariable Long id) {
         catalogoService.eliminarTipoCuenta(id);
         return new ApiResponse<>("OK", "Tipo de cuenta dado de baja", null);

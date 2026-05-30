@@ -30,7 +30,8 @@ public class User {
     @Column(name = "ROLE_ID", nullable = false)
     private Long roleId;
 
-    @Column(name = "PASSWORD")
+    /** Hash BCrypt (~60 chars). */
+    @Column(name = "PASSWORD", length = 255)
     private String password;
 
     @Column(name = "STATUS")
@@ -49,7 +50,7 @@ public class User {
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
     
-    @Column(name = "PASSWORD_HASH")
+    @Column(name = "PASSWORD_HASH", length = 255)
     private String passwordHash;
 
     /** Spec 011 / B2 — empleado vinculado a la cuenta (INDECI_EMPLEADO.ID). */

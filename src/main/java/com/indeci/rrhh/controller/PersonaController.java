@@ -1,6 +1,9 @@
 package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
 import com.indeci.rrhh.service.PersonaService;
@@ -14,12 +17,14 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/rrhh")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class PersonaController {
 
     private final PersonaService personaService;
 
     // CREAR
     @PostMapping("/persona")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> guardar(@RequestBody PersonaEmpleadoDto dto) {
         personaService.guardar(dto);
         return new ApiResponse<>("OK", "Registrado correctamente", null);
@@ -39,6 +44,7 @@ public class PersonaController {
 
     // ACTUALIZAR
     @PutMapping("/persona/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> actualizar(
             @PathVariable Long id,
             @RequestBody PersonaEmpleadoDto dto
@@ -49,6 +55,7 @@ public class PersonaController {
 
     // ELIMINAR
     @DeleteMapping("/persona/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         personaService.eliminar(id);
         return new ApiResponse<>("OK", "Eliminado correctamente", null);
