@@ -252,6 +252,9 @@ public class PersonaService {
             dto.setEstado(emp.getEstado());
             dto.setProfesionId(emp.getProfesionId());
             dto.setGradoAcademicoId(emp.getGradoAcademicoId());
+            dto.setRegistroAirhsp(
+                    emp.getRegistroAirhsp());
+
             
             if (emp.getProfesionId() != null) {
                 Profesion profesion = profesionRepository.findById(emp.getProfesionId()).orElse(null);

@@ -43,4 +43,10 @@ public class SolicitudRrhhDoc {
 
     @Column(name = "ACTIVO")
     private Integer activo;
+    
+    @Column(name = "MIME_TYPE")
+    private String mimeType;
+
+    @Column(name = "TAMANIO_BYTES")
+    private Long tamanioBytes;
 }

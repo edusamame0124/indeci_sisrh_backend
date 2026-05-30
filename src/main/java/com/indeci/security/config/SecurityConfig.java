@@ -49,11 +49,12 @@ public class SecurityConfig {
             // 🔐 AUTORIZACIÓN
             .authorizeHttpRequests(auth -> auth
 
-                .requestMatchers(
-                        "/swagger-ui/**",
-                        "/v3/api-docs/**",
-                        "/actuator/**"
-                ).permitAll()
+            		.requestMatchers(
+            		        "/swagger-ui/**",
+            		        "/swagger-ui.html",
+            		        "/v3/api-docs/**",
+            		        "/actuator/**"
+            		).permitAll()
 
                 .requestMatchers(
                         "/api/auth/**",

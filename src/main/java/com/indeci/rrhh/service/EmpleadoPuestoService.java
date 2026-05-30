@@ -282,4 +282,6 @@ public class EmpleadoPuestoService {
 
         auditoriaContext.setDetalle("Puesto desactivado ID: " + id);
     }
+    
+    
 }
