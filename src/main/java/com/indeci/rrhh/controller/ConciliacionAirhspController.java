@@ -2,6 +2,7 @@ package com.indeci.rrhh.controller;
 
 import java.util.List;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,20 +16,20 @@ import com.indeci.rrhh.dto.ConciliacionAirhspDto;
 import com.indeci.rrhh.dto.ConciliacionAirhspResponseDto;
 import com.indeci.rrhh.dto.ConciliacionRevisionDto;
 import com.indeci.rrhh.service.ConciliacionAirhspService;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Spec 010 / M13 — Conciliación AIRHSP (monto sistema vs monto MEF).
- */
 @RestController
 @RequestMapping("/api/rrhh/conciliacion-airhsp")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
 public class ConciliacionAirhspController {
 
     private final ConciliacionAirhspService service;
 
     @PostMapping
+    @PreAuthorize(SisrhSecurityExpressions.RPT_WRITE)
     public ApiResponse<Void> registrar(@RequestBody ConciliacionAirhspDto dto) {
         service.registrar(dto);
         return new ApiResponse<>("OK", "Conciliación AIRHSP registrada", null);
@@ -42,6 +43,7 @@ public class ConciliacionAirhspController {
     }
 
     @PutMapping("/{id}/revisar")
+    @PreAuthorize(SisrhSecurityExpressions.RPT_WRITE)
     public ApiResponse<Void> revisar(
             @PathVariable Long id, @RequestBody ConciliacionRevisionDto dto) {
         service.revisar(id, dto);

@@ -3,6 +3,7 @@ package com.indeci.auth.service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,6 +27,7 @@ import com.indeci.security.captcha.TurnstileService;
 import com.indeci.security.jwt.JwtProvider;
 import com.indeci.security.otp.OtpService;
 import com.indeci.security.ratelimit.LoginRateLimiter;
+import com.indeci.sistema.service.UsuarioSistemaService;
 import com.indeci.user.entity.*;
 import com.indeci.user.repository.*;
 
@@ -49,6 +51,7 @@ public class AuthService {
     private final LoginRateLimiter loginRateLimiter;
     private final OtpService otpService;
     private final AuthRefreshTokenRepository authRefreshTokenRepository;
+    private final UsuarioSistemaService usuarioSistemaService;
 
     // 🔥 TEMPORAL EN MEMORIA (como SIGCO)
     private final Map<String, String> secretTemporal = new ConcurrentHashMap<>();
@@ -69,10 +72,18 @@ public class AuthService {
             throw new RateLimitExceededException("Demasiados intentos, intenta luego");
         }
 
-        User user = userRepository.findByUsername(request.getUsername().trim())
+        String username = request.getUsername() != null
+                ? request.getUsername().trim().toLowerCase(Locale.ROOT)
+                : "";
+        if (username.isEmpty()) {
+            throw new NegocioException("Credenciales inválidas");
+        }
+
+        User user = userRepository.findByUsernameIgnoreCase(username)
                 .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        String rawPassword = request.getPassword() != null ? request.getPassword() : "";
+        if (!verificarClaveUsuario(user, rawPassword)) {
             throw new NegocioException("Credenciales inválidas");
         }
 
@@ -207,11 +218,12 @@ public class AuthService {
          secretTemporal.remove(username);
      }
 
-     // 🔥 4. GENERAR TOKEN FINAL
+     // 🔥 4. GENERAR TOKEN FINAL — Fase 3 SSO: claim "sistemas" para Portal Selector.
      List<String> roles = obtenerRoles(user);
      List<String> permisos = obtenerPermisos(user);
+     Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
 
-     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos);
+     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
      String refreshToken = jwtProvider.generarRefreshToken(user);
 
      // 🔥 GUARDAR EN BD
@@ -257,8 +269,9 @@ public class AuthService {
 
         List<String> roles = obtenerRoles(user);
         List<String> permisos = obtenerPermisos(user);
+        Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
 
-        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos);
+        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
         String refreshToken = jwtProvider.generarRefreshToken(user);
 
         // 🔥 GUARDAR EN BD
@@ -303,7 +316,7 @@ public class AuthService {
             throw new NegocioException("Usuario ya cambió su contraseña");
         }
 
-        user.setPassword(passwordEncoder.encode(request.getNuevaClave()));
+        aplicarClaveCodificada(user, request.getNuevaClave());
         user.setNewClave("N");
 
         userRepository.save(user);
@@ -326,6 +339,32 @@ public class AuthService {
     // ============================
     // HELPERS
     // ============================
+    /**
+     * Valida contra PASSWORD y, si aplica, PASSWORD_HASH (cuentas legacy o migradas).
+     */
+    private boolean verificarClaveUsuario(User user, String rawPassword) {
+        if (rawPassword == null || rawPassword.isEmpty()) {
+            return false;
+        }
+        if (coincideHash(user.getPassword(), rawPassword)) {
+            return true;
+        }
+        return coincideHash(user.getPasswordHash(), rawPassword);
+    }
+
+    private boolean coincideHash(String encoded, String rawPassword) {
+        if (encoded == null || encoded.isBlank()) {
+            return false;
+        }
+        return passwordEncoder.matches(rawPassword, encoded);
+    }
+
+    private void aplicarClaveCodificada(User user, String rawPassword) {
+        String encoded = passwordEncoder.encode(rawPassword);
+        user.setPassword(encoded);
+        user.setPasswordHash(encoded);
+    }
+
     private List<String> obtenerRoles(User user) {
         List<UsuarioRol> usuarioRoles = usuarioRolRepository.findByUserId(user.getId());
         List<String> roles = new ArrayList<>();
@@ -384,11 +423,13 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
 
-        // 🔥 5. GENERAR NUEVO ACCESS
+        // 🔥 5. GENERAR NUEVO ACCESS — Fase 3 SSO: re-resuelve sistemas (puede haber
+        //    cambiado la asignación desde el último login).
         List<String> roles = obtenerRoles(user);
         List<String> permisos = obtenerPermisos(user);
+        Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
 
-        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos);
+        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
 
         // 🔥 6. ROTACIÓN DEL TOKEN (invalidar anterior)
         tokenEntity.setActivo("N");
@@ -433,5 +474,52 @@ public class AuthService {
             entity.setMotivoRevocacion("LOGOUT");
             authRefreshTokenRepository.save(entity);
         });
+    }
+
+    // ============================
+    // VALIDAR TOKEN (Fase 3 SSO)
+    // ============================
+    /**
+     * Endpoint que consumen SISCONV (8081) y GDR (8082) para verificar el JWT
+     * emitido por el SISRH. Devuelve los claims útiles ya parseados.
+     *
+     * Errores:
+     *   - Header ausente / mal formado → SeguridadException → 401.
+     *   - Firma inválida / token expirado → JwtException → 401 (via handler global).
+     *   - Token con otpValidado=false o newPassOk=false → SeguridadException → 401.
+     *     Los sistemas externos no deben aceptar tokens "a medias".
+     */
+    @SuppressWarnings("unchecked")
+    public com.indeci.auth.dto.ValidateTokenResponse validarToken(String authHeader) {
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new SeguridadException("Token ausente");
+        }
+        String token = authHeader.substring(7);
+        Claims claims = jwtProvider.obtenerClaims(token);
+
+        Boolean otpValidado = claims.get("otpValidado", Boolean.class);
+        Boolean newPassOk = claims.get("newPassOk", Boolean.class);
+        if (!Boolean.TRUE.equals(otpValidado) || !Boolean.TRUE.equals(newPassOk)) {
+            throw new SeguridadException("Token incompleto: requiere OTP o cambio de clave");
+        }
+
+        List<String> roles = (List<String>) claims.getOrDefault("roles", List.of());
+        List<String> permisos = (List<String>) claims.getOrDefault("permisos", List.of());
+        Map<String, List<String>> sistemas =
+                (Map<String, List<String>>) claims.getOrDefault("sistemas", Map.of());
+        Long empleadoId = claims.get("empleadoId", Long.class);
+        Long exp = claims.getExpiration() != null
+                ? claims.getExpiration().getTime() / 1000
+                : null;
+
+        return new com.indeci.auth.dto.ValidateTokenResponse(
+                claims.getSubject(),
+                roles,
+                permisos,
+                sistemas,
+                empleadoId,
+                exp
+        );
     }
 }

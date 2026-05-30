@@ -217,8 +217,9 @@ public class PersonaService {
         dto.setRuc(p.getRuc());
         dto.setCorreoInstitucional(p.getCorreoInstitucional());
         dto.setFotoPerfil(p.getFotoPerfil());
-        dto.setRegistroAirhsp(
-                emp.getRegistroAirhsp());
+        if (emp != null) {
+            dto.setRegistroAirhsp(emp.getRegistroAirhsp());
+        }
 
         // ======================================
         // CATALOGOS

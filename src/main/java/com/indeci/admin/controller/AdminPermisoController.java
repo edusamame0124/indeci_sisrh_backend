@@ -10,13 +10,14 @@ import org.springframework.web.bind.annotation.RestController;
 import com.indeci.admin.dto.AdminPermisoResponse;
 import com.indeci.admin.service.AdminMetadataService;
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/permissions")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+@PreAuthorize(SisrhSecurityExpressions.ADM_META)
 public class AdminPermisoController {
 
     private final AdminMetadataService metadataService;

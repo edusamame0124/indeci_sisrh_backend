@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.admin.service.AdminAuditoriaService;
 import com.indeci.audit.entity.Auditoria;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 import com.indeci.common.dto.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/auditoria")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+@PreAuthorize(SisrhSecurityExpressions.ADM_AUDIT)
 public class AdminAuditoriaController {
 
     private final AdminAuditoriaService auditoriaService;

@@ -1,4 +1,4 @@
-package com.indice;
+package com.indeci;
 
 import com.indeci.IndeciBackendApplication;
 import org.junit.jupiter.api.Test;

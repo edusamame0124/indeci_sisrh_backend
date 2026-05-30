@@ -1,5 +1,8 @@
 package com.indeci.rrhh.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/empleado")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class EmpleadoFlowController {
 
     private final EmpleadoFlowStatusService service;

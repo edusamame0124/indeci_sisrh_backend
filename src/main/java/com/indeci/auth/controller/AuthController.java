@@ -14,6 +14,7 @@ import com.indeci.auth.dto.LogoutRequest;
 import com.indeci.auth.dto.OtpEnrollResponseDto;
 import com.indeci.auth.dto.OtpRequest;
 import com.indeci.auth.dto.RefreshRequest;
+import com.indeci.auth.dto.ValidateTokenResponse;
 import com.indeci.auth.service.AuthService;
 import com.indeci.exception.SeguridadException;
 import com.indeci.util.ClientInfoUtil;
@@ -120,6 +121,22 @@ public class AuthController {
     @GetMapping("/test")
     public String test() {
         return "OK";
+    }
+
+    /**
+     * Fase 3 SSO — Validación remota del JWT desde SISCONV (8081) y GDR (8082).
+     *
+     * El sistema externo recibe el {@code Authorization: Bearer <token>} del
+     * usuario y lo reenvía aquí. Devuelve subject + roles SISRH + permisos
+     * SISRH + mapa {@code sistemas} (incluye su propio código). Si el token
+     * es inválido o "a medias" (OTP pendiente / cambio clave pendiente) este
+     * endpoint responde 401 vía el handler global.
+     *
+     * Idempotente y sin efectos secundarios — no hace falta auditar cada llamada.
+     */
+    @GetMapping("/validate")
+    public ValidateTokenResponse validate(@RequestHeader("Authorization") String authHeader) {
+        return authService.validarToken(authHeader);
     }
 
     // ============================ COOKIE HttpOnly (C4) ============================

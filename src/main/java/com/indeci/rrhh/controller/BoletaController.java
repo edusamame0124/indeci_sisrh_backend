@@ -1,5 +1,8 @@
 package com.indeci.rrhh.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.indeci.security.auth.SisrhSecurityExpressions;
+
 import com.indeci.rrhh.service.BoletaPdfService;
 
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/rrhh/boleta")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.PLA_READ)
 public class BoletaController {
 
     private final BoletaPdfService boletaPdfService;

@@ -19,4 +19,8 @@ public class UsuarioRol {
     @Id
     @Column(name = "ID_ROL")
     private Long rolId;
+
+    /** Sistema al que aplica el rol (SISRH, CONVOCATORIA, etc.). NOT NULL en Oracle. */
+    @Column(name = "SISTEMA", nullable = false)
+    private String sistema = "SISRH";
 }

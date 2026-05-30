@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -52,21 +53,56 @@ public class JwtProvider {
     /* =========================================================
      * TOKEN DEFINITIVO
      * ========================================================= */
+
+    /**
+     * Compatibilidad Fase 1/2: emite el token sin el claim {@code sistemas}.
+     * Sigue funcionando para callers que aún no construyen el mapa multi-sistema.
+     */
     public String generarTokenDefinitivo(User usuario,
                                          List<String> roles,
                                          List<String> permisos) {
+        return generarTokenDefinitivo(usuario, roles, permisos, Map.of());
+    }
+
+    /**
+     * Fase 3 SSO: emite el token definitivo con el claim {@code sistemas} para
+     * habilitar el Portal Selector y la autorización en SISCONV/GDR.
+     *
+     * El claim {@code roles} se conserva plano (lista de roles macro del SISRH)
+     * para no romper {@link com.indeci.security.filter.JwtAuthFilter} ni los
+     * guards de Fase 2. El claim {@code sistemas} es un mapa independiente:
+     * <pre>
+     *   "sistemas": {
+     *     "sisrh":        ["RRHH_JEFE"],
+     *     "convocatoria": ["EVALUADOR", "CONSULTA"],
+     *     "rendimiento":  ["JEFE_AREA"]
+     *   }
+     * </pre>
+     * Si {@code sistemas} viene vacío el claim se omite del JWT para no inflar
+     * tokens de usuarios solo-SISRH legacy.
+     */
+    public String generarTokenDefinitivo(User usuario,
+                                         List<String> roles,
+                                         List<String> permisos,
+                                         Map<String, List<String>> sistemas) {
 
         Date ahora = new Date();
         Date expiracion = new Date(ahora.getTime() + jwtProperties.getExpiration());
 
-        return Jwts.builder()
+        io.jsonwebtoken.JwtBuilder builder = Jwts.builder()
                 .setSubject(usuario.getUsername())
                 .claim("roles", roles)
                 .claim("permisos", permisos)
                 .claim("otpValidado", true)
                 .claim("newPassOk", "N".equalsIgnoreCase(usuario.getNewClave()))
                 // Spec 011 / B2 — empleado vinculado a la cuenta (null si no tiene).
-                .claim("empleadoId", usuario.getEmpleadoId())
+                .claim("empleadoId", usuario.getEmpleadoId());
+
+        if (sistemas != null && !sistemas.isEmpty()) {
+            builder = builder.claim("sistemas", sistemas);
+        }
+
+        return builder
                 .setIssuedAt(ahora)
                 .setExpiration(expiracion)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS384)

@@ -2,6 +2,7 @@ package com.indeci.rrhh.controller;
 
 import java.util.List;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -13,19 +14,14 @@ import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.MetaCertificacionDto;
 import com.indeci.rrhh.dto.SemaforoPresupuestalDto;
 import com.indeci.rrhh.service.MetaPresupuestalService;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Spec 012 / C1 · P-05 — Semáforo presupuestal por meta.
- *
- * <p>{@code GET /semaforo/{periodoId}} devuelve certificado vs comprometido por
- * meta; {@code PUT /{periodoId}} registra los montos certificados que carga
- * Tesorería. Es información de control: no toca el flujo de aprobación (B7).
- */
 @RestController
 @RequestMapping("/api/rrhh/meta-presupuestal")
 @RequiredArgsConstructor
+@PreAuthorize(SisrhSecurityExpressions.PLA_READ)
 public class MetaPresupuestalController {
 
     private final MetaPresupuestalService service;
@@ -36,6 +32,7 @@ public class MetaPresupuestalController {
     }
 
     @PutMapping("/{periodoId}")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
     public ApiResponse<Void> guardar(
             @PathVariable Long periodoId,
             @RequestBody List<MetaCertificacionDto> entradas) {
