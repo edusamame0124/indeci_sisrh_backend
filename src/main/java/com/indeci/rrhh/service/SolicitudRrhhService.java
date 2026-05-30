@@ -1,18 +1,21 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.SaldoVacacionalDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
 import com.indeci.rrhh.dto.SolicitudWorkflowDocumentoDto;
 import com.indeci.rrhh.entity.*;
 
 import com.indeci.rrhh.repository.*;
+import com.indeci.security.util.SecurityUtil;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,6 +33,7 @@ public class SolicitudRrhhService {
 
     private final EmpleadoRepository empleadoRepository;
     private final AuditoriaContext auditoriaContext;
+    private final VacacionService vacacionService;
 
     private final TipoSolicitudRrhhRepository tipoSolicitudRepository;
 
@@ -38,6 +42,8 @@ public class SolicitudRrhhService {
     private final SolicitudRrhhDocRepository solicitudRrhhDocRepository;
     private final EmpleadoPuestoRepository empleadoPuestoRepository;
     private final FtpService ftpService;
+    
+    private static final String TIPO_VACACIONES = "VAC";
 
     // ==========================================
     // REGISTRAR
@@ -46,14 +52,14 @@ public class SolicitudRrhhService {
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
             SolicitudRrhhDto dto) {
-
+    	 Long empleadoId = SecurityUtil.getEmpleadoId();
         // ==========================================
         // VALIDAR EMPLEADO
         // ==========================================
 
         empleadoRepository
                 .findById(
-                        dto.getEmpleadoId())
+                		empleadoId)
                 .orElseThrow(() ->
                         new NegocioException(
                                 "Empleado no encontrado"));
@@ -95,7 +101,7 @@ public class SolicitudRrhhService {
         boolean existe =
                 repository
                         .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                                dto.getEmpleadoId(),
+                        		empleadoId,
                                 dto.getTipoSolicitudId(),
                                 1,
                                 dto.getFechaFin(),
@@ -160,9 +166,9 @@ public class SolicitudRrhhService {
 
         SolicitudRrhh entity =
                 new SolicitudRrhh();
-
+       
         entity.setEmpleadoId(
-                dto.getEmpleadoId());
+                empleadoId);
 
         entity.setTipoSolicitudId(
                 dto.getTipoSolicitudId());
@@ -244,7 +250,7 @@ public class SolicitudRrhhService {
 
         auditoriaContext.setDetalle(
                 "Solicitud RRHH creada empleado ID: "
-                        + dto.getEmpleadoId());
+                        + empleadoId);
     }
     
     private Double calcularDias(
@@ -719,7 +725,10 @@ public class SolicitudRrhhService {
     
     @Auditable(
             accion = "APROBAR_SOLICITUD_RRHH")
-    public void aprobarRrhh(Long solicitudId, SolicitudWorkflowDocumentoDto dto) {
+    public void aprobarRrhh(
+            Long solicitudId,
+            MultipartFile file,
+            String observacion) {
 
         SolicitudRrhh solicitud =
                 repository
@@ -727,7 +736,7 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
-        
+
         Long estadoOrigen =
                 solicitud.getEstadoSolicitudId();
 
@@ -738,18 +747,68 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Estado no encontrado"));
+
+        // ==========================================
+        // VALIDAR ESTADO
+        // ==========================================
+
+        if (!estadoActual.getCodigo()
+                .equals("APROBADO_JEFE")) {
+
+            throw new NegocioException(
+                    "Solo solicitudes aprobadas por jefe pueden aprobarse en RRHH");
+        }
         
+        //EN CASO VACACIONES VALIDAR SALDO VACACIONAL
+        
+        TipoSolicitudRrhh tipoSolicitud =
+                tipoSolicitudRepository
+                        .findById(
+                                solicitud.getTipoSolicitudId())
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Tipo solicitud no encontrado"));
+        
+        if(TIPO_VACACIONES.equals(
+                tipoSolicitud.getCodigo())) {
+
+            SaldoVacacionalDto saldo =
+                    vacacionService
+                            .obtenerSaldoVacacional(
+                                    solicitud.getEmpleadoId());
+
+            BigDecimal solicitado =
+                    BigDecimal.valueOf(
+                            solicitud.getCantidadDias());
+
+            if(solicitado.compareTo(saldo.getSaldo()) > 0) {
+
+                throw new NegocioException(
+                        "Saldo vacacional insuficiente. Disponible: "
+                                + saldo.getSaldo());
+            }
+        }
 
         // ==========================================
-        // VALIDAR DOCUMENTO
+        // VALIDAR ARCHIVO
         // ==========================================
 
-        if (dto.getRutaArchivo() == null
-                || dto.getRutaArchivo().isBlank()) {
+        if (file == null
+                || file.isEmpty()) {
 
             throw new NegocioException(
                     "Documento firmado por RRHH es obligatorio");
         }
+
+        // ==========================================
+        // SUBIR FTP
+        // ==========================================
+
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -765,15 +824,21 @@ public class SolicitudRrhhService {
                 "RRHH");
 
         doc.setNombreArchivo(
-                dto.getNombreArchivo());
+                file.getOriginalFilename());
 
         doc.setRutaArchivo(
-                dto.getRutaArchivo());
+                rutaArchivo);
+
+        doc.setMimeType(
+                file.getContentType());
+
+        doc.setTamanioBytes(
+                file.getSize());
 
         doc.setVersionDoc(3);
 
         doc.setObservacion(
-                dto.getObservacion());
+                observacion);
 
         doc.setUsuarioUpload(
                 "ADMIN");
@@ -784,17 +849,6 @@ public class SolicitudRrhhService {
         doc.setActivo(1);
 
         solicitudRrhhDocRepository.save(doc);
-
-        // ==========================================
-        // VALIDAR APROBADO_JEFE
-        // ==========================================
-
-        if (!estadoActual.getCodigo()
-                .equals("APROBADO_JEFE")) {
-
-            throw new NegocioException(
-                    "Solo solicitudes aprobadas por jefe pueden aprobarse en RRHH");
-        }
 
         // ==========================================
         // BUSCAR ESTADO APROBADO_RRHH
@@ -808,9 +862,19 @@ public class SolicitudRrhhService {
                                 new NegocioException(
                                         "Estado no existe"));
 
+        // ==========================================
+        // ACTUALIZAR SOLICITUD
+        // ==========================================
+
         solicitud.setEstadoSolicitudId(
                 estado.getId());
-        
+
+        repository.save(solicitud);
+
+        // ==========================================
+        // HISTORIAL
+        // ==========================================
+
         registrarHistorial(
                 solicitud.getId(),
                 estadoOrigen,
@@ -818,7 +882,13 @@ public class SolicitudRrhhService {
                 "APROBAR_RRHH",
                 "Solicitud aprobada por RRHH");
 
-        repository.save(solicitud);
+        // ==========================================
+        // AUDITORIA
+        // ==========================================
+
+        auditoriaContext.setDetalle(
+                "Solicitud aprobada por RRHH ID: "
+                        + solicitudId);
     }
     
     @Auditable(
@@ -1160,6 +1230,46 @@ public class SolicitudRrhhService {
 
         return repository
                 .findByActivo(1)
+                .stream()
+                .map(this::convertir)
+                .toList();
+    }
+    
+    public List<SolicitudRrhhResponseDto>
+    listarMisSolicitudes() {
+
+        Long empleadoId =
+                SecurityUtil.getEmpleadoId();
+
+        return repository
+                .findByEmpleadoIdAndActivo(
+                        empleadoId,
+                        1)
+                .stream()
+                .map(this::convertir)
+                .toList();
+    }
+    
+    public List<SolicitudRrhhResponseDto>
+    listarMisColaboradores() {
+
+        Long jefeId =
+                SecurityUtil.getEmpleadoId();
+
+        List<Long> empleadosIds =
+                empleadoPuestoRepository
+                        .findByJefeIdAndActivo(
+                                jefeId,
+                                1)
+                        .stream()
+                        .map(
+                            EmpleadoPuesto::getEmpleadoId)
+                        .toList();
+
+        return repository
+                .findByEmpleadoIdInAndActivo(
+                        empleadosIds,
+                        1)
                 .stream()
                 .map(this::convertir)
                 .toList();

@@ -23,6 +23,8 @@ public class SolicitudRrhh {
 
     @Column(name = "TIPO_SOLICITUD_ID")
     private Long tipoSolicitudId;
+    
+
 
     @Column(name = "ESTADO_SOLICITUD_ID")
     private Long estadoSolicitudId;
@@ -65,4 +67,10 @@ public class SolicitudRrhh {
 
     @Column(name = "CANTIDAD_HORAS")
     private Double cantidadHoras;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name="TIPO_SOLICITUD_ID",
+    		insertable = false,
+    		updatable = false)
+    private TipoSolicitudRrhh tipoSolicitud;
 }

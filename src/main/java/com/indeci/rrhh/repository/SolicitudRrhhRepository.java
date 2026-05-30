@@ -30,4 +30,12 @@ public interface SolicitudRrhhRepository
 	findByEmpleadoIdInAndActivo(
 	        List<Long> empleadoIds,
 	        Integer activo);
+	
+	
+	List<SolicitudRrhh>
+	findByEmpleadoIdAndTipoSolicitudIdAndEstadoSolicitudIdAndActivo(
+	        Long empleadoId,
+	        Long tipoSolicitudId,
+	        Long estadoSolicitudId,
+	        Integer activo);
 }
