@@ -2,6 +2,7 @@ package com.indeci.rrhh.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,5 +31,30 @@ public class FtpController {
 
         String ruta = ftpService.subirArchivo(file, carpeta, nombreArchivo);
         return ResponseEntity.ok(ruta);
+    }
+    
+    
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
+    @GetMapping("/download")
+    public ResponseEntity<byte[]>
+    download(
+
+            @RequestParam
+            String rutaArchivo) {
+
+        byte[] archivo =
+                ftpService
+                        .descargarArchivo(
+                                rutaArchivo);
+
+        return ResponseEntity
+                .ok()
+                .header(
+                        "Content-Disposition",
+                        "attachment; filename=documento.pdf")
+                .header(
+                        "Content-Type",
+                        "application/pdf")
+                .body(archivo);
     }
 }
