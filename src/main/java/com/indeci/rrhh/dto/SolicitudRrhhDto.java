@@ -7,7 +7,7 @@ import java.time.LocalDate;
 @Data
 public class SolicitudRrhhDto {
 
-	private Long empleadoId;
+	//private Long empleadoId;
 
 	private Long tipoSolicitudId;
 

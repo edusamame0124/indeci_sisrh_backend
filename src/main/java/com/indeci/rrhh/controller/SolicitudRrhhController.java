@@ -22,8 +22,13 @@ public class SolicitudRrhhController {
 
     private final SolicitudRrhhService service;
 
+    // ==========================================
+    // REGISTRAR
+    // ==========================================
+
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     @PostMapping
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> registrar(@RequestBody SolicitudRrhhDto dto) {
         service.registrar(dto);
         return new ApiResponse<>("OK", "Solicitud registrada", null);
@@ -33,9 +38,22 @@ public class SolicitudRrhhController {
     // LISTAR EMPLEADO
     // ==========================================
 
+
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
+    @GetMapping("/mis-solicitudes")
+    public ApiResponse<List<SolicitudRrhhResponseDto>>
+    misSolicitudes() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Solicitudes empleado",
+                service.listarMisSolicitudes());
+        }
+
     @GetMapping("/empleado/{empleadoId}")
     public ApiResponse<List<SolicitudRrhhResponseDto>> listarEmpleado(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Solicitudes empleado", service.listarPorEmpleado(empleadoId));
+
     }
 
     @PutMapping("/enviar/{id}")
@@ -49,8 +67,10 @@ public class SolicitudRrhhController {
         return new ApiResponse<>("OK", "Solicitud enviada", null);
     }
 
+    
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/aprobar-jefe/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> aprobarJefe(
             @PathVariable Long id,
             @RequestParam("file") MultipartFile file,
@@ -60,23 +80,46 @@ public class SolicitudRrhhController {
         return new ApiResponse<>("OK", "Solicitud aprobada por jefe", null);
     }
 
+    
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/rechazar-jefe/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+   // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> rechazarJefe(@PathVariable Long id) {
         service.rechazarSupervisor(id);
         return new ApiResponse<>("OK", "Solicitud rechazada por jefe", null);
     }
 
+    
+    @PreAuthorize("hasAuthority('PAP_RRHH')")
     @PutMapping("/aprobar-rrhh/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
-    public ApiResponse<Void> aprobarRrhh(@PathVariable Long id, @RequestBody Object dto) {
-        // Nota: Mantenemos la firma original de tu compañero
-        service.aprobarRrhh(id, null); 
-        return new ApiResponse<>("OK", "Solicitud aprobada por RRHH", null);
+    public ApiResponse<Void>
+    aprobarRrhh(
+
+            @PathVariable Long id,
+
+            @RequestParam("file")
+            MultipartFile file,
+
+            @RequestParam(
+                    value = "observacion",
+                    required = false)
+            String observacion) {
+
+        service.aprobarRrhh(
+                id,
+                file,
+                observacion);
+
+        return new ApiResponse<>(
+                "OK",
+                "Solicitud aprobada por RRHH",
+                null);
     }
 
+  
+    @PreAuthorize("hasAuthority('PAP_RRHH')")
     @PutMapping("/rechazar-rrhh/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+   // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> rechazarRrhh(@PathVariable Long id) {
         service.rechazarRrhh(id);
         return new ApiResponse<>("OK", "Solicitud rechazada por RRHH", null);
@@ -96,11 +139,26 @@ public class SolicitudRrhhController {
         return new ApiResponse<>("OK", "Solicitud anulada", null);
     }
     
+
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
+    @GetMapping("/mis-colaboradores")
+    public ApiResponse<List<SolicitudRrhhResponseDto>>
+    misColaboradores() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                service.listarMisColaboradores());
+        
+    }
+        
     @GetMapping("/jefe/{jefeId}")
     public ApiResponse<List<SolicitudRrhhResponseDto>> listarJefe(@PathVariable Long jefeId) {
         return new ApiResponse<>("OK", "Listado correcto", service.listarPorJefe(jefeId));
+
     }
     
+    @PreAuthorize("hasAuthority('PAP_RRHH')")
     @GetMapping("/todas")
     public ApiResponse<List<SolicitudRrhhResponseDto>> listarTodas() {
         return new ApiResponse<>("OK", "Listado correcto", service.listarTodas());
