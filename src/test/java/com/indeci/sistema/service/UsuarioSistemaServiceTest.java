@@ -45,14 +45,37 @@ class UsuarioSistemaServiceTest {
     }
 
     @Test
-    void usuarioSinAsignacionesSoloDevuelveSisrhConSusRoles() {
+    void usuarioSinAsignacionesVeTodosLosSistemasActivosConExternosVacios() {
+        // Nuevo comportamiento Fase 3: el claim incluye TODOS los sistemas activos
+        // (no solo sisrh), para que el Portal Selector siempre pinte las 3 cards.
+        when(sistemaRepository.findByActivoOrderByOrdenAsc(1))
+                .thenReturn(List.of(sistema(1L, "sisrh"), sistema(2L, "convocatoria"), sistema(3L, "rendimiento")));
         when(usuarioSistemaRepository.findByUserIdAndActivo(42L, 1)).thenReturn(List.of());
 
         Map<String, List<String>> resultado =
                 service.obtenerSistemasDe(user, List.of("RRHH_JEFE", "PLANILLA_APROBADOR"));
 
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado).containsEntry("sisrh", List.of("RRHH_JEFE", "PLANILLA_APROBADOR"));
+        assertThat(resultado).containsOnlyKeys("sisrh", "convocatoria", "rendimiento");
+        assertThat(resultado.get("sisrh")).containsExactly("RRHH_JEFE", "PLANILLA_APROBADOR");
+        assertThat(resultado.get("convocatoria")).isEmpty();
+        assertThat(resultado.get("rendimiento")).isEmpty();
+    }
+
+    @Test
+    void sistemasActivosSinAsignacionAparecenConRolesVaciosParaBloquearLaCard() {
+        when(sistemaRepository.findByActivoOrderByOrdenAsc(1))
+                .thenReturn(List.of(sistema(1L, "sisrh"), sistema(2L, "convocatoria"), sistema(3L, "rendimiento")));
+        when(usuarioSistemaRepository.findByUserIdAndActivo(42L, 1))
+                .thenReturn(List.of(asignacion(2L, "[\"EVALUADOR\"]")));
+
+        Map<String, List<String>> resultado =
+                service.obtenerSistemasDe(user, List.of("RRHH_CONSULTA"));
+
+        assertThat(resultado).containsOnlyKeys("sisrh", "convocatoria", "rendimiento");
+        assertThat(resultado.get("sisrh")).containsExactly("RRHH_CONSULTA");
+        assertThat(resultado.get("convocatoria")).containsExactly("EVALUADOR");
+        // 'rendimiento' está activo pero el usuario no tiene asignación → vacío → bloqueada.
+        assertThat(resultado.get("rendimiento")).isEmpty();
     }
 
     @Test

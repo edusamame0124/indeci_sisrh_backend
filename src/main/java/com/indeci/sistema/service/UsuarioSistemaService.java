@@ -23,11 +23,13 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Fase 3 SSO — Construye el claim {@code sistemas} del JWT.
  *
- * Devuelve un {@code Map<codigo, roles[]>} con:
- *   - "sisrh"        → roles macro del SISRH del propio usuario (siempre incluido).
- *   - "<otro>"       → roles externos por cada asignación activa en
- *                      INDECI_USUARIO_SISTEMA contra un sistema activo en
- *                      INDECI_SISTEMA.
+ * Devuelve un {@code Map<codigo, roles[]>} con UNA entrada por cada sistema
+ * ACTIVO de INDECI_SISTEMA (no solo los asignados), para que el Portal Selector
+ * siempre muestre todas las cards:
+ *   - "sisrh"        → roles macro del SISRH del propio usuario.
+ *   - "<otro>"       → roles externos si hay asignación activa en
+ *                      INDECI_USUARIO_SISTEMA; lista VACÍA si no está asignado
+ *                      (la card aparece BLOQUEADA en el selector).
  *
  * Los roles externos se almacenan como array JSON en VARCHAR2(500). Si el JSON
  * está corrupto se loguea WARN y se degrada a lista vacía — el login NO debe
@@ -57,30 +59,27 @@ public class UsuarioSistemaService {
      */
     public Map<String, List<String>> obtenerSistemasDe(User user, List<String> rolesSisrh) {
 
-        // 1. SISRH siempre presente. Si el usuario tiene rol macro en SISRH,
-        //    la card del selector quedará habilitada. Si no, queda bloqueada.
+        // 1. Sembrar TODOS los sistemas activos (orden ASC) con lista vacía. El
+        //    Portal Selector pinta una card por cada sistema activo; las que
+        //    queden con roles vacíos se muestran BLOQUEADAS ("contacte al admin").
+        //    Mapa ID -> CODIGO para resolver las asignaciones externas en O(1).
         Map<String, List<String>> resultado = new LinkedHashMap<>();
-        resultado.put(CODIGO_SISRH, rolesSisrh != null ? List.copyOf(rolesSisrh) : List.of());
-
-        // 2. Sistemas externos. Si el usuario no tiene asignaciones, devolvemos
-        //    el mapa con solo "sisrh" — el frontend lo interpreta como "un solo
-        //    sistema" y salta el selector.
-        List<UsuarioSistema> asignaciones =
-                usuarioSistemaRepository.findByUserIdAndActivo(user.getId(), 1);
-
-        if (asignaciones.isEmpty()) {
-            return resultado;
-        }
-
-        // 3. Cargar catálogo de sistemas activos en una sola query (el catálogo
-        //    es pequeño: 3 filas hoy). Mapa ID -> CODIGO para el lookup O(1).
         Map<Long, String> sistemasActivos = new HashMap<>();
         for (Sistema s : sistemaRepository.findByActivoOrderByOrdenAsc(1)) {
             sistemasActivos.put(s.getId(), s.getCodigo());
+            resultado.put(s.getCodigo(), new ArrayList<>());
         }
 
-        // 4. Por cada asignación, si el sistema está activo y NO es "sisrh"
-        //    (ya inyectado arriba), parsear el JSON y agregarlo al resultado.
+        // 2. SISRH: roles macro del propio usuario. Si no tiene roles SISRH queda
+        //    con lista vacía → card bloqueada (igual que los demás sistemas).
+        //    put() sobre una clave existente conserva su posición (orden por ORDEN).
+        resultado.put(CODIGO_SISRH, rolesSisrh != null ? List.copyOf(rolesSisrh) : List.of());
+
+        // 3. Asignaciones externas activas del usuario → sobrescriben los roles
+        //    del sistema correspondiente (si está activo y no es "sisrh"). Los
+        //    sistemas activos sin asignación se quedan con la lista vacía del paso 1.
+        List<UsuarioSistema> asignaciones =
+                usuarioSistemaRepository.findByUserIdAndActivo(user.getId(), 1);
         for (UsuarioSistema asignacion : asignaciones) {
             String codigo = sistemasActivos.get(asignacion.getSistemaId());
             if (codigo == null || CODIGO_SISRH.equals(codigo)) {
