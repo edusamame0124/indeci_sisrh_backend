@@ -24,6 +24,7 @@ import com.indeci.admin.dto.AccesosPutRequest;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
+import com.indeci.admin.dto.AdminUserPermisoGrantsPutRequest;
 import com.indeci.admin.dto.AdminUserRolesPutRequest;
 import com.indeci.admin.dto.AdminUserStatusPatchRequest;
 import com.indeci.admin.dto.AdminUserSummaryResponse;
@@ -32,18 +33,21 @@ import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
 import com.indeci.sistema.entity.Sistema;
 import com.indeci.sistema.entity.UsuarioSistema;
+import com.indeci.sistema.repository.SistemaAreaRepository;
 import com.indeci.sistema.repository.SistemaRepository;
 import com.indeci.sistema.repository.SistemaRolRepository;
 import com.indeci.sistema.repository.UsuarioSistemaRepository;
 import com.indeci.user.entity.Permiso;
 import com.indeci.user.entity.Rol;
 import com.indeci.user.entity.User;
+import com.indeci.user.entity.UsuarioPermiso;
 import com.indeci.user.entity.UsuarioPermisoDeny;
 import com.indeci.user.entity.UsuarioRol;
 import com.indeci.user.repository.PermisoRepository;
 import com.indeci.user.repository.RolRepository;
 import com.indeci.user.repository.UserRepository;
 import com.indeci.user.repository.UsuarioPermisoDenyRepository;
+import com.indeci.user.repository.UsuarioPermisoRepository;
 import com.indeci.user.repository.UsuarioRolRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -58,12 +62,14 @@ public class AdminUserService {
     private final UserRepository userRepository;
     private final UsuarioRolRepository usuarioRolRepository;
     private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
+    private final UsuarioPermisoRepository usuarioPermisoRepository;
     private final RolRepository rolRepository;
     private final PermisoRepository permisoRepository;
     private final PasswordEncoder passwordEncoder;
     private final SistemaRepository sistemaRepository;
     private final UsuarioSistemaRepository usuarioSistemaRepository;
     private final SistemaRolRepository sistemaRolRepository;
+    private final SistemaAreaRepository sistemaAreaRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${indeci.admin.new-user-default-role-id:}")
@@ -278,6 +284,35 @@ public class AdminUserService {
     }
 
     @Transactional(readOnly = true)
+    public List<PermisoDeniedResponse> listGranted(Long id) {
+        userRepository.findById(id).orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+        List<PermisoDeniedResponse> out = new ArrayList<>();
+        for (UsuarioPermiso up : usuarioPermisoRepository.findByUserId(id)) {
+            Permiso p = permisoRepository.findById(up.getPermisoId()).orElse(null);
+            out.add(new PermisoDeniedResponse(up.getPermisoId(), p != null ? p.getCodigo() : null, p != null ? p.getDescripcion() : null));
+        }
+        return out;
+    }
+
+    @Auditable(accion = "ADMIN_USER_PERMISO_GRANT")
+    @Transactional
+    public void putGranted(Long id, AdminUserPermisoGrantsPutRequest req) {
+        userRepository.findById(id).orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+        for (Long pid : req.getPermisoIds()) {
+            if (!permisoRepository.existsById(pid)) {
+                throw new NegocioException("Permiso inválido");
+            }
+        }
+        usuarioPermisoRepository.deleteByUserId(id);
+        for (Long pid : req.getPermisoIds()) {
+            UsuarioPermiso row = new UsuarioPermiso();
+            row.setUserId(id);
+            row.setPermisoId(pid);
+            usuarioPermisoRepository.save(row);
+        }
+    }
+
+    @Transactional(readOnly = true)
     public List<AccesoSistemaDto> getAccesos(Long id) {
         userRepository.findById(id).orElseThrow(() -> new NegocioException("Usuario no encontrado"));
         return buildAccesos(id);
@@ -303,8 +338,13 @@ public class AdminUserService {
             }
             for (String rol : roles) {
                 if (!sistemaRolRepository.existsBySistemaIdAndCodigoRolAndActivo(sistema.getId(), rol, 1)) {
-                    throw new NegocioException("Rol invÃ¡lido para " + sistema.getNombre() + ": " + rol);
+                    throw new NegocioException("Rol inválido para " + sistema.getNombre() + ": " + rol);
                 }
+            }
+            String areaCodigo = item.area() != null ? item.area().trim() : null;
+            if (areaCodigo != null && !areaCodigo.isEmpty()
+                    && !sistemaAreaRepository.existsBySistemaIdAndCodigoAreaAndActivo(sistema.getId(), areaCodigo, 1)) {
+                throw new NegocioException("Área inválida para " + sistema.getNombre() + ": " + areaCodigo);
             }
 
             UsuarioSistema row = usuarioSistemaRepository
@@ -318,6 +358,7 @@ public class AdminUserService {
                     });
             row.setActivo(Boolean.TRUE.equals(item.activo()) ? 1 : 0);
             row.setRolesExternos(Boolean.TRUE.equals(item.activo()) ? writeRoles(roles) : null);
+            row.setAreaCodigo(Boolean.TRUE.equals(item.activo()) ? (areaCodigo != null && !areaCodigo.isEmpty() ? areaCodigo : null) : null);
             usuarioSistemaRepository.save(row);
         }
     }
@@ -335,7 +376,8 @@ public class AdminUserService {
                         sistema.getCodigo(),
                         sistema.getNombre(),
                         !usuarioRolRepository.findByUserId(userId).isEmpty(),
-                        buildSisrhRoles(userId)));
+                        buildSisrhRoles(userId),
+                        null));
                 continue;
             }
             UsuarioSistema us = asignaciones.get(sistema.getId());
@@ -344,7 +386,8 @@ public class AdminUserService {
                     sistema.getCodigo(),
                     sistema.getNombre(),
                     activo,
-                    activo ? parseRoles(us.getRolesExternos()) : List.of()));
+                    activo ? parseRoles(us.getRolesExternos()) : List.of(),
+                    activo ? us.getAreaCodigo() : null));
         }
         return out;
     }

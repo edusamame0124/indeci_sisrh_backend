@@ -16,5 +16,8 @@ public record AccesoSistemaPutItem(
 
         @NotNull
         @Size(max = 20)
-        List<@NotBlank @Size(max = 40) String> roles) {
+        List<@NotBlank @Size(max = 40) String> roles,
+
+        @Size(max = 40)
+        String area) {
 }

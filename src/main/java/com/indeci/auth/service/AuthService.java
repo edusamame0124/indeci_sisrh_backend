@@ -32,6 +32,7 @@ import com.indeci.security.ratelimit.LoginRateLimiter;
 import com.indeci.sistema.service.UsuarioSistemaService;
 import com.indeci.user.entity.*;
 import com.indeci.user.repository.*;
+import com.indeci.user.repository.UsuarioPermisoRepository;
 
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class AuthService {
     private final RolPermisoRepository rolPermisoRepository;
     private final PermisoRepository permisoRepository;
     private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
+    private final UsuarioPermisoRepository usuarioPermisoRepository;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
     private final TurnstileService turnstileService;
@@ -221,12 +223,13 @@ public class AuthService {
          secretTemporal.remove(username);
      }
 
-     // 🔥 4. GENERAR TOKEN FINAL — Fase 3 SSO: claim "sistemas" para Portal Selector.
+     // 🔥 4. GENERAR TOKEN FINAL — Fase 3 SSO: claims "sistemas" y "areas".
      List<String> roles = obtenerRoles(user);
      List<String> permisos = obtenerPermisos(user);
      Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
+     Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
 
-     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
+     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
      String refreshToken = jwtProvider.generarRefreshToken(user);
 
      // 🔥 GUARDAR EN BD
@@ -273,8 +276,9 @@ public class AuthService {
         List<String> roles = obtenerRoles(user);
         List<String> permisos = obtenerPermisos(user);
         Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
+        Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
 
-        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
+        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
         String refreshToken = jwtProvider.generarRefreshToken(user);
 
         // 🔥 GUARDAR EN BD
@@ -391,20 +395,27 @@ public class AuthService {
                 .collect(java.util.stream.Collectors.toSet());
         Set<String> permisos = new LinkedHashSet<>();
 
+        // Permisos heredados del rol (menos los denegados)
         for (UsuarioRol ur : usuarioRoles) {
             if (!esRolSisrh(ur)) {
                 continue;
             }
-            List<RolPermiso> rolPermisos =
-                    rolPermisoRepository.findByRolId(ur.getRolId());
-
-            for (RolPermiso rp : rolPermisos) {
+            for (RolPermiso rp : rolPermisoRepository.findByRolId(ur.getRolId())) {
                 if (permisosDenegados.contains(rp.getPermisoId())) {
                     continue;
                 }
                 Permiso p = permisoRepository.findById(rp.getPermisoId()).orElse(null);
                 if (p != null) permisos.add(p.getCodigo());
             }
+        }
+
+        // Permisos otorgados directamente (SS_USUARIO_PERMISO), también respetan las denegaciones
+        for (UsuarioPermiso up : usuarioPermisoRepository.findByUserId(user.getId())) {
+            if (permisosDenegados.contains(up.getPermisoId())) {
+                continue;
+            }
+            Permiso p = permisoRepository.findById(up.getPermisoId()).orElse(null);
+            if (p != null) permisos.add(p.getCodigo());
         }
 
         return new ArrayList<>(permisos);
@@ -443,13 +454,13 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
 
-        // 🔥 5. GENERAR NUEVO ACCESS — Fase 3 SSO: re-resuelve sistemas (puede haber
-        //    cambiado la asignación desde el último login).
+        // 🔥 5. GENERAR NUEVO ACCESS — Fase 3 SSO: re-resuelve sistemas y areas.
         List<String> roles = obtenerRoles(user);
         List<String> permisos = obtenerPermisos(user);
         Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
+        Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
 
-        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas);
+        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
 
         // 🔥 6. ROTACIÓN DEL TOKEN (invalidar anterior)
         tokenEntity.setActivo("N");

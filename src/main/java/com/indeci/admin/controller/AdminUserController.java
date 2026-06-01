@@ -18,6 +18,7 @@ import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserEmpleadoPutRequest;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
+import com.indeci.admin.dto.AdminUserPermisoGrantsPutRequest;
 import com.indeci.admin.dto.AdminUserRolesPutRequest;
 import com.indeci.admin.dto.AdminUserStatusPatchRequest;
 import com.indeci.admin.dto.AdminUserSummaryResponse;
@@ -105,6 +106,19 @@ public class AdminUserController {
             @Valid @RequestBody AdminUserPermisoDeniesPutRequest body) {
         adminUserService.putDenied(id, body);
         return new ApiResponse<>("OK", "Denegaciones actualizadas", null);
+    }
+
+    @GetMapping("/{id}/permiso-otorgados")
+    public ApiResponse<List<PermisoDeniedResponse>> otorgados(@PathVariable Long id) {
+        return new ApiResponse<>("OK", "Permisos otorgados", adminUserService.listGranted(id));
+    }
+
+    @PutMapping("/{id}/permiso-otorgados")
+    public ApiResponse<Void> putOtorgados(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminUserPermisoGrantsPutRequest body) {
+        adminUserService.putGranted(id, body);
+        return new ApiResponse<>("OK", "Permisos otorgados actualizados", null);
     }
 
     @GetMapping("/{id}/accesos")

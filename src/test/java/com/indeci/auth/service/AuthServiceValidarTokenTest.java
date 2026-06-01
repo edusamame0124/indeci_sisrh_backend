@@ -27,6 +27,7 @@ import com.indeci.user.repository.RolPermisoRepository;
 import com.indeci.user.repository.RolRepository;
 import com.indeci.user.repository.UserRepository;
 import com.indeci.user.repository.UsuarioPermisoDenyRepository;
+import com.indeci.user.repository.UsuarioPermisoRepository;
 import com.indeci.user.repository.UsuarioRolRepository;
 
 import io.jsonwebtoken.security.SignatureException;
@@ -46,6 +47,7 @@ class AuthServiceValidarTokenTest {
     @Mock private RolPermisoRepository rolPermisoRepository;
     @Mock private PermisoRepository permisoRepository;
     @Mock private UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
+    @Mock private UsuarioPermisoRepository usuarioPermisoRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private TurnstileService turnstileService;
     @Mock private LoginRateLimiter loginRateLimiter;
@@ -66,7 +68,8 @@ class AuthServiceValidarTokenTest {
 
         service = new AuthService(
                 userRepository, usuarioRolRepository, rolRepository,
-                rolPermisoRepository, permisoRepository, usuarioPermisoDenyRepository, jwtProvider,
+                rolPermisoRepository, permisoRepository, usuarioPermisoDenyRepository,
+                usuarioPermisoRepository, jwtProvider,
                 passwordEncoder, turnstileService, loginRateLimiter,
                 otpService, authRefreshTokenRepository, usuarioSistemaService);
 

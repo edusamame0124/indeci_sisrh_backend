@@ -6,5 +6,6 @@ public record AccesoSistemaDto(
         String codigo,
         String nombre,
         Boolean activo,
-        List<String> roles) {
+        List<String> roles,
+        String area) {
 }

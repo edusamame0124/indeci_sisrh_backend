@@ -10,7 +10,10 @@
 
 SET SERVEROUTPUT ON;
 
+-- Tabla hereda TABLESPACE de INDECI_EMPLEADO (ancla estable del schema).
+-- Evita ORA-00959 cuando el default tablespace del usuario no existe (TBS_RRHH).
 DECLARE
+    v_ts VARCHAR2(30);
     PROCEDURE add_table_if_missing(
         p_table_name VARCHAR2,
         p_create_ddl VARCHAR2
@@ -18,21 +21,24 @@ DECLARE
         v_exists NUMBER;
     BEGIN
         SELECT COUNT(*) INTO v_exists
-          FROM ALL_TABLES
-         WHERE OWNER = 'GESTIONRRHH'
-           AND TABLE_NAME = p_table_name;
+          FROM USER_TABLES
+         WHERE TABLE_NAME = p_table_name;
 
         IF v_exists = 0 THEN
-            EXECUTE IMMEDIATE p_create_ddl;
-            DBMS_OUTPUT.PUT_LINE(p_table_name || ' -> creada.');
+            EXECUTE IMMEDIATE p_create_ddl || ' TABLESPACE ' || v_ts;
+            DBMS_OUTPUT.PUT_LINE(p_table_name || ' -> creada en TBS ' || v_ts);
         ELSE
             DBMS_OUTPUT.PUT_LINE(p_table_name || ' ya existe. Sin cambios.');
         END IF;
     END;
 BEGIN
+    SELECT TABLESPACE_NAME INTO v_ts
+      FROM USER_TABLES
+     WHERE TABLE_NAME = 'INDECI_EMPLEADO';
+
     add_table_if_missing(
         'INDECI_SISTEMA_ROL',
-        'CREATE TABLE GESTIONRRHH.INDECI_SISTEMA_ROL ('
+        'CREATE TABLE INDECI_SISTEMA_ROL ('
         ||   'ID           NUMBER GENERATED ALWAYS AS IDENTITY,'
         ||   'SISTEMA_ID   NUMBER NOT NULL,'
         ||   'CODIGO_ROL   VARCHAR2(40 CHAR) NOT NULL,'
@@ -43,53 +49,55 @@ BEGIN
         ||   'CONSTRAINT INDECI_SISTEMA_ROL_PK PRIMARY KEY (ID),'
         ||   'CONSTRAINT INDECI_SISTEMA_ROL_UK UNIQUE (SISTEMA_ID, CODIGO_ROL),'
         ||   'CONSTRAINT INDECI_SISTEMA_ROL_SIS_FK '
-        ||       'FOREIGN KEY (SISTEMA_ID) REFERENCES GESTIONRRHH.INDECI_SISTEMA(ID),'
+        ||       'FOREIGN KEY (SISTEMA_ID) REFERENCES INDECI_SISTEMA(ID),'
         ||   'CONSTRAINT INDECI_SISTEMA_ROL_ACTIVO_CK CHECK (ACTIVO IN (0, 1))'
         || ')'
     );
 
-    EXECUTE IMMEDIATE 'COMMENT ON TABLE GESTIONRRHH.INDECI_SISTEMA_ROL IS '
+    EXECUTE IMMEDIATE 'COMMENT ON TABLE INDECI_SISTEMA_ROL IS '
         || '''Spec 015: catalogo de roles externos asignables desde Gestion de Usuarios.''';
-    EXECUTE IMMEDIATE 'COMMENT ON COLUMN GESTIONRRHH.INDECI_SISTEMA_ROL.CODIGO_ROL IS '
+    EXECUTE IMMEDIATE 'COMMENT ON COLUMN INDECI_SISTEMA_ROL.CODIGO_ROL IS '
         || '''Codigo exacto que viaja en el claim sistemas del JWT.''';
+
+    DBMS_OUTPUT.PUT_LINE('V010_45 tabla lista.');
 END;
 /
 
-MERGE INTO GESTIONRRHH.INDECI_SISTEMA_ROL d
+MERGE INTO INDECI_SISTEMA_ROL d
 USING (
     SELECT s.ID AS SISTEMA_ID, 'ROLE_ADMIN' AS CODIGO_ROL, 'Administrador' AS NOMBRE,
            'Administrador del sistema de convocatoria' AS DESCRIPCION, 1 AS ORDEN
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ROLE_ORH', 'ORH', 'Oficina de Recursos Humanos', 2
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ROLE_OPP', 'OPP', 'Oficina de Planeamiento y Presupuesto', 3
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ROLE_AREA_SOLICITANTE', 'Area Solicitante', 'Area solicitante del proceso CAS', 4
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ROLE_COMITE', 'Comite de Seleccion', 'Comite de seleccion CAS', 5
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ROLE_POSTULANTE', 'Postulante', 'Postulante registrado en convocatoria', 6
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'convocatoria'
     UNION ALL
     SELECT s.ID, 'ADMIN_SISTEMA', 'Admin Sistema', 'Administrador del sistema GDR', 1
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
     UNION ALL
     SELECT s.ID, 'GDR_ORH', 'ORH', 'Oficina de Recursos Humanos en GDR', 2
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
     UNION ALL
     SELECT s.ID, 'GDR_JUNTA_DIRECTIVOS', 'Junta de Directivos', 'Junta de directivos GDR', 3
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
     UNION ALL
     SELECT s.ID, 'GDR_USUARIO', 'Usuario GDR', 'Usuario operativo GDR', 4
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
     UNION ALL
     SELECT s.ID, 'GDR_CONSULTA', 'Consulta', 'Consulta de informacion GDR', 5
-      FROM GESTIONRRHH.INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
+      FROM INDECI_SISTEMA s WHERE s.CODIGO = 'rendimiento'
 ) s
 ON (d.SISTEMA_ID = s.SISTEMA_ID AND d.CODIGO_ROL = s.CODIGO_ROL)
 WHEN NOT MATCHED THEN
