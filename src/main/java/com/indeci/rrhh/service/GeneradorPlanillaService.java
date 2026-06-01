@@ -1,5 +1,6 @@
 package com.indeci.rrhh.service;
 
+import com.indeci.exception.ConceptoRegimenNoAplicableException;
 import com.indeci.exception.ConceptoSinCodigoMefException;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.GeneracionFallidaDto;
@@ -11,6 +12,7 @@ import com.indeci.rrhh.repository.*;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,10 +89,25 @@ public class GeneradorPlanillaService {
     private static final String REG_PENS_ONP = "ONP";
     private static final String REG_PENS_AFP = "AFP";
 
-    private static final BigDecimal CIEN  = new BigDecimal("100");
-    private static final BigDecimal DOCE  = new BigDecimal("12");
-    private static final BigDecimal SIETE = new BigDecimal("7");
-    private static final BigDecimal MEDIO = new BigDecimal("0.5");
+    private static final BigDecimal CIEN    = new BigDecimal("100");
+    private static final BigDecimal DOCE    = new BigDecimal("12");
+    private static final BigDecimal SIETE   = new BigDecimal("7");
+    private static final BigDecimal MEDIO   = new BigDecimal("0.5");
+    /** F1.3c — Divisor fijo del prorrateo mensual (días calendar SUNAT/MEF). */
+    private static final BigDecimal TREINTA = new BigDecimal("30");
+
+    /**
+     * F1.3b — Días estándar por defecto cuando {@link EmpleadoPlanilla} no
+     * tiene aún cargado el campo {@code DIAS_LABORADOS_DEFAULT} (V010_36).
+     * El motor lee este valor hasta que F1.5 conecte el campo real.
+     */
+    private static final int DIAS_LAB_DEFAULT = 30;
+
+    /**
+     * F1.3b — Estado de Asistencia M04 que habilita lectura de días falta.
+     * Coincide con el comportamiento del PASO 7b actual.
+     */
+    private static final String ASISTENCIA_VALIDADA = "VALIDADA";
 
     private final EmpleadoPlanillaRepository planillaRepository;
     private final ConceptoPlanillaRepository conceptoRepository;
@@ -106,6 +123,10 @@ public class GeneradorPlanillaService {
     private final ParametroRemunerativoService parametroService;
     private final ConciliacionAirhspRepository conciliacionRepository;
     private final AbonoBancoRepository abonoBancoRepository;
+    /** F1.4 — Reintegro por días (motor PASO 5b, infraestructura). */
+    private final EmpleadoReintegroRepository empleadoReintegroRepository;
+    /** F2.3 — Eventos del período (motor PASO 3, afecta días laborados). */
+    private final EmpleadoEventoRepository empleadoEventoRepository;
 
     /**
      * Self-reference para que {@link #generarTodoPeriodo(String)} invoque
@@ -115,6 +136,16 @@ public class GeneradorPlanillaService {
     @Autowired
     @Lazy
     private GeneradorPlanillaService self;
+
+    /**
+     * F1.5a — Feature flag del prorrateo Motor v3. Cuando {@code false} (default
+     * en application.properties), el motor calcula exactamente como antes:
+     * el reintegro de {@link #calcularReintegro} se computa pero NO se suma.
+     * Cuando {@code true}, suma el reintegro al total remunerativo del empleado.
+     * Configurable por entorno (typical: ON en dev, OFF en prod hasta smoke).
+     */
+    @Value("${motor.v3.prorrateo.enabled:false}")
+    private boolean motorV3ProrrateoEnabled;
 
     // ======================================================================
     // ENTRY POINT
@@ -165,13 +196,43 @@ public class GeneradorPlanillaService {
         // 6. No remunerativos automáticos (Etapa 1: vacío. Aguinaldos/gratificaciones a Etapa 2)
         // calcularNoRemunerativos(movimiento, planilla, periodo); // placeholder
 
-        // 7. Conceptos manuales (EmpleadoConcepto) — valida LEY-01
+        // Régimen laboral (necesario para PASO 7 validación normativa F1.5b
+        // y PASO 9 tope EsSalud CAS F1.6). Se resuelve una sola vez.
+        String regimenLaboralCodigo =
+                resolverRegimenLaboralCodigo(planilla.getRegimenLaboralId());
+
+        // 7. Conceptos manuales (EmpleadoConcepto) — valida LEY-01 + F1.5b:
+        //    régimen aplicable del concepto + prorrateo por días laborados.
         ManualesResult manuales =
-                aplicarConceptosManuales(movimiento, planilla);
+                aplicarConceptosManuales(movimiento, planilla, regimenLaboralCodigo, periodo);
         totalIngresos     = totalIngresos.add(manuales.ingresos);
         totalDescuentos   = totalDescuentos.add(manuales.descuentos);
         baseImponiblePens = baseImponiblePens.add(manuales.baseAportePension);
         baseImponibleEss  = baseImponibleEss.add(manuales.baseEssalud);
+
+        // 7.5. F1.5a Motor v3 — Reintegro por días (feature flag).
+        //      Conceptualmente es el PASO 5b del SPEC, pero en el motor actual
+        //      se aplica DESPUÉS del PASO 7 porque la base remunerativa real
+        //      vive en EmpleadoConcepto manuales (deuda técnica documentada).
+        //
+        //      Si motor.v3.prorrateo.enabled=true y existe INDECI_EMPLEADO_REINTEGRO
+        //      vigente para el período → prorratea totalIngresos por los días de
+        //      reintegro y suma el monto al total + bases (pensión/ESSALUD).
+        //
+        //      F1.5b conectará MONTO_CONTRATO real e incrementos DS prorrateados
+        //      vía flag ES_PRORRATEABLE en INDECI_CONCEPTO_PLANILLA, y grabará
+        //      detalle MEF independiente (RRHH debe dar CODIGO_MEF de "Reintegro CAS").
+        //      Hoy el monto queda embebido en totalIngresos sin línea propia en
+        //      boleta — el cálculo es correcto, la presentación es F1.5b.
+        if (motorV3ProrrateoEnabled) {
+            BigDecimal reintegro =
+                    calcularReintegro(empleadoId, periodo, totalIngresos);
+            if (reintegro.signum() > 0) {
+                totalIngresos     = totalIngresos.add(reintegro);
+                baseImponiblePens = baseImponiblePens.add(reintegro);
+                baseImponibleEss  = baseImponibleEss.add(reintegro);
+            }
+        }
 
         // 7b. Descuento de asistencia (PASO 7) — tardanzas + faltas de la
         //     asistencia VALIDADA del período (D.Leg. 276 Art. 24). No reduce
@@ -181,6 +242,7 @@ public class GeneradorPlanillaService {
         totalDescuentos = totalDescuentos.add(descuentoAsistencia);
 
         // 8. Aporte pensionario (ONP/AFP) — LEY-02: ESSALUD NUNCA aquí
+        // (regimenLaboralCodigo ya resuelto antes del PASO 7 para F1.5b)
         BigDecimal aportePension = BigDecimal.ZERO;
         if (pensionOpt.isPresent()) {
             aportePension = calcularAportePensionario(
@@ -193,10 +255,31 @@ public class GeneradorPlanillaService {
                 movimiento, planilla, baseImponiblePens, anioFiscal);
         totalDescuentos = totalDescuentos.add(retencion5ta);
 
-        // 9. ESSALUD empleador con mínimo + split EPS. El copago EPS del
-        //    trabajador (si tiene EPS) SÍ es descuento — se suma al total.
+        // 8c. F1.7 Motor v3 PASO 9bis — IR 4ta categoría SOLO régimen CAS
+        //     (decisión RRHH C1 / 2026-05-31). Sustituye al PASO 8b para CAS:
+        //     LEY-03 dice que CAS NO retiene 5ta; en su lugar, retiene 4ta al 8%
+        //     cuando la base supera el inafecto (1500) y no tiene constancia
+        //     de suspensión SUNAT. Aplicar bajo feature flag motor v3, como F1.5a.
+        //
+        //     TODO F1.7b/c: leer "tieneSuspension4ta" de BD (modelo aún por
+        //     definir con RRHH — posible columna en EmpleadoPension o tabla
+        //     INDECI_SUSPENSION_RETENCION_SUNAT). Hoy default false.
+        //     TODO presentación: grabar detalle MEF con CODIGO_MEF de
+        //     "Retención IR 4ta CAS" cuando RRHH lo entregue. Hoy embebido
+        //     en totalDescuentos sin línea propia en boleta.
+        if (motorV3ProrrateoEnabled) {
+            BigDecimal ir4taCas = calcular4taCategoriaCAS(
+                    baseImponiblePens, regimenLaboralCodigo, anioFiscal,
+                    /*tieneSuspension4ta*/ false);
+            if (ir4taCas.signum() > 0) {
+                totalDescuentos = totalDescuentos.add(ir4taCas);
+            }
+        }
+
+        // 9. ESSALUD empleador con mínimo + split EPS + tope 45% UIT solo CAS (F1.6).
+        //    El copago EPS del trabajador (si tiene EPS) SÍ es descuento — se suma al total.
         BigDecimal copagoEps = calcularEssaludEmpleador(
-                movimiento, empleado, baseImponibleEss, anioFiscal);
+                movimiento, empleado, baseImponibleEss, anioFiscal, regimenLaboralCodigo);
         totalDescuentos = totalDescuentos.add(copagoEps);
 
         // 10. Totales, validación neto 50% (REGLA SERVIR-07) y persistencia
@@ -264,10 +347,19 @@ public class GeneradorPlanillaService {
 
     private ManualesResult aplicarConceptosManuales(
             MovimientoPlanilla movimiento,
-            EmpleadoPlanilla planilla) {
+            EmpleadoPlanilla planilla,
+            String regimenLaboralCodigo,
+            String periodo) {
 
         ManualesResult result = new ManualesResult();
         BigDecimal sueldoBasico = toBigDecimal(planilla.getSueldoBasico());
+
+        // F1.5b — días laborados se calculan UNA VEZ por empleado/período;
+        // se reusan en cada EmpleadoConcepto prorrateable. Solo se calcula
+        // si el flag está ON (sino no se usa).
+        int diasLab = motorV3ProrrateoEnabled
+                ? calcularDiasLaborados(planilla.getEmpleadoId(), periodo)
+                : DIAS_LAB_DEFAULT;
 
         List<EmpleadoConcepto> conceptos =
                 empleadoConceptoRepository.findByEmpleadoIdAndActivo(
@@ -291,7 +383,27 @@ public class GeneradorPlanillaService {
                 continue;
             }
 
+            // F1.5b — Guard normativo: si el flag está ON, verificar que el
+            // concepto aplique al régimen del empleado. Ej: pagar DS 327
+            // (REGIMEN_APLICABLE='728,1057') a un empleado del régimen 276 es
+            // un pago indebido — lanza excepción que bloquea generar().
+            if (motorV3ProrrateoEnabled
+                    && !regimenAplicaConcepto(concepto.getRegimenAplicable(), regimenLaboralCodigo)) {
+                throw new ConceptoRegimenNoAplicableException(
+                        concepto.getCodigoMef(),
+                        concepto.getNombre(),
+                        regimenLaboralCodigo,
+                        concepto.getRegimenAplicable());
+            }
+
             BigDecimal monto = calcularMontoEmpleadoConcepto(ec, sueldoBasico);
+
+            // F1.5b — Si el concepto es prorrateable y el flag está ON,
+            // prorratear el monto por días laborados (helper F1.3c).
+            if (motorV3ProrrateoEnabled
+                    && "S".equalsIgnoreCase(concepto.getEsProrrateable())) {
+                monto = prorratear(monto, diasLab);
+            }
 
             grabarDetalle(movimiento.getId(), concepto, monto, concepto.getNombre());
 
@@ -601,9 +713,15 @@ public class GeneradorPlanillaService {
             MovimientoPlanilla movimiento,
             Empleado empleado,
             BigDecimal baseImponible,
-            int anioFiscal) {
+            int anioFiscal,
+            String regimenLaboralCodigo) {
 
         if (baseImponible.signum() <= 0) return BigDecimal.ZERO;
+
+        // F1.6 — Tope 45% UIT EsSalud SOLO para CAS (decisión RRHH C2 / 2026-05-31).
+        // 728, SERVIR y 276 no se topean: sin regresión respecto al motor v2.
+        baseImponible =
+                aplicarTopeEssaludCAS(baseImponible, regimenLaboralCodigo, anioFiscal);
 
         BigDecimal tasaEssalud = parametroService.obtenerValor("TASA_ESSALUD", anioFiscal, null);
         BigDecimal minimo      = parametroService.obtenerValor("ESSALUD_MINIMO", anioFiscal, null);
@@ -904,5 +1022,355 @@ public class GeneradorPlanillaService {
         BigDecimal descuentos        = BigDecimal.ZERO;
         BigDecimal baseAportePension = BigDecimal.ZERO;
         BigDecimal baseEssalud       = BigDecimal.ZERO;
+    }
+
+    // ======================================================================
+    // F1.3 Motor v3 — Helpers de prorrateo por días laborados (PASO 3)
+    //
+    // Estos helpers son INFRAESTRUCTURA: están listos para consumir, pero el
+    // motor existente todavía NO los invoca. Los pasos del motor que toman
+    // ventaja del prorrateo se conectan en F1.5 (incrementos DS automáticos)
+    // y F2 (eventos del período: maternidad, licencias, etc.).
+    //
+    // Visibilidad package-private para tests unitarios sin Spring.
+    // ======================================================================
+
+    /**
+     * F1.3c — Prorratea un monto mensual por días laborados.
+     *
+     * Fórmula del Excel CAS consolidado del cliente y D.Leg. 276:
+     * <pre>
+     *     monto_prorrateado = monto_mensual / 30 × días_laborados
+     * </pre>
+     *
+     * El divisor 30 es constante (mes calendar SUNAT/MEF) — NO depende del
+     * mes real (febrero 28/29, meses de 31). Si se necesita "días naturales"
+     * en otro contexto, crear otro helper; este es deliberadamente fijo.
+     *
+     * Casos borde:
+     * <ul>
+     *   <li>{@code montoMensual} null o cero → {@link BigDecimal#ZERO}.</li>
+     *   <li>{@code diasLaborados} ≤ 0 → {@link BigDecimal#ZERO}.</li>
+     *   <li>{@code diasLaborados} ≥ 30 → {@code montoMensual} tal cual (mes
+     *       completo, sin redondeo extra: respeta la escala original).</li>
+     *   <li>1 ≤ {@code diasLaborados} ≤ 29 → división con escala 2 HALF_UP.</li>
+     * </ul>
+     *
+     * @return prorrateo redondeado a 2 decimales (HALF_UP), o el monto original
+     *         si el mes está completo.
+     */
+    static BigDecimal prorratear(BigDecimal montoMensual, int diasLaborados) {
+        if (montoMensual == null || montoMensual.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        if (diasLaborados <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (diasLaborados >= 30) {
+            return montoMensual;
+        }
+        return montoMensual
+                .multiply(BigDecimal.valueOf(diasLaborados))
+                .divide(TREINTA, 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * F1.3b — Calcula días efectivamente laborados del empleado en el período.
+     *
+     * Fórmula:
+     * <pre>
+     *     diasLaborados = DIAS_LAB_DEFAULT − dias_falta
+     *                     (mínimo 0)
+     * </pre>
+     *
+     * <p>Sólo se leen los días de falta si {@code AsistenciaCabecera.estado =
+     * "VALIDADA"} (mismo criterio que el PASO 7b actual del motor —
+     * intencional: sin asistencia validada, el motor no descuenta días).</p>
+     *
+     * <p>NO descuenta tardanzas, permisos ni feriados compensables: esos
+     * generan descuentos parciales en PASO 7b (descuento por minutos), no
+     * días enteros perdidos. Únicamente cuenta {@code DIAS_FALTA} de la
+     * cabecera M04.</p>
+     *
+     * <p>Eventos del período (F2: LICENCIA_SIN_GOCE, SUSPENSION_NO_SUBSIDIADA)
+     * se sumarán a {@code dias_falta} aquí cuando F2 entregue
+     * {@code INDECI_EMPLEADO_EVENTO}.</p>
+     *
+     * <p>Hoy {@code DIAS_LAB_DEFAULT} es {@code 30} constante. F1.5 leerá el
+     * campo real {@code EmpleadoPlanilla.diasLaboradosDefault} (V010_36) para
+     * soportar tiempo parcial.</p>
+     *
+     * @return días laborados, mínimo 0, máximo {@link #DIAS_LAB_DEFAULT}.
+     */
+    int calcularDiasLaborados(Long empleadoId, String periodo) {
+        int diasFalta = asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                .filter(c -> ASISTENCIA_VALIDADA.equalsIgnoreCase(c.getEstado()))
+                .map(c -> c.getDiasFalta() != null ? c.getDiasFalta() : 0)
+                .orElse(0);
+
+        // F2.3 — Sumar días afectos de los eventos del período cuyo tipo
+        // tiene afectaDiasLaborados='S' (maternidad, licencia sin goce, cese,
+        // permiso personal, etc.). El query ya filtra por flag y por activo.
+        int diasEventos = sumarDiasAfectosEventos(empleadoId, periodo);
+
+        return Math.max(0, DIAS_LAB_DEFAULT - diasFalta - diasEventos);
+    }
+
+    /**
+     * F2.3 — Suma {@code diasAfectos} de los eventos del período del empleado
+     * cuyo {@code TipoEvento.afectaDiasLaborados='S'}. Si la fila tiene
+     * {@code diasAfectos} null → deriva de {@code fechaFin - fechaInicio + 1}.
+     *
+     * <p>Defensivo: si el repo devuelve {@code null} o lista vacía, retorna 0.</p>
+     */
+    private int sumarDiasAfectosEventos(Long empleadoId, String periodo) {
+        java.time.LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        java.time.LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
+
+        var eventos = empleadoEventoRepository
+                .findVigentesParaMotor(empleadoId, periodo, inicio, fin);
+
+        int total = 0;
+        for (var e : eventos) {
+            if (e.getDiasAfectos() != null) {
+                total += e.getDiasAfectos();
+            } else if (e.getFechaInicio() != null && e.getFechaFin() != null) {
+                // Derivar: días naturales del rango.
+                total += (int) (java.time.temporal.ChronoUnit.DAYS
+                        .between(e.getFechaInicio(), e.getFechaFin()) + 1);
+            }
+        }
+        return total;
+    }
+
+    /**
+     * F1.4c Motor v3 PASO 5b — Calcula el monto de reintegro para un empleado
+     * en un período, prorrateando una base remunerativa por los días de
+     * reintegro vigentes en {@code INDECI_EMPLEADO_REINTEGRO}.
+     *
+     * <p>Fórmula: <code>reintegro = base / 30 × dias_reintegro</code>
+     * (delega en {@link #prorratear(BigDecimal, int)}).</p>
+     *
+     * <p><b>Estado actual (F1.4 alcance acotado)</b>: este helper está listo
+     * para invocarse pero el flujo {@link #generar(Long, String)} NO lo
+     * llama todavía. La integración real se hace en F1.5 cuando:
+     * <ul>
+     *   <li>La base remunerativa pase a leerse de
+     *       {@code EmpleadoPlanilla.MONTO_CONTRATO} (V010_36) en lugar del
+     *       total de EmpleadoConcepto.</li>
+     *   <li>El reintegro se grabe como detalle MEF independiente (CODIGO_MEF
+     *       definitivo lo entrega RRHH — LEY-01).</li>
+     * </ul></p>
+     *
+     * <p>TODO F1.5: cambiar la base a {@code MONTO_CONTRATO} puro y grabar
+     * detalle con concepto MEF de reintegro.</p>
+     *
+     * @param empleadoId        empleado al que se evalúa el reintegro.
+     * @param periodo           período "YYYYMM".
+     * @param baseRemunerativa  base sobre la que prorratear. Tomada hoy de la
+     *                          suma de EmpleadoConcepto remunerativos del PASO 5
+     *                          (deuda técnica documentada).
+     * @return monto del reintegro, o {@link BigDecimal#ZERO} si no hay
+     *         reintegro vigente para el período.
+     */
+    BigDecimal calcularReintegro(Long empleadoId, String periodo, BigDecimal baseRemunerativa) {
+        return empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                .map(r -> prorratear(baseRemunerativa, r.getDiasReintegro()))
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /**
+     * F1.6 Motor v3 PASO 12 — Tope 45% UIT en la base de EsSalud SOLO para
+     * régimen CAS (decisión RRHH C2 / 2026-05-31).
+     *
+     * <p>Sustento: SUNAT/MEF aplica un tope operativo al cálculo de EsSalud
+     * sobre rentas CAS. Para 728, SERVIR y 276 NO hay tope (el cálculo usa
+     * la base imponible completa, como hasta ahora).</p>
+     *
+     * <p>Fórmula:
+     * <pre>
+     *     si régimen = "CAS":  base_topeada = MIN(base, UIT × TOPE_ESSALUD_PCT_UIT)
+     *     si otro régimen:    base_topeada = base
+     * </pre></p>
+     *
+     * <p>Los parámetros vienen de {@code INDECI_PARAMETRO_REMUNERATIVO}:
+     * <ul>
+     *   <li>{@code TOPE_ESSALUD_PCT_UIT} (V010_37 = 0.45 para 2026).</li>
+     *   <li>{@code UIT} (V010_03 = 5350 para 2026; ajustar cuando el MEF
+     *       publique nuevo valor).</li>
+     * </ul></p>
+     *
+     * <p>Defensivo: si {@code TOPE_ESSALUD_PCT_UIT} no está sembrado (caso
+     * raro en BD legacy) → devuelve la base intacta (sin tope, sin
+     * NegocioException — evita romper el cálculo si el parámetro está
+     * pendiente de cargar).</p>
+     *
+     * <p>Package-private para tests directos sin necesidad de ejercer
+     * {@link #generar(Long, String)} completo.</p>
+     *
+     * @param baseImponible          base de EsSalud antes del tope.
+     * @param regimenLaboralCodigo   código del régimen (típicamente "276",
+     *                               "728", "CAS", "SERVIR"). {@code null}
+     *                               se trata como "no CAS" → sin tope.
+     * @param anioFiscal             año para resolver los parámetros vigentes.
+     * @return base topeada si aplica, o la original si no.
+     */
+    BigDecimal aplicarTopeEssaludCAS(
+            BigDecimal baseImponible,
+            String regimenLaboralCodigo,
+            int anioFiscal) {
+
+        if (baseImponible == null || baseImponible.signum() <= 0) {
+            return baseImponible == null ? BigDecimal.ZERO : baseImponible;
+        }
+        if (!REG_LABORAL_CAS.equals(regimenLaboralCodigo)) {
+            return baseImponible;
+        }
+
+        BigDecimal topeFactor = parametroService
+                .obtenerValorOpcional("TOPE_ESSALUD_PCT_UIT", anioFiscal, null)
+                .orElse(BigDecimal.ZERO);
+        if (topeFactor.signum() == 0) {
+            return baseImponible; // Defensa: parámetro pendiente de cargar.
+        }
+
+        BigDecimal uit = parametroService.obtenerValor("UIT", anioFiscal, null);
+        BigDecimal topeBase = uit.multiply(topeFactor);
+        return baseImponible.min(topeBase);
+    }
+
+    /**
+     * F1.7 Motor v3 PASO 9bis — Retención IR 4ta categoría SOLO régimen CAS
+     * (decisión RRHH C1 / 2026-05-31).
+     *
+     * <p>Sustento: Excel CAS consolidado del cliente + Anexo 2 SUNAT. CAS
+     * tributa 4ta, no 5ta (corrige memoria histórica errónea que decía CAS=5ta).
+     * Otros regímenes (276/728/SERVIR) NO tributan 4ta — esos retienen 5ta
+     * vía {@link #calcular5taCategoria}.</p>
+     *
+     * <p>Fórmula del Excel (§17.7 SPEC):
+     * <pre>
+     *     INDICADOR_4TA =
+     *         SI tieneSuspension4ta        → "SUSPENSION" → IR_4TA = 0
+     *         SI base ≤ BASE_INAFECTA_IR4TA → "INAFECTO"   → IR_4TA = 0
+     *         resto                        → "NORMAL"     → IR_4TA = base × TASA_IR4TA
+     * </pre></p>
+     *
+     * <p>Parámetros vienen de {@code INDECI_PARAMETRO_REMUNERATIVO} (V010_37):
+     * <ul>
+     *   <li>{@code BASE_INAFECTA_IR4TA} = 1500.00 PEN (2026).</li>
+     *   <li>{@code TASA_IR4TA} = 0.08 PCT (8%).</li>
+     * </ul></p>
+     *
+     * <p><b>Estado actual (F1.7 alcance acotado)</b>:
+     * <ul>
+     *   <li>{@code tieneSuspension4ta} llega como parámetro y hoy se invoca
+     *       siempre con {@code false}. RRHH definirá el modelo (¿columna en
+     *       {@code EmpleadoPension}? ¿tabla {@code INDECI_SUSPENSION_4TA}?)
+     *       en una fase posterior.</li>
+     *   <li>El helper devuelve el monto pero NO graba detalle MEF — el motor
+     *       lo suma a {@code totalDescuentos} sin línea propia. F1.5b o una
+     *       fase de "presentación" agregará la línea cuando RRHH entregue
+     *       CODIGO_MEF de "Retención IR 4ta CAS".</li>
+     * </ul></p>
+     *
+     * <p>Defensivo: si los parámetros no están en BD (caso legacy) devuelve
+     * {@link BigDecimal#ZERO} sin lanzar — el cálculo de planilla no se
+     * bloquea por un parámetro faltante.</p>
+     *
+     * <p>Package-private para tests directos.</p>
+     *
+     * @param baseImponible         base remunerativa afecta (típicamente
+     *                              {@code baseImponiblePens} del motor).
+     * @param regimenLaboralCodigo  código del régimen ("CAS", "728", etc.).
+     *                              Solo aplica si es exactamente "CAS".
+     * @param anioFiscal            año para resolver parámetros vigentes.
+     * @param tieneSuspension4ta    {@code true} si el empleado tiene constancia
+     *                              de suspensión de retenciones SUNAT vigente.
+     * @return monto de IR 4ta a retener, {@link BigDecimal#ZERO} si no aplica.
+     */
+    BigDecimal calcular4taCategoriaCAS(
+            BigDecimal baseImponible,
+            String regimenLaboralCodigo,
+            int anioFiscal,
+            boolean tieneSuspension4ta) {
+
+        if (!REG_LABORAL_CAS.equals(regimenLaboralCodigo)) {
+            return BigDecimal.ZERO;
+        }
+        if (baseImponible == null || baseImponible.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (tieneSuspension4ta) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal baseInafecta = parametroService
+                .obtenerValorOpcional("BASE_INAFECTA_IR4TA", anioFiscal, null)
+                .orElse(null);
+        if (baseInafecta == null) {
+            return BigDecimal.ZERO; // Defensa: parámetro pendiente de cargar.
+        }
+        if (baseImponible.compareTo(baseInafecta) <= 0) {
+            return BigDecimal.ZERO; // INAFECTO.
+        }
+
+        BigDecimal tasa = parametroService
+                .obtenerValorOpcional("TASA_IR4TA", anioFiscal, null)
+                .orElse(null);
+        if (tasa == null) {
+            return BigDecimal.ZERO; // Defensa: parámetro pendiente de cargar.
+        }
+
+        return baseImponible.multiply(tasa).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * F1.5b — Verifica si un concepto cuyo {@code REGIMEN_APLICABLE} es
+     * {@code regimenAplicableCsv} aplica al empleado cuyo régimen laboral es
+     * {@code regimenEmpleadoCodigo}.
+     *
+     * <p>Soporta los formatos del catálogo INDECI_CONCEPTO_PLANILLA:
+     * <ul>
+     *   <li>Valor único: "728" — el concepto aplica solo a 728.</li>
+     *   <li>CSV: "728,1057" — el concepto aplica a 728 y a 1057 (decretos
+     *       supremos del pacto colectivo MEF).</li>
+     *   <li>"TODOS" — el concepto aplica a cualquier régimen.</li>
+     *   <li>{@code null} o vacío — interpretado como "TODOS" (compatibilidad
+     *       con conceptos legacy sin metadata cargada).</li>
+     * </ul></p>
+     *
+     * <p>Parseo: se admite separador "," con o sin espacios alrededor; cada
+     * elemento se compara case-insensitive.</p>
+     *
+     * <p>Defensivo: si {@code regimenEmpleadoCodigo} es null → devuelve true
+     * (no bloquear cálculo por dato faltante; ya validan otros pasos).</p>
+     *
+     * <p>Package-private static para tests directos sin Spring.</p>
+     *
+     * @return true si el concepto aplica al régimen del empleado.
+     */
+    static boolean regimenAplicaConcepto(
+            String regimenAplicableCsv,
+            String regimenEmpleadoCodigo) {
+
+        if (regimenEmpleadoCodigo == null) {
+            return true; // Defensivo: no bloquear sin dato.
+        }
+        if (regimenAplicableCsv == null || regimenAplicableCsv.isBlank()) {
+            return true; // Compat: concepto sin metadata cargada.
+        }
+        String csv = regimenAplicableCsv.trim();
+        if ("TODOS".equalsIgnoreCase(csv)) {
+            return true;
+        }
+        for (String token : csv.split(",")) {
+            if (token.trim().equalsIgnoreCase(regimenEmpleadoCodigo)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

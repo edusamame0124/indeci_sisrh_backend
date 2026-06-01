@@ -54,6 +54,8 @@ class GeneradorPlanillaServiceTest {
     @Mock private ParametroRemunerativoService parametroService;
     @Mock private ConciliacionAirhspRepository conciliacionRepository;
     @Mock private AbonoBancoRepository abonoBancoRepository;
+    @Mock private EmpleadoReintegroRepository empleadoReintegroRepository;
+    @Mock private EmpleadoEventoRepository empleadoEventoRepository;
 
     private GeneradorPlanillaService service;
 
@@ -83,7 +85,9 @@ class GeneradorPlanillaServiceTest {
                 regimenLaboralRepository,
                 parametroService,
                 conciliacionRepository,
-                abonoBancoRepository);
+                abonoBancoRepository,
+                empleadoReintegroRepository,
+                empleadoEventoRepository);
         // El proxy @Lazy `self` no se inyecta en test unitario: apuntarlo al
         // propio servicio para poder ejercitar generarTodoPeriodo.
         ReflectionTestUtils.setField(service, "self", service);
@@ -872,5 +876,721 @@ class GeneradorPlanillaServiceTest {
         ArgumentCaptor<MovimientoPlanilla> capt = ArgumentCaptor.forClass(MovimientoPlanilla.class);
         verify(movimientoRepository, times(2)).save(capt.capture());
         return capt.getAllValues().get(capt.getAllValues().size() - 1);
+    }
+
+    // ======================================================================
+    // F1.3 — Tests del prorrateo por días laborados (helpers nuevos).
+    //
+    // Estos tests no ejercen el flujo completo de generar(); validan los
+    // helpers `prorratear()` y `calcularDiasLaborados()` directamente.
+    // ======================================================================
+
+    // ---- F1.3c prorratear() ----
+
+    @Test
+    void prorratear_mes_completo_devuelve_monto_original() {
+        BigDecimal monto = new BigDecimal("5500.00");
+        assertThat(GeneradorPlanillaService.prorratear(monto, 30))
+                .isEqualByComparingTo("5500.00");
+    }
+
+    @Test
+    void prorratear_mas_de_30_dias_no_excede_monto_original() {
+        // No debería pasar en la práctica (días > 30) pero por defensa de invariantes.
+        BigDecimal monto = new BigDecimal("5500.00");
+        assertThat(GeneradorPlanillaService.prorratear(monto, 31))
+                .isEqualByComparingTo("5500.00");
+    }
+
+    @Test
+    void prorratear_15_dias_es_mitad_del_monto() {
+        BigDecimal monto = new BigDecimal("5500.00");
+        assertThat(GeneradorPlanillaService.prorratear(monto, 15))
+                .isEqualByComparingTo("2750.00");
+    }
+
+    @Test
+    void prorratear_25_dias_redondea_a_dos_decimales_half_up() {
+        // 5500 / 30 * 25 = 4583.333... -> 4583.33 (HALF_UP)
+        BigDecimal monto = new BigDecimal("5500.00");
+        assertThat(GeneradorPlanillaService.prorratear(monto, 25))
+                .isEqualByComparingTo("4583.33");
+    }
+
+    @Test
+    void prorratear_cero_dias_es_cero() {
+        assertThat(GeneradorPlanillaService.prorratear(new BigDecimal("5500"), 0))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void prorratear_dias_negativos_es_cero() {
+        assertThat(GeneradorPlanillaService.prorratear(new BigDecimal("5500"), -5))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void prorratear_monto_null_es_cero() {
+        assertThat(GeneradorPlanillaService.prorratear(null, 15))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void prorratear_monto_cero_es_cero() {
+        assertThat(GeneradorPlanillaService.prorratear(BigDecimal.ZERO, 15))
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ---- F1.3b calcularDiasLaborados() ----
+
+    @Test
+    void calcularDiasLaborados_sin_asistencia_devuelve_30() {
+        when(asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(30);
+    }
+
+    @Test
+    void calcularDiasLaborados_asistencia_no_validada_devuelve_30() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("BORRADOR");
+        cab.setDiasFalta(10); // se ignora porque no está VALIDADA
+        when(asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(30);
+    }
+
+    @Test
+    void calcularDiasLaborados_con_5_faltas_validadas_devuelve_25() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(5);
+        when(asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(25);
+    }
+
+    @Test
+    void calcularDiasLaborados_30_o_mas_faltas_devuelve_0_no_negativo() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(40);
+        when(asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isZero();
+    }
+
+    @Test
+    void calcularDiasLaborados_diasFalta_null_se_trata_como_cero() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(null);
+        when(asistenciaCabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(30);
+    }
+
+    // ---- F1.4c calcularReintegro() ----
+
+    @Test
+    void calcularReintegro_sin_reintegro_devuelve_cero() {
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.empty());
+
+        BigDecimal r = service.calcularReintegro(EMPLEADO_ID, PERIODO,
+                new BigDecimal("5500.00"));
+        assertThat(r).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void calcularReintegro_15_dias_es_mitad_de_la_base() {
+        EmpleadoReintegro r = new EmpleadoReintegro();
+        r.setDiasReintegro(15);
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(r));
+
+        BigDecimal monto = service.calcularReintegro(EMPLEADO_ID, PERIODO,
+                new BigDecimal("5500.00"));
+        assertThat(monto).isEqualByComparingTo("2750.00");
+    }
+
+    @Test
+    void calcularReintegro_30_dias_devuelve_base_completa() {
+        EmpleadoReintegro r = new EmpleadoReintegro();
+        r.setDiasReintegro(30);
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(r));
+
+        BigDecimal monto = service.calcularReintegro(EMPLEADO_ID, PERIODO,
+                new BigDecimal("5500.00"));
+        assertThat(monto).isEqualByComparingTo("5500.00");
+    }
+
+    @Test
+    void calcularReintegro_base_cero_devuelve_cero_aunque_haya_dias() {
+        EmpleadoReintegro r = new EmpleadoReintegro();
+        r.setDiasReintegro(20);
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(r));
+
+        BigDecimal monto = service.calcularReintegro(EMPLEADO_ID, PERIODO,
+                BigDecimal.ZERO);
+        assertThat(monto).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void calcularReintegro_repo_solo_devuelve_filas_activas() {
+        // El motor SIEMPRE consulta con ACTIVO=1; verificamos que llama así.
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.empty());
+
+        service.calcularReintegro(EMPLEADO_ID, PERIODO, new BigDecimal("5500"));
+
+        verify(empleadoReintegroRepository, times(1))
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1);
+    }
+
+    // ======================================================================
+    // F1.5a — Feature flag motor.v3.prorrateo.enabled.
+    //
+    // El flag se inyecta vía @Value; en tests lo seteamos por ReflectionTestUtils
+    // sobre la instancia del service (mismo patrón que `self`).
+    // ======================================================================
+
+    @Test
+    void flag_off_motor_no_consulta_repo_reintegro_aunque_haya_uno_vigente() {
+        // Default: flag OFF. Aunque haya un reintegro en BD el motor lo ignora.
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", false);
+
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // Cero llamadas al repo de reintegro porque el flag bloquea la rama.
+        verify(empleadoReintegroRepository, times(0))
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1);
+    }
+
+    @Test
+    void flag_on_motor_consulta_repo_reintegro_y_no_suma_si_no_hay() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+        // Sin reintegro vigente.
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.empty());
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // El motor consultó el repo (rama activa) pero no sumó nada porque
+        // no había fila vigente.
+        verify(empleadoReintegroRepository, times(1))
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1);
+
+        // Sueldo base 3000 → totalIngresos == 3000 (sin reintegro).
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalIngresos()).isEqualTo(3000.00, within(0.01));
+    }
+
+    @Test
+    void flag_on_con_reintegro_15_dias_suma_mitad_del_sueldo_a_totalIngresos() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+
+        EmpleadoReintegro reint = new EmpleadoReintegro();
+        reint.setDiasReintegro(15);
+        when(empleadoReintegroRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(reint));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // Sueldo 3000 + reintegro 15d sobre base 3000 = 3000 + 1500 = 4500.
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalIngresos()).isEqualTo(4500.00, within(0.01));
+    }
+
+    // ======================================================================
+    // F1.6 — Tope 45% UIT en EsSalud SOLO para régimen CAS (decisión RRHH C2).
+    //
+    // Tests directos del helper `aplicarTopeEssaludCAS()` — no requiere ejercer
+    // todo `generar()`. Verifican: el régimen filtra correctamente y el parámetro
+    // se lee de BD vía ParametroRemunerativoService.
+    // ======================================================================
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_CAS_base_supera_tope_se_topea() {
+        // UIT 5350, factor 0.45 → tope = 0.45 × 5350 = 2407.50.
+        when(parametroService.obtenerValorOpcional(eq("TOPE_ESSALUD_PCT_UIT"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.45")));
+        when(parametroService.obtenerValor(eq("UIT"), anyInt(), any()))
+                .thenReturn(new BigDecimal("5350"));
+
+        BigDecimal base = new BigDecimal("5500.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "CAS", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("2407.50");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_CAS_base_menor_tope_no_se_topea() {
+        when(parametroService.obtenerValorOpcional(eq("TOPE_ESSALUD_PCT_UIT"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.45")));
+        when(parametroService.obtenerValor(eq("UIT"), anyInt(), any()))
+                .thenReturn(new BigDecimal("5350"));
+
+        // 1500 < 2407.50 → no topea.
+        BigDecimal base = new BigDecimal("1500.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "CAS", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("1500.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_728_no_se_topea_aunque_supere_tope() {
+        // Aunque haya tope sembrado, el régimen 728 NUNCA se topea.
+        BigDecimal base = new BigDecimal("9999.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "728", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("9999.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_SERVIR_no_se_topea() {
+        BigDecimal base = new BigDecimal("8000.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "SERVIR", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("8000.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_276_no_se_topea() {
+        BigDecimal base = new BigDecimal("7000.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "276", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("7000.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_regimen_null_no_se_topea() {
+        BigDecimal base = new BigDecimal("5500.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, null, 2026);
+
+        assertThat(topeada).isEqualByComparingTo("5500.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_CAS_sin_parametro_sembrado_no_se_topea() {
+        // Defensa: si TOPE_ESSALUD_PCT_UIT no existe en BD, NO bloquea el cálculo.
+        when(parametroService.obtenerValorOpcional(eq("TOPE_ESSALUD_PCT_UIT"), anyInt(), any()))
+                .thenReturn(Optional.empty());
+
+        BigDecimal base = new BigDecimal("5500.00");
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(base, "CAS", 2026);
+
+        assertThat(topeada).isEqualByComparingTo("5500.00");
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_base_cero_devuelve_cero() {
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(BigDecimal.ZERO, "CAS", 2026);
+        assertThat(topeada).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void aplicarTopeEssaludCAS_base_null_devuelve_cero_defensivo() {
+        BigDecimal topeada = service.aplicarTopeEssaludCAS(null, "CAS", 2026);
+        assertThat(topeada).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ======================================================================
+    // F1.7 — Retención IR 4ta categoría SOLO régimen CAS (decisión RRHH C1).
+    //
+    // Tests directos al helper `calcular4taCategoriaCAS()`. La conexión al
+    // motor está protegida por motorV3ProrrateoEnabled (mismo flag de F1.5a);
+    // el último test ejerce esa rama via generar().
+    // ======================================================================
+
+    @Test
+    void ir4ta_CAS_base_supera_inafecto_aplica_8pct() {
+        // Base 3000 > 1500 (inafecto) → IR4ta = 3000 × 0.08 = 240.00
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500.00")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.08")));
+
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("3000.00"), "CAS", 2026, false);
+
+        assertThat(ir4ta).isEqualByComparingTo("240.00");
+    }
+
+    @Test
+    void ir4ta_CAS_base_igual_a_inafecto_devuelve_cero() {
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500.00")));
+
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("1500.00"), "CAS", 2026, false);
+
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_CAS_base_menor_a_inafecto_devuelve_cero_INAFECTO() {
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500.00")));
+
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("1200.00"), "CAS", 2026, false);
+
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_CAS_con_suspension_devuelve_cero_aunque_supere_inafecto() {
+        // tieneSuspension4ta = true → no se retiene aunque la base sea alta.
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("10000.00"), "CAS", 2026, true);
+
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_regimen_728_no_aplica_devuelve_cero() {
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), "728", 2026, false);
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_regimen_SERVIR_no_aplica_devuelve_cero() {
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), "SERVIR", 2026, false);
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_regimen_276_no_aplica_devuelve_cero() {
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), "276", 2026, false);
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_regimen_null_no_aplica_devuelve_cero() {
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), null, 2026, false);
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_base_null_devuelve_cero_defensivo() {
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(null, "CAS", 2026, false);
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_CAS_sin_parametro_inafecto_devuelve_cero() {
+        // Defensa: si el parámetro BASE_INAFECTA_IR4TA no existe en BD,
+        // NO bloquea el cálculo y NO retiene (más seguro).
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.empty());
+
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), "CAS", 2026, false);
+
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void ir4ta_CAS_sin_parametro_tasa_devuelve_cero() {
+        // Defensa: si BASE_INAFECTA está cargado pero TASA_IR4TA no, tampoco retiene.
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500.00")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.empty());
+
+        BigDecimal ir4ta = service.calcular4taCategoriaCAS(
+                new BigDecimal("5500.00"), "CAS", 2026, false);
+
+        assertThat(ir4ta).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ======================================================================
+    // F1.5b — Helper estático regimenAplicaConcepto (parser CSV).
+    //
+    // Static → no requiere instancia ni mocks.
+    // ======================================================================
+
+    @Test
+    void regimenAplicaConcepto_TODOS_acepta_cualquier_regimen() {
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("TODOS", "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("TODOS", "276")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("todos", "SERVIR")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_null_o_blank_es_compat_TODOS() {
+        // Conceptos legacy sin metadata cargada → no bloquear.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto(null, "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("", "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("   ", "728")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_valor_unico_coincide() {
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("1057", "1057")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("SERVIR", "SERVIR")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_valor_unico_no_coincide() {
+        // DS 311 solo 728 → empleado 276 NO acepta.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "276")).isFalse();
+        // Asignación familiar régimen 728 (Ley 25129) → empleado CAS NO acepta.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "1057")).isFalse();
+    }
+
+    @Test
+    void regimenAplicaConcepto_CSV_acepta_si_token_presente() {
+        // DS 327 → '728,1057' acepta a ambos.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "1057")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_CSV_rechaza_si_token_ausente() {
+        // DS 327 → '728,1057' rechaza al régimen 276 (excluido por MUC).
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "276")).isFalse();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "SERVIR")).isFalse();
+    }
+
+    @Test
+    void regimenAplicaConcepto_CSV_tolera_espacios_y_case() {
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728 , 1057", "1057")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto(" 728,1057 ", "728")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("CAS", "cas")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_empleado_null_no_bloquea() {
+        // Defensivo: sin régimen del empleado, no romper el cálculo.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", null)).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", null)).isTrue();
+    }
+
+    // ======================================================================
+    // F1.5b — Motor en PASO 7: validar régimen + prorratear.
+    //
+    // Tests de integración via generar(). Reusan el setup feliz de los tests
+    // existentes (sueldo manual + sin asistencia).
+    // ======================================================================
+
+    @Test
+    void flag_off_motor_no_valida_regimen_aplicable_aunque_haya_mismatch() {
+        // Sin flag, el motor calcula como antes (compat con motor v2).
+        // Concepto cuyo régimen aplicable es 728 asignado a empleado 276 → NO explota.
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", false);
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        ConceptoPlanilla c = conceptoSueldo();
+        c.setRegimenAplicable("728"); // mismatch: empleado es 276
+        when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));
+        mockSueldo(3000.0);
+
+        // No lanza nada; el motor sigue como motor v2.
+        service.generar(EMPLEADO_ID, PERIODO);
+    }
+
+    @Test
+    void flag_on_motor_lanza_excepcion_si_regimen_no_aplica() {
+        // Con flag, el motor v3 valida y bloquea.
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        ConceptoPlanilla c = conceptoSueldo();
+        c.setCodigoMef("11214");                  // DS 327
+        c.setRegimenAplicable("728,1057");        // norma: solo 728 y 1057
+        c.setNombre("Incremento DS 327-2025-EF");
+        when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));
+        mockSueldo(3000.0);
+
+        assertThatThrownBy(() -> service.generar(EMPLEADO_ID, PERIODO))
+                .isInstanceOf(com.indeci.exception.ConceptoRegimenNoAplicableException.class)
+                .hasMessageContaining("11214")
+                .hasMessageContaining("276");
+    }
+
+    @Test
+    void flag_on_motor_prorratea_concepto_S_prorrateable_por_dias_laborados() {
+        // Flag ON + ES_PRORRATEABLE='S' + 5 días de falta → monto prorrateado a 25/30.
+        // Sueldo 3000 × 25/30 = 2500.00
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        ConceptoPlanilla c = conceptoSueldo();
+        c.setEsProrrateable("S");
+        c.setRegimenAplicable("TODOS");
+        when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));
+        mockSueldo(3000.0);
+
+        // 5 días de falta validada → diasLaborados = 25.
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(5);
+        when(asistenciaCabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        MovimientoPlanilla mov = capturarCabeceraFinal();
+        assertThat(mov.getTotalIngresos()).isEqualTo(2500.00, within(0.01));
+    }
+
+    @Test
+    void flag_on_motor_no_prorratea_concepto_N_prorrateable() {
+        // Flag ON pero ES_PRORRATEABLE='N' → monto NO se prorratea aunque
+        // haya días de falta.
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        ConceptoPlanilla c = conceptoSueldo();
+        c.setEsProrrateable("N");
+        c.setRegimenAplicable("TODOS");
+        when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));
+        mockSueldo(3000.0);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(5);
+        when(asistenciaCabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        MovimientoPlanilla mov = capturarCabeceraFinal();
+        assertThat(mov.getTotalIngresos()).isEqualTo(3000.00, within(0.01));
+    }
+
+    // ======================================================================
+    // F2.3 — calcularDiasLaborados consume INDECI_EMPLEADO_EVENTO.
+    // ======================================================================
+
+    @Test
+    void calcularDiasLaborados_sin_eventos_devuelve_30() {
+        // El repo de eventos devuelve lista vacía por default (Mockito).
+        // diasLab = 30 - 0 faltas - 0 eventos = 30.
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(30);
+    }
+
+    @Test
+    void calcularDiasLaborados_con_evento_5_dias_resta_5() {
+        // Empleado con licencia sin goce 5 días → diasLab = 30 - 5 = 25.
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setDiasAfectos(5);
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(e));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(25);
+    }
+
+    @Test
+    void calcularDiasLaborados_eventos_y_faltas_se_suman() {
+        // 3 faltas + 7 días evento = 10 → diasLab = 20.
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEstado("VALIDADA");
+        cab.setDiasFalta(3);
+        when(asistenciaCabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setDiasAfectos(7);
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(e));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(20);
+    }
+
+    @Test
+    void calcularDiasLaborados_evento_sin_diasAfectos_deriva_de_rango_fechas() {
+        // Maternidad 2026-05-10 a 2026-05-19 → 10 días naturales.
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setFechaInicio(java.time.LocalDate.of(2026, 5, 10));
+        e.setFechaFin(java.time.LocalDate.of(2026, 5, 19));
+        e.setDiasAfectos(null); // deriva
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(e));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(20);
+    }
+
+    @Test
+    void calcularDiasLaborados_eventos_30_o_mas_devuelve_0_no_negativo() {
+        // Maternidad 30+ días → diasLab nunca negativo.
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setDiasAfectos(45);
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(e));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isZero();
+    }
+
+    @Test
+    void calcularDiasLaborados_multiples_eventos_suma_todos() {
+        // Permiso 3 días + licencia 4 días + cese 8 días = 15 → diasLab = 15.
+        EmpleadoEvento permiso = new EmpleadoEvento();
+        permiso.setDiasAfectos(3);
+        EmpleadoEvento licencia = new EmpleadoEvento();
+        licencia.setDiasAfectos(4);
+        EmpleadoEvento cese = new EmpleadoEvento();
+        cese.setDiasAfectos(8);
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(permiso, licencia, cese));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(15);
     }
 }

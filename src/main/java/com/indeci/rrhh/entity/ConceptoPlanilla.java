@@ -78,7 +78,12 @@ public class ConceptoPlanilla {
     @Column(name = "ES_CUC")
     private String esCuc;
 
-    /** 276 | 728 | 1057 | SERVIR | TODOS. */
+    /**
+     * Régimen(es) al que aplica el concepto.
+     * Valor único: "276" | "728" | "1057" | "SERVIR" | "TODOS".
+     * CSV (F1.5b): "728,1057" para conceptos del pacto colectivo MEF.
+     * {@code null} o "TODOS" → aplica a todos los regímenes.
+     */
     @Column(name = "REGIMEN_APLICABLE")
     private String regimenAplicable;
 
@@ -87,4 +92,13 @@ public class ConceptoPlanilla {
 
     @Column(name = "FECHA_VIG_FIN")
     private LocalDate fechaVigFin;
+
+    /**
+     * F1.5b — S/N. Si "S", el motor v3 (motor.v3.prorrateo.enabled=true)
+     * prorratea el monto del EmpleadoConcepto por días laborados:
+     * {@code monto / 30 × dias_laborados}.
+     * Si "N" (default), el monto se aplica completo independientemente de los días.
+     */
+    @Column(name = "ES_PRORRATEABLE")
+    private String esProrrateable;
 }

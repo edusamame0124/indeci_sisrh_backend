@@ -21,6 +21,8 @@ import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
 import com.indeci.admin.dto.AdminUserRolesPutRequest;
 import com.indeci.admin.dto.AdminUserStatusPatchRequest;
 import com.indeci.admin.dto.AdminUserSummaryResponse;
+import com.indeci.admin.dto.AccesoSistemaDto;
+import com.indeci.admin.dto.AccesosPutRequest;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.admin.service.AdminUserService;
 import com.indeci.common.dto.ApiResponse;
@@ -41,11 +43,13 @@ public class AdminUserController {
     public ApiResponse<org.springframework.data.domain.Page<AdminUserSummaryResponse>> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sistema) {
 
         int safeSize = Math.min(Math.max(size, 1), 100);
         var pageable = PageRequest.of(Math.max(page, 0), safeSize);
-        var result = adminUserService.listUsers(q, pageable);
+        var result = adminUserService.listUsers(q, status, sistema, pageable);
         return new ApiResponse<>("OK", "Usuarios", result);
     }
 
@@ -101,5 +105,20 @@ public class AdminUserController {
             @Valid @RequestBody AdminUserPermisoDeniesPutRequest body) {
         adminUserService.putDenied(id, body);
         return new ApiResponse<>("OK", "Denegaciones actualizadas", null);
+    }
+
+    @GetMapping("/{id}/accesos")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<List<AccesoSistemaDto>> accesos(@PathVariable Long id) {
+        return new ApiResponse<>("OK", "Accesos por sistema", adminUserService.getAccesos(id));
+    }
+
+    @PutMapping("/{id}/accesos")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Void> putAccesos(
+            @PathVariable Long id,
+            @Valid @RequestBody AccesosPutRequest body) {
+        adminUserService.putAccesos(id, body);
+        return new ApiResponse<>("OK", "Accesos actualizados", null);
     }
 }

@@ -7,5 +7,6 @@ public record AdminUserDetailResponse(
         String username,
         String status,
         List<Long> assignedRoleIds,
-        List<Long> deniedPermissionIds) {
+        List<Long> deniedPermissionIds,
+        List<AccesoSistemaDto> sistemas) {
 }

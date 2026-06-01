@@ -2,8 +2,10 @@ package com.indeci.admin.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -14,6 +16,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indeci.admin.dto.AccesoSistemaDto;
+import com.indeci.admin.dto.AccesoSistemaPutItem;
+import com.indeci.admin.dto.AccesosPutRequest;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
@@ -23,6 +30,11 @@ import com.indeci.admin.dto.AdminUserSummaryResponse;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
+import com.indeci.sistema.entity.Sistema;
+import com.indeci.sistema.entity.UsuarioSistema;
+import com.indeci.sistema.repository.SistemaRepository;
+import com.indeci.sistema.repository.SistemaRolRepository;
+import com.indeci.sistema.repository.UsuarioSistemaRepository;
 import com.indeci.user.entity.Permiso;
 import com.indeci.user.entity.Rol;
 import com.indeci.user.entity.User;
@@ -40,12 +52,19 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminUserService {
 
+    private static final String CODIGO_SISRH = "sisrh";
+    private static final TypeReference<List<String>> LIST_OF_STRING = new TypeReference<>() {};
+
     private final UserRepository userRepository;
     private final UsuarioRolRepository usuarioRolRepository;
     private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
     private final RolRepository rolRepository;
     private final PermisoRepository permisoRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SistemaRepository sistemaRepository;
+    private final UsuarioSistemaRepository usuarioSistemaRepository;
+    private final SistemaRolRepository sistemaRolRepository;
+    private final ObjectMapper objectMapper;
 
     @Value("${indeci.admin.new-user-default-role-id:}")
     private String newUserDefaultRoleIdRaw;
@@ -58,11 +77,20 @@ public class AdminUserService {
     private String newUserLegacyRoleCodigo;
 
     @Transactional(readOnly = true)
-    public Page<AdminUserSummaryResponse> listUsers(String q, Pageable pageable) {
-        Page<User> users = (q == null || q.isBlank())
-                ? userRepository.findAll(pageable)
-                : userRepository.findByUsernameContainingIgnoreCase(q.trim(), pageable);
-        return users.map(u -> new AdminUserSummaryResponse(u.getId(), u.getUsername(), u.getStatus()));
+    public Page<AdminUserSummaryResponse> listUsers(
+            String q,
+            String status,
+            String sistema,
+            Pageable pageable) {
+        String qClean = q == null || q.isBlank() ? null : q.trim();
+        String statusClean = status == null || status.isBlank() ? null : status.trim().toUpperCase(Locale.ROOT);
+        String sistemaClean = sistema == null || sistema.isBlank() ? null : sistema.trim().toLowerCase(Locale.ROOT);
+        Page<User> users = userRepository.searchAdminUsers(qClean, statusClean, sistemaClean, pageable);
+        return users.map(u -> new AdminUserSummaryResponse(
+                u.getId(),
+                u.getUsername(),
+                u.getStatus(),
+                buildAccesos(u.getId())));
     }
 
     @Transactional(readOnly = true)
@@ -75,7 +103,13 @@ public class AdminUserService {
         List<Long> denied = usuarioPermisoDenyRepository.findByUserId(id).stream()
                 .map(UsuarioPermisoDeny::getPermisoId)
                 .toList();
-        return new AdminUserDetailResponse(u.getId(), u.getUsername(), u.getStatus(), roles, denied);
+        return new AdminUserDetailResponse(
+                u.getId(),
+                u.getUsername(),
+                u.getStatus(),
+                roles,
+                denied,
+                buildAccesos(u.getId()));
     }
 
     @Auditable(accion = "ADMIN_USER_CREATE")
@@ -240,6 +274,124 @@ public class AdminUserService {
             row.setUserId(id);
             row.setPermisoId(pid);
             usuarioPermisoDenyRepository.save(row);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccesoSistemaDto> getAccesos(Long id) {
+        userRepository.findById(id).orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+        return buildAccesos(id);
+    }
+
+    @Auditable(accion = "ADMIN_USER_ACCESOS")
+    @Transactional
+    public void putAccesos(Long id, AccesosPutRequest req) {
+        userRepository.findById(id).orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+        for (AccesoSistemaPutItem item : req.accesos()) {
+            String codigo = normalizeCodigoSistema(item.codigo());
+            if (CODIGO_SISRH.equals(codigo)) {
+                continue;
+            }
+            Sistema sistema = sistemaRepository.findByCodigo(codigo)
+                    .orElseThrow(() -> new NegocioException("Sistema no encontrado: " + codigo));
+            if (sistema.getActivo() == null || sistema.getActivo() != 1) {
+                throw new NegocioException("Sistema inactivo: " + codigo);
+            }
+            List<String> roles = normalizeRoles(item.roles());
+            if (Boolean.TRUE.equals(item.activo()) && roles.isEmpty()) {
+                throw new NegocioException("Debe seleccionar al menos un rol para " + sistema.getNombre());
+            }
+            for (String rol : roles) {
+                if (!sistemaRolRepository.existsBySistemaIdAndCodigoRolAndActivo(sistema.getId(), rol, 1)) {
+                    throw new NegocioException("Rol invÃ¡lido para " + sistema.getNombre() + ": " + rol);
+                }
+            }
+
+            UsuarioSistema row = usuarioSistemaRepository
+                    .findByUserIdAndSistemaId(id, sistema.getId())
+                    .orElseGet(() -> {
+                        UsuarioSistema created = new UsuarioSistema();
+                        created.setUserId(id);
+                        created.setSistemaId(sistema.getId());
+                        created.setCreatedAt(LocalDateTime.now());
+                        return created;
+                    });
+            row.setActivo(Boolean.TRUE.equals(item.activo()) ? 1 : 0);
+            row.setRolesExternos(Boolean.TRUE.equals(item.activo()) ? writeRoles(roles) : null);
+            usuarioSistemaRepository.save(row);
+        }
+    }
+
+    private List<AccesoSistemaDto> buildAccesos(Long userId) {
+        Map<Long, UsuarioSistema> asignaciones = new LinkedHashMap<>();
+        for (UsuarioSistema us : usuarioSistemaRepository.findByUserId(userId)) {
+            asignaciones.put(us.getSistemaId(), us);
+        }
+
+        List<AccesoSistemaDto> out = new ArrayList<>();
+        for (Sistema sistema : sistemaRepository.findByActivoOrderByOrdenAsc(1)) {
+            if (CODIGO_SISRH.equals(sistema.getCodigo())) {
+                out.add(new AccesoSistemaDto(
+                        sistema.getCodigo(),
+                        sistema.getNombre(),
+                        !usuarioRolRepository.findByUserId(userId).isEmpty(),
+                        buildSisrhRoles(userId)));
+                continue;
+            }
+            UsuarioSistema us = asignaciones.get(sistema.getId());
+            boolean activo = us != null && us.getActivo() != null && us.getActivo() == 1;
+            out.add(new AccesoSistemaDto(
+                    sistema.getCodigo(),
+                    sistema.getNombre(),
+                    activo,
+                    activo ? parseRoles(us.getRolesExternos()) : List.of()));
+        }
+        return out;
+    }
+
+    private List<String> normalizeRoles(List<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        return raw.stream()
+                .filter(r -> r != null && !r.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private List<String> buildSisrhRoles(Long userId) {
+        return usuarioRolRepository.findByUserId(userId)
+                .stream()
+                .filter(ur -> ur.getSistema() == null || "SISRH".equalsIgnoreCase(ur.getSistema()))
+                .map(ur -> rolRepository.findById(ur.getRolId()).orElse(null))
+                .filter(rol -> rol != null && rol.getCodigo() != null)
+                .map(Rol::getCodigo)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeCodigoSistema(String codigo) {
+        return codigo == null ? "" : codigo.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private List<String> parseRoles(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> roles = objectMapper.readValue(json, LIST_OF_STRING);
+            return normalizeRoles(roles);
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    private String writeRoles(List<String> roles) {
+        try {
+            return objectMapper.writeValueAsString(roles);
+        } catch (Exception ex) {
+            throw new NegocioException("No se pudieron registrar los roles externos");
         }
     }
 }

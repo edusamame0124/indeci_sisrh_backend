@@ -2,9 +2,11 @@ package com.indeci.auth.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,6 +47,7 @@ public class AuthService {
     private final RolRepository rolRepository;
     private final RolPermisoRepository rolPermisoRepository;
     private final PermisoRepository permisoRepository;
+    private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
     private final TurnstileService turnstileService;
@@ -367,31 +370,48 @@ public class AuthService {
 
     private List<String> obtenerRoles(User user) {
         List<UsuarioRol> usuarioRoles = usuarioRolRepository.findByUserId(user.getId());
-        List<String> roles = new ArrayList<>();
+        Set<String> roles = new LinkedHashSet<>();
 
         for (UsuarioRol ur : usuarioRoles) {
+            if (!esRolSisrh(ur)) {
+                continue;
+            }
             Rol rol = rolRepository.findById(ur.getRolId()).orElse(null);
             if (rol != null) roles.add(rol.getCodigo());
         }
 
-        return roles;
+        return new ArrayList<>(roles);
     }
 
     private List<String> obtenerPermisos(User user) {
         List<UsuarioRol> usuarioRoles = usuarioRolRepository.findByUserId(user.getId());
-        List<String> permisos = new ArrayList<>();
+        Set<Long> permisosDenegados = usuarioPermisoDenyRepository.findByUserId(user.getId())
+                .stream()
+                .map(UsuarioPermisoDeny::getPermisoId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> permisos = new LinkedHashSet<>();
 
         for (UsuarioRol ur : usuarioRoles) {
+            if (!esRolSisrh(ur)) {
+                continue;
+            }
             List<RolPermiso> rolPermisos =
                     rolPermisoRepository.findByRolId(ur.getRolId());
 
             for (RolPermiso rp : rolPermisos) {
+                if (permisosDenegados.contains(rp.getPermisoId())) {
+                    continue;
+                }
                 Permiso p = permisoRepository.findById(rp.getPermisoId()).orElse(null);
                 if (p != null) permisos.add(p.getCodigo());
             }
         }
 
-        return permisos;
+        return new ArrayList<>(permisos);
+    }
+
+    private boolean esRolSisrh(UsuarioRol ur) {
+        return ur.getSistema() == null || "SISRH".equalsIgnoreCase(ur.getSistema());
     }
     
     @Auditable(accion = "REFRESH_TOKEN")

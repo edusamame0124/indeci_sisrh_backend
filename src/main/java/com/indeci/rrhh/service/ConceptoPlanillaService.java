@@ -70,6 +70,19 @@ public class ConceptoPlanillaService {
                     dto.setCodigoSisper(e.getCodigoSisper());
                     dto.setTipoConcepto(e.getTipoConcepto());
 
+                    // F3.2 — catálogo enriquecido para chips visuales en UI.
+                    dto.setCodigoPlameSunat(e.getCodigoPlameSunat());
+                    dto.setCodigoMcpp(e.getCodigoMcpp());
+                    dto.setAfectoIr5ta(e.getAfectoIr5ta());
+                    dto.setAfectoAportePens(e.getAfectoAportePens());
+                    dto.setAfectoEssalud(e.getAfectoEssalud());
+                    dto.setEsMuc(e.getEsMuc());
+                    dto.setEsCuc(e.getEsCuc());
+                    dto.setRegimenAplicable(e.getRegimenAplicable());
+                    dto.setFechaVigIni(e.getFechaVigIni());
+                    dto.setFechaVigFin(e.getFechaVigFin());
+                    dto.setEsProrrateable(e.getEsProrrateable());
+
                     return dto;
 
                 }).toList();
