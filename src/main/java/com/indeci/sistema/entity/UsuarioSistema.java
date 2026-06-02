@@ -39,6 +39,10 @@ public class UsuarioSistema {
     @Column(name = "ROLES_EXTERNOS", length = 500)
     private String rolesExternos;
 
+    /** Código de área organizacional en el sistema externo (INDECI_SISTEMA_AREA.CODIGO_AREA). */
+    @Column(name = "AREA_CODIGO", length = 40)
+    private String areaCodigo;
+
     @Column(name = "ACTIVO", nullable = false)
     private Integer activo;
 

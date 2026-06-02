@@ -53,7 +53,10 @@ public class SecurityConfig {
             		        "/swagger-ui/**",
             		        "/swagger-ui.html",
             		        "/v3/api-docs/**",
-            		        "/actuator/**"
+            		        // F0.6 — solo /actuator/health público; el resto autenticado.
+            		        "/actuator/health",
+            		        "/actuator/health/**",
+            		        "/actuator/info"
             		).permitAll()
 
                 .requestMatchers(

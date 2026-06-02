@@ -259,9 +259,11 @@ public class EmpleadoPuestoService {
                         }
                     }
                     dto.setActivo(e.getActivo());
-            
 
-                
+                    // F5.1 — fechas del puesto para el timeline cargo histórico.
+                    dto.setFechaInicio(e.getFechaInicio());
+                    dto.setFechaFin(e.getFechaFin());
+
                     return dto;
                 }).toList();
     }

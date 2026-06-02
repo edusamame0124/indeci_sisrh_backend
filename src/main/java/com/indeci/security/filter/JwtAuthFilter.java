@@ -40,9 +40,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         
         String path = request.getRequestURI();
 
+        // F0.6 — early-return SOLO para endpoints públicos. /actuator/{metrics,env,beans,...}
+        // pasa por la validación JWT (queda autenticado por SecurityConfig.anyRequest).
         if (
                 path.startsWith("/api/auth/")
-                || path.startsWith("/actuator")
+                || path.startsWith("/actuator/health")
+                || "/actuator/info".equals(path)
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/webjars")

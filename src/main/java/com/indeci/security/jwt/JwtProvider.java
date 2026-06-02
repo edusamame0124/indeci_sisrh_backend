@@ -85,6 +85,19 @@ public class JwtProvider {
                                          List<String> roles,
                                          List<String> permisos,
                                          Map<String, List<String>> sistemas) {
+        return generarTokenDefinitivo(usuario, roles, permisos, sistemas, Map.of());
+    }
+
+    /**
+     * Spec 015 / SSO: emite el token definitivo con claims {@code sistemas} y {@code areas}.
+     * {@code areas} es un mapa codigo-sistema -> codigo-area (p. ej. {"convocatoria":"ORH"}).
+     * Se omite del JWT si está vacío para no inflar tokens de usuarios sin área asignada.
+     */
+    public String generarTokenDefinitivo(User usuario,
+                                         List<String> roles,
+                                         List<String> permisos,
+                                         Map<String, List<String>> sistemas,
+                                         Map<String, String> areas) {
 
         Date ahora = new Date();
         Date expiracion = new Date(ahora.getTime() + jwtProperties.getExpiration());
@@ -95,11 +108,13 @@ public class JwtProvider {
                 .claim("permisos", permisos)
                 .claim("otpValidado", true)
                 .claim("newPassOk", "N".equalsIgnoreCase(usuario.getNewClave()))
-                // Spec 011 / B2 — empleado vinculado a la cuenta (null si no tiene).
                 .claim("empleadoId", usuario.getEmpleadoId());
 
         if (sistemas != null && !sistemas.isEmpty()) {
             builder = builder.claim("sistemas", sistemas);
+        }
+        if (areas != null && !areas.isEmpty()) {
+            builder = builder.claim("areas", areas);
         }
 
         return builder

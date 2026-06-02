@@ -11,6 +11,7 @@ import com.indeci.admin.dto.AdminRolResponse;
 import com.indeci.user.entity.Permiso;
 import com.indeci.user.entity.Rol;
 import com.indeci.user.repository.PermisoRepository;
+import com.indeci.user.repository.RolPermisoRepository;
 import com.indeci.user.repository.RolRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class AdminMetadataService {
 
     private final RolRepository rolRepository;
     private final PermisoRepository permisoRepository;
+    private final RolPermisoRepository rolPermisoRepository;
 
     @Transactional(readOnly = true)
     public List<AdminRolResponse> listRoles() {
@@ -28,6 +30,16 @@ public class AdminMetadataService {
                 .filter(r -> r.getActivo() == null || "S".equalsIgnoreCase(r.getActivo()))
                 .sorted(Comparator.comparing(Rol::getCodigo, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(r -> new AdminRolResponse(r.getId(), r.getCodigo(), r.getNombre(), r.getActivo(), r.getNivel()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminPermisoResponse> listPermisosDeRol(Long rolId) {
+        return rolPermisoRepository.findByRolId(rolId).stream()
+                .map(rp -> permisoRepository.findById(rp.getPermisoId()).orElse(null))
+                .filter(p -> p != null && ("S".equalsIgnoreCase(p.getActivo()) || p.getActivo() == null))
+                .sorted(Comparator.comparing(Permiso::getCodigo, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(p -> new AdminPermisoResponse(p.getId(), p.getCodigo(), p.getDescripcion()))
                 .toList();
     }
 

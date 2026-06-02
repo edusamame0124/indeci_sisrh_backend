@@ -1,5 +1,7 @@
 package com.indeci.rrhh.dto;
 
+import java.time.LocalDate;
+
 import lombok.Data;
 
 @Data
@@ -46,4 +48,10 @@ private String dependencia;
 private String jefe;
 
 private String tipoCargo;
+
+/** F5.1 — fecha de inicio del puesto (timeline cargo histórico). */
+private LocalDate fechaInicio;
+
+/** F5.1 — fecha de fin del puesto; null cuando es el cargo vigente. */
+private LocalDate fechaFin;
 }

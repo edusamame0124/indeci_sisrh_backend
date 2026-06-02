@@ -107,6 +107,31 @@ public class UsuarioSistemaService {
     }
 
     /**
+     * Construye el mapa {@code codigo -> areaCodigo} para el claim {@code areas} del JWT.
+     * Solo incluye sistemas externos con area asignada y activa.
+     * SISRH no tiene area en este modelo (siempre omitido).
+     */
+    public Map<String, String> obtenerAreasDe(User user) {
+        Map<String, String> resultado = new LinkedHashMap<>();
+        Map<Long, String> sistemasActivos = new HashMap<>();
+        for (Sistema s : sistemaRepository.findByActivoOrderByOrdenAsc(1)) {
+            sistemasActivos.put(s.getId(), s.getCodigo());
+        }
+        List<UsuarioSistema> asignaciones =
+                usuarioSistemaRepository.findByUserIdAndActivo(user.getId(), 1);
+        for (UsuarioSistema asignacion : asignaciones) {
+            String codigo = sistemasActivos.get(asignacion.getSistemaId());
+            if (codigo == null || CODIGO_SISRH.equals(codigo)) {
+                continue;
+            }
+            if (asignacion.getAreaCodigo() != null && !asignacion.getAreaCodigo().isBlank()) {
+                resultado.put(codigo, asignacion.getAreaCodigo().trim());
+            }
+        }
+        return resultado;
+    }
+
+    /**
      * Variante para el endpoint {@code GET /api/auth/validate}: solo necesita el
      * userId (no requiere el objeto User completo) y los roles ya extraídos del
      * claim. Útil cuando validamos un token entrante desde SISCONV / GDR.

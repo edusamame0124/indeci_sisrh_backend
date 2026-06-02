@@ -1,4 +1,10 @@
 package com.indeci.admin.dto;
 
-public record AdminUserSummaryResponse(Long id, String username, String status) {
+import java.util.List;
+
+public record AdminUserSummaryResponse(
+        Long id,
+        String username,
+        String status,
+        List<AccesoSistemaDto> sistemas) {
 }
