@@ -16,7 +16,6 @@ public final class SisrhSecurityExpressions {
     public static final String ADM_AUDIT   = SA + " or hasAuthority('" + SisrhPermission.ADM_AUDIT   + "')";
     public static final String ADM_META    = SA + " or hasAuthority('" + SisrhPermission.ADM_META    + "')";
 
-    public static final String CAT_READ    = SA + " or hasAuthority('" + SisrhPermission.CAT_READ    + "')";
     public static final String CAT_WRITE   = SA + " or hasAuthority('" + SisrhPermission.CAT_WRITE   + "')";
 
     public static final String EMP_READ    = SA + " or hasAuthority('" + SisrhPermission.EMP_READ    + "')";

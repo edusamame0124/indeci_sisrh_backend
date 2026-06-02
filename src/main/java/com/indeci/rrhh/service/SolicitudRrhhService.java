@@ -52,14 +52,18 @@ public class SolicitudRrhhService {
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
             SolicitudRrhhDto dto) {
-    	 Long empleadoId = SecurityUtil.getEmpleadoId();
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
+        }
+
         // ==========================================
         // VALIDAR EMPLEADO
         // ==========================================
 
         empleadoRepository
-                .findById(
-                		empleadoId)
+                .findById(empleadoId)
                 .orElseThrow(() ->
                         new NegocioException(
                                 "Empleado no encontrado"));

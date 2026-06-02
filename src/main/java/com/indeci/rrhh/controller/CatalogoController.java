@@ -45,7 +45,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/catalogos")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.CAT_READ)
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('CAT_WRITE')")
 public class CatalogoController {
 
     private final CatalogoService catalogoService;
