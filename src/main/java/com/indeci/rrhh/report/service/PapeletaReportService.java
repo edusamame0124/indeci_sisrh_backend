@@ -18,6 +18,7 @@ import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 import lombok.RequiredArgsConstructor;
 
 import net.sf.jasperreports.engine.*;
+import net.sf.jasperreports.engine.util.JRLoader;
 
 import org.springframework.stereotype.Service;
 
@@ -55,9 +56,11 @@ oficinaRepository;
 private final PersonaRepository
 personaRepository;
 
+
+
 public String generarPdf(
         Long solicitudId) {
-
+	 System.out.println("GENERANDO PAPELETA ID = " + solicitudId);
     try {
 
         // ==========================================
@@ -142,12 +145,28 @@ public String generarPdf(
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
-                                "/reportes/rrhh/papeleta.jrxml");
+                                "/reportes/rrhh/papeleta.jasper");
+        
+;
+        
+        if (jasperStream == null) {
+            throw new RuntimeException(
+                    "No existe /reportes/rrhh/papeleta.jasper");
+        }
 
+        if (logo == null) {
+            throw new RuntimeException(
+                    "No existe /reportes/img/LogoIndeci.png");
+        }
+
+        System.out.println("ANTES DE CARGAR JASPER");
+        
         JasperReport jasperReport =
-                JasperCompileManager
-                        .compileReport(
-                                jasperStream);
+                (JasperReport)
+                JRLoader.loadObject(
+                        jasperStream);
+
+        System.out.println("DESPUES DE CARGAR JASPER");
 
         // ==========================================
         // PARAMETERS
@@ -179,7 +198,7 @@ public String generarPdf(
         params.put(
                 "P_CARGO",
                 valor(
-                        puesto.getCargo()));
+                        puesto.getCargo().getNombre()));
 
         params.put(
                 "P_TIPO",
