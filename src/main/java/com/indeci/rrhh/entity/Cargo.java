@@ -2,6 +2,7 @@ package com.indeci.rrhh.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
 
@@ -31,6 +32,7 @@ public class Cargo {
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
     
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "TIPO_CARGO_ID",

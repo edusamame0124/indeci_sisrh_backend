@@ -1,13 +1,18 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.ConceptoNoAsignableManualmenteException;
+import com.indeci.exception.ConceptoRegimenNoAplicableException;
 import com.indeci.exception.ConceptoYaAsignadoException;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.EmpleadoConceptoDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoConcepto;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -38,6 +43,9 @@ class EmpleadoConceptoServiceTest {
 
     @Mock private EmpleadoConceptoRepository repository;
     @Mock private ConceptoPlanillaRepository conceptoRepository;
+    @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock private RegimenLaboralRepository regimenLaboralRepository;
+    @Mock private ConceptoPlanillaService conceptoPlanillaService;
 
     @InjectMocks private EmpleadoConceptoService service;
 
@@ -61,16 +69,26 @@ class EmpleadoConceptoServiceTest {
     }
 
     @Test
-    void guardar_remunerativo_manual_se_permite() {
-        // REGLA RELAJADA — el sueldo básico REMUNERATIVO sí puede asignarse a
-        // mano mientras el motor no lo calcule por régimen (deuda Etapa 3).
-        stubConcepto(concepto("00301", "REMUNERATIVO", "Sueldo Básico"));
+    void guardar_remunerativo_no_base_se_permite() {
+        // Un REMUNERATIVO no-base (ej. Horas Extras 00303) sí se asigna a mano.
+        stubConcepto(concepto("00303", "REMUNERATIVO", "Horas Extras"));
         when(repository.existsByEmpleadoIdAndConceptoPlanillaIdAndActivo(
                 EMPLEADO_ID, CONCEPTO_ID, 1)).thenReturn(false);
 
         service.guardar(dto(2500.0));
 
         verify(repository).save(any(EmpleadoConcepto.class));
+    }
+
+    @Test
+    void guardar_remuneracion_base_es_rechazada() {
+        // Mejora 2026-06-03 — la base la calcula el motor desde sueldoBasico;
+        // "Remuneración CAS"/"Sueldo Básico"/MUC no se asignan a mano.
+        stubConcepto(concepto("00501", "REMUNERATIVO", "Remuneración CAS"));
+
+        assertThatThrownBy(() -> service.guardar(dto(3000.0)))
+                .isInstanceOf(ConceptoNoAsignableManualmenteException.class);
+        verify(repository, never()).save(any());
     }
 
     @Test
@@ -179,10 +197,51 @@ class EmpleadoConceptoServiceTest {
         verify(repository, never()).save(any());
     }
 
+    @Test
+    void guardar_concepto_de_otro_regimen_es_rechazado() {
+        // Guard normativo: concepto SERVIR asignado a empleado CAS → no aplica.
+        ConceptoPlanilla c = concepto("00504", "REMUNERATIVO", "Incremento DS X");
+        c.setRegimenAplicable("SERVIR");
+        stubConcepto(c);
+        stubRegimenEmpleado("CAS");
+
+        assertThatThrownBy(() -> service.guardar(dto(100.0)))
+                .isInstanceOf(ConceptoRegimenNoAplicableException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void guardar_concepto_728_1057_aplica_a_CAS_via_alias() {
+        // Alias CAS≡1057: un concepto '728,1057' SÍ aplica a un empleado CAS.
+        ConceptoPlanilla c = concepto("11214", "REMUNERATIVO", "Incremento DS 327-2025-EF");
+        c.setRegimenAplicable("728,1057");
+        stubConcepto(c);
+        stubRegimenEmpleado("CAS");
+        when(repository.existsByEmpleadoIdAndConceptoPlanillaIdAndActivo(
+                EMPLEADO_ID, CONCEPTO_ID, 1)).thenReturn(false);
+
+        service.guardar(dto(100.0));
+
+        verify(repository).save(any(EmpleadoConcepto.class));
+    }
+
     // ===================== HELPERS =====================
 
     private void stubConcepto(ConceptoPlanilla c) {
         when(conceptoRepository.findById(CONCEPTO_ID)).thenReturn(Optional.of(c));
+    }
+
+    /** Hace que el empleado resuelva al régimen {@code codigo} (vía planilla activa). */
+    private void stubRegimenEmpleado(String codigo) {
+        EmpleadoPlanilla pl = new EmpleadoPlanilla();
+        pl.setEmpleadoId(EMPLEADO_ID);
+        pl.setRegimenLaboralId(77L);
+        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pl));
+        RegimenLaboral rl = new RegimenLaboral();
+        rl.setId(77L);
+        rl.setCodigo(codigo);
+        when(regimenLaboralRepository.findById(77L)).thenReturn(Optional.of(rl));
     }
 
     private EmpleadoConceptoDto dto(Double monto) {

@@ -1,5 +1,6 @@
 package com.indeci.rrhh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -28,13 +29,15 @@ public class Oficina {
     @Column(name = "ESTRUCTURA_ORGANICA_ID")
     private Long estructuraOrganicaId;
     
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "SEDE_ID",
             insertable = false,
             updatable = false)
     private Sede sede;
-    
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "ESTRUCTURA_ORGANICA_ID",

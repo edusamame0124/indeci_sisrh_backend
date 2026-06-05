@@ -3,8 +3,10 @@ package com.indeci.rrhh.service;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EstadoCivilRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.repository.GradoAcademicoRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.ProfesionRepository;
@@ -44,6 +46,10 @@ class PersonaServiceTest {
     private TipoDocumentoRepository tipoDocumentoRepository;
     @Mock
     private TipoPersonalRepository tipoPersonalRepository;
+    @Mock
+    private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock
+    private RegimenLaboralRepository regimenLaboralRepository;
 
     @InjectMocks
     private PersonaService personaService;

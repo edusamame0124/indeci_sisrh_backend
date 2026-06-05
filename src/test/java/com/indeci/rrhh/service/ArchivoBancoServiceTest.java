@@ -21,7 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.AbonoBanco;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
@@ -65,8 +65,8 @@ class ArchivoBancoServiceTest {
         return a;
     }
 
-    private PersonaEmpleadoResponseDto persona(Long empleadoId, String dni, String nombre) {
-        PersonaEmpleadoResponseDto p = new PersonaEmpleadoResponseDto();
+    private PersonaResumenDto persona(Long empleadoId, String dni, String nombre) {
+        PersonaResumenDto p = new PersonaResumenDto();
         p.setEmpleadoId(empleadoId);
         p.setDni(dni);
         p.setNombreCompleto(nombre);

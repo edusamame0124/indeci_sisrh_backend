@@ -16,7 +16,7 @@ import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
 
 import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.AbonoBanco;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.repository.AbonoBancoRepository;
@@ -75,8 +75,8 @@ public class ArchivoBancoService {
         }
 
         // 2) Identidad del empleado (DNI / nombres) y registro AIRHSP.
-        Map<Long, PersonaEmpleadoResponseDto> personas = new HashMap<>();
-        for (PersonaEmpleadoResponseDto p : personaService.listar()) {
+        Map<Long, PersonaResumenDto> personas = new HashMap<>();
+        for (PersonaResumenDto p : personaService.listar()) {
             if (p.getEmpleadoId() != null) {
                 personas.put(p.getEmpleadoId(), p);
             }
@@ -120,7 +120,7 @@ public class ArchivoBancoService {
     private String construirTxt(
             String banco,
             List<AbonoBanco> abonos,
-            Map<Long, PersonaEmpleadoResponseDto> personas) {
+            Map<Long, PersonaResumenDto> personas) {
 
         abonos.sort(Comparator.comparing(
                 a -> nombre(personas.get(a.getEmpleadoId())),
@@ -129,7 +129,7 @@ public class ArchivoBancoService {
         StringBuilder sb = new StringBuilder();
         int orden = 0;
         for (AbonoBanco a : abonos) {
-            PersonaEmpleadoResponseDto persona = personas.get(a.getEmpleadoId());
+            PersonaResumenDto persona = personas.get(a.getEmpleadoId());
             orden++;
             sb.append(orden).append(TAB)
               .append(banco).append(TAB)
@@ -153,7 +153,7 @@ public class ArchivoBancoService {
                 .orElse("");
     }
 
-    private static String nombre(PersonaEmpleadoResponseDto p) {
+    private static String nombre(PersonaResumenDto p) {
         return p != null && p.getNombreCompleto() != null
                 ? p.getNombreCompleto() : "";
     }

@@ -38,6 +38,7 @@ import com.indeci.rrhh.entity.Profesion;
 import com.indeci.rrhh.entity.GradoAcademico;
 import com.indeci.rrhh.entity.Sede;
 import com.indeci.rrhh.entity.Oficina;
+import com.indeci.rrhh.entity.Cargo;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -173,6 +174,15 @@ public class CatalogoController {
                 "Lista dependencias",
                 catalogoService.listarDependencias());
     }
+
+    @GetMapping("/cargos")
+    public ApiResponse<List<Cargo>> cargos() {
+        return new ApiResponse<>(
+                "OK",
+                "Lista cargos",
+                catalogoService.listarCargos());
+    }
+
     @GetMapping("/tipos-comision-afp")
     public ApiResponse<List<TipoComisionAfp>> tiposComisionAfp() {
 

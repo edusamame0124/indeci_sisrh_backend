@@ -7,13 +7,19 @@ import com.indeci.rrhh.dto.MovimientoPlanillaResponseDto;
 import com.indeci.rrhh.dto.ResumenMetaDto;
 import com.indeci.rrhh.dto.ResumenMetaEmpleadoDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
+import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
+import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
+import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaDetalleRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
+import com.indeci.rrhh.repository.PersonaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,7 +33,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +50,12 @@ public class MovimientoPlanillaService {
     private final EmpleadoPlanillaRepository
             planillaRepository;
 
+    private final EmpleadoRepository empleadoRepository;
+
+    private final PersonaRepository personaRepository;
+
+    private final RegimenLaboralRepository regimenLaboralRepository;
+
     private final ConceptoPlanillaRepository
             conceptoRepository;
 
@@ -53,6 +68,21 @@ public class MovimientoPlanillaService {
     /** CODIGO_MEF de los aportes pensionarios del trabajador (ONP/AFP). */
     private static final Set<String> MEF_APORTES_PENSION =
             Set.of("05001", "05002", "05003", "05004");
+
+    private static final Comparator<EmpleadoPlanilla> PLANILLA_ACTUAL_ORDER =
+            Comparator
+                    .comparing(
+                            EmpleadoPlanilla::getUpdatedAt,
+                            Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(
+                            EmpleadoPlanilla::getCreatedAt,
+                            Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(
+                            EmpleadoPlanilla::getFechaInicio,
+                            Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(
+                            EmpleadoPlanilla::getId,
+                            Comparator.nullsFirst(Comparator.naturalOrder()));
 
     // ==========================================
     // LISTAR EMPLEADO
@@ -72,42 +102,7 @@ public class MovimientoPlanillaService {
                                 new NegocioException(
                                         "Planilla no encontrada"));
 
-        MovimientoPlanillaResponseDto dto =
-                new MovimientoPlanillaResponseDto();
-
-        dto.setId(mov.getId());
-
-        dto.setEmpleadoId(
-                mov.getEmpleadoId());
-
-        dto.setPeriodo(
-                mov.getPeriodo());
-
-        dto.setObservacion(
-                mov.getObservacion());
-
-        dto.setActivo(
-                mov.getActivo());
-
-        dto.setEstado(
-                mov.getEstado());
-
-        dto.setTotalIngresos(
-                mov.getTotalIngresos());
-
-        dto.setTotalDescuentos(
-                mov.getTotalDescuentos());
-
-        dto.setNetoPagar(
-                mov.getNetoPagar());
-
-        dto.setNeto50pctMinimo(
-                mov.getNeto50pctMinimo());
-
-        dto.setEstadoNeto(
-                mov.getEstadoNeto());
-
-        return dto;
+        return mapearMovimientos(List.of(mov)).get(0);
     }
 
     // ==========================================
@@ -117,51 +112,7 @@ public class MovimientoPlanillaService {
     public List<MovimientoPlanillaResponseDto>
     listarPeriodo(String periodo) {
 
-        return repository
-                .findByPeriodoAndActivo(
-                        periodo,
-                        1)
-                .stream()
-                .map(mov -> {
-
-                    MovimientoPlanillaResponseDto dto =
-                            new MovimientoPlanillaResponseDto();
-
-                    dto.setId(mov.getId());
-
-                    dto.setEmpleadoId(
-                            mov.getEmpleadoId());
-
-                    dto.setPeriodo(
-                            mov.getPeriodo());
-
-                    dto.setObservacion(
-                            mov.getObservacion());
-
-                    dto.setActivo(
-                            mov.getActivo());
-
-                    dto.setEstado(
-                            mov.getEstado());
-
-                    dto.setTotalIngresos(
-                            mov.getTotalIngresos());
-
-                    dto.setTotalDescuentos(
-                            mov.getTotalDescuentos());
-
-                    dto.setNetoPagar(
-                            mov.getNetoPagar());
-
-                    dto.setNeto50pctMinimo(
-                            mov.getNeto50pctMinimo());
-
-                    dto.setEstadoNeto(
-                            mov.getEstadoNeto());
-
-                    return dto;
-
-                }).toList();
+        return mapearMovimientos(repository.findByPeriodoAndActivo(periodo, 1));
     }
 
     // ==========================================
@@ -171,29 +122,133 @@ public class MovimientoPlanillaService {
     public List<MovimientoPlanillaResponseDto>
     listarPorEmpleado(Long empleadoId) {
 
-        return repository
-                .findByEmpleadoIdAndActivo(empleadoId, 1)
+        return mapearMovimientos(repository.findByEmpleadoIdAndActivo(empleadoId, 1));
+    }
+
+    private List<MovimientoPlanillaResponseDto>
+    mapearMovimientos(List<MovimientoPlanilla> movimientos) {
+
+        if (movimientos.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> empleadoIds = movimientos.stream()
+                .map(MovimientoPlanilla::getEmpleadoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, Empleado> empleadosPorId = empleadoRepository
+                .findAllById(empleadoIds)
                 .stream()
-                .map(mov -> {
+                .collect(Collectors.toMap(
+                        Empleado::getId,
+                        Function.identity(),
+                        (a, b) -> a));
 
-                    MovimientoPlanillaResponseDto dto =
-                            new MovimientoPlanillaResponseDto();
+        List<Long> personaIds = empleadosPorId.values().stream()
+                .map(Empleado::getPersonaId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
-                    dto.setId(mov.getId());
-                    dto.setEmpleadoId(mov.getEmpleadoId());
-                    dto.setPeriodo(mov.getPeriodo());
-                    dto.setObservacion(mov.getObservacion());
-                    dto.setActivo(mov.getActivo());
-                    dto.setEstado(mov.getEstado());
-                    dto.setTotalIngresos(mov.getTotalIngresos());
-                    dto.setTotalDescuentos(mov.getTotalDescuentos());
-                    dto.setNetoPagar(mov.getNetoPagar());
-                    dto.setNeto50pctMinimo(mov.getNeto50pctMinimo());
-                    dto.setEstadoNeto(mov.getEstadoNeto());
+        Map<Long, Persona> personasPorId = personaRepository
+                .findAllById(personaIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        Persona::getId,
+                        Function.identity(),
+                        (a, b) -> a));
 
-                    return dto;
+        Map<Long, EmpleadoPlanilla> planillasPorEmpleado =
+                planillaActualPorEmpleado(empleadoIds);
 
-                }).toList();
+        List<Long> regimenIds = planillasPorEmpleado.values().stream()
+                .map(EmpleadoPlanilla::getRegimenLaboralId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, RegimenLaboral> regimenesPorId = regimenLaboralRepository
+                .findAllById(regimenIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        RegimenLaboral::getId,
+                        Function.identity(),
+                        (a, b) -> a));
+
+        return movimientos.stream()
+                .map(mov -> mapearMovimiento(
+                        mov,
+                        empleadosPorId,
+                        personasPorId,
+                        planillasPorEmpleado,
+                        regimenesPorId))
+                .toList();
+    }
+
+    private MovimientoPlanillaResponseDto
+    mapearMovimiento(MovimientoPlanilla mov,
+                     Map<Long, Empleado> empleadosPorId,
+                     Map<Long, Persona> personasPorId,
+                     Map<Long, EmpleadoPlanilla> planillasPorEmpleado,
+                     Map<Long, RegimenLaboral> regimenesPorId) {
+
+        MovimientoPlanillaResponseDto dto = new MovimientoPlanillaResponseDto();
+        dto.setId(mov.getId());
+        dto.setEmpleadoId(mov.getEmpleadoId());
+        dto.setPeriodo(mov.getPeriodo());
+        dto.setTotalIngresos(mov.getTotalIngresos());
+        dto.setTotalDescuentos(mov.getTotalDescuentos());
+        dto.setNetoPagar(mov.getNetoPagar());
+        dto.setEstado(mov.getEstado());
+        dto.setObservacion(mov.getObservacion());
+        dto.setActivo(mov.getActivo());
+        dto.setNeto50pctMinimo(mov.getNeto50pctMinimo());
+        dto.setEstadoNeto(mov.getEstadoNeto());
+
+        Empleado empleado = empleadosPorId.get(mov.getEmpleadoId());
+        if (empleado != null) {
+            Persona persona = personasPorId.get(empleado.getPersonaId());
+            if (persona != null) {
+                dto.setEmpleadoNombre(persona.getNombreCompleto());
+                dto.setEmpleadoDni(persona.getDni());
+            }
+        }
+
+        EmpleadoPlanilla planilla = planillasPorEmpleado.get(mov.getEmpleadoId());
+        if (planilla != null) {
+            RegimenLaboral regimen = regimenesPorId.get(planilla.getRegimenLaboralId());
+            if (regimen != null) {
+                dto.setRegimenLaboralCodigo(regimen.getCodigo());
+                dto.setRegimenLaboralNombre(regimen.getNombre());
+            }
+        }
+
+        return dto;
+    }
+
+    private Map<Long, EmpleadoPlanilla>
+    planillaActualPorEmpleado(List<Long> empleadoIds) {
+
+        if (empleadoIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return planillaRepository
+                .findByEmpleadoIdInAndActivo(empleadoIds, 1)
+                .stream()
+                .collect(Collectors.toMap(
+                        EmpleadoPlanilla::getEmpleadoId,
+                        Function.identity(),
+                        this::planillaMasReciente));
+    }
+
+    private EmpleadoPlanilla
+    planillaMasReciente(EmpleadoPlanilla a,
+                        EmpleadoPlanilla b) {
+
+        return PLANILLA_ACTUAL_ORDER.compare(a, b) >= 0 ? a : b;
     }
 
     // ==========================================

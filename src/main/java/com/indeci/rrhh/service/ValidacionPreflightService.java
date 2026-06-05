@@ -1,18 +1,19 @@
 package com.indeci.rrhh.service;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.PreflightValidacionDto;
+import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.dto.ValidacionHallazgoDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
@@ -35,13 +36,14 @@ import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.repository.TipoEventoRepository;
+import com.indeci.rrhh.service.support.RegimenAplicableHelper;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * F3.3 — Centro de Validaciones (preflight de planilla).
  *
- * <p>Ejecuta 10 reglas de detección sobre el período seleccionado y devuelve
+ * <p>Ejecuta 14 reglas de detección sobre el período seleccionado y devuelve
  * un {@link PreflightValidacionDto} con los hallazgos agrupados por severidad
  * (BLOQUEO / ALERTA / INFO). NO modifica datos: es solo lectura.</p>
  *
@@ -57,6 +59,10 @@ import lombok.RequiredArgsConstructor;
  *  V8  INFO     Empleados en ESTADO_LABORAL=EN_TRANSICION (CAS→728) LEY-06
  *  V9  ALERTA   Conceptos sin TIPO_CONCEPTO MEF                     LEY-01 / Spec 013
  *  V10 ALERTA   Eventos del período (subsidio) sin documento adjunto F2.4
+ *  V11–V14      IR 4ta categoría CAS (ver evaluarIr4taCas)          FASE 1
+ *  V15 ALERTA   Activo con planilla pero SIN sueldo básico          FIX base remun.
+ *  V16 BLOQUEO  Falta TASA_ESSALUD o ESSALUD_MINIMO del año         P1 EsSalud CAS
+ *  V17 ALERTA   Falta TOPE_ESSALUD_PCT_UIT (CAS sin tope de base)   P1 EsSalud CAS
  * </pre>
  *
  * <p>El servicio prioriza no romper si los datos están incompletos
@@ -81,6 +87,13 @@ public class ValidacionPreflightService {
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final EmpleadoEventoRepository empleadoEventoRepository;
     private final TipoEventoRepository tipoEventoRepository;
+    // FASE 1 — IR 4ta CAS (V11–V14).
+    private final ParametroRemunerativoService parametroService;
+    private final Suspension4taService suspension4taService;
+
+    private static final String REG_LABORAL_CAS = "CAS";
+    private static final String CODIGO_INTERNO_IR4TA_CAS = "IR4TA_CAS";
+    private static final String TRIBUTO_SUNAT_IR4TA = "3042";
 
     public PreflightValidacionDto evaluar(String periodo) {
         if (periodo == null || periodo.isBlank()) {
@@ -134,6 +147,26 @@ public class ValidacionPreflightService {
                         "V4", "Empleado",
                         "Empleado activo sin configuración de planilla.",
                         e.getId(), nombresEmpleado.get(e.getId()), null));
+            }
+        }
+
+        // V15 — activo CON planilla pero SIN sueldo básico (null o 0).
+        //   Cinturón de seguridad post-backfill V010_54: desde el fix de base
+        //   remunerativa, el ingreso base se toma de EmpleadoPlanilla.sueldoBasico
+        //   (ya NO de un concepto manual). Si quedó null/0, la planilla saldría
+        //   con ingreso 0 sin avisar. ALERTA (no BLOQUEO): puede ser legítimo
+        //   (licencia sin goce / suspensión), pero debe revisarse.
+        for (Empleado e : activos) {
+            EmpleadoPlanilla pl = planillaPorEmpleado.get(e.getId());
+            if (pl != null && (pl.getSueldoBasico() == null || pl.getSueldoBasico() <= 0)) {
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V15", "Empleado",
+                        "Empleado activo con configuración de planilla pero SIN sueldo básico "
+                                + "(la base remunerativa se toma de la configuración de planilla). "
+                                + "Verifica el sueldo básico o el ingreso saldría en 0.",
+                        e.getId(),
+                        nombresEmpleado.get(e.getId()),
+                        pl.getId()));
             }
         }
 
@@ -252,7 +285,122 @@ public class ValidacionPreflightService {
             }
         }
 
+        // V11–V14 — IR 4ta categoría CAS (FASE 1).
+        evaluarIr4taCas(periodo, activos, regimenPorEmpleado, planillaPorEmpleado,
+                nombresEmpleado, hallazgos);
+
+        // V16 / V17 — Parámetros EsSalud (P1 validación EsSalud CAS).
+        evaluarEssaludCas(periodo, activos, regimenPorEmpleado, planillaPorEmpleado, hallazgos);
+
         return PreflightValidacionDto.desdeLista(periodo, hallazgos);
+    }
+
+    /**
+     * FASE 1 — Validaciones de la retención IR 4ta CAS.
+     *
+     * <p>Solo se evalúa si existe al menos un empleado CAS activo con
+     * remuneración configurada (sueldo &gt; 0) — i.e. un caso que podría
+     * retener. Severidades según el criterio del cliente:</p>
+     * <pre>
+     *  V11 ALERTA   CAS con base > inafecto SIN constancia de suspensión cargada
+     *  V12 ALERTA   CAS con constancia de suspensión 4ta VENCIDA
+     *  V13 BLOQUEO  Falta parámetro TASA_IR4TA / BASE_INAFECTA_IR4TA (técnico)
+     *  V14 BLOQUEO  Concepto IR4TA_CAS ausente o sin CODIGO_TRIBUTO_SUNAT=3042 (técnico)
+     * </pre>
+     *
+     * <p><b>NO</b> se bloquea por ausencia de CODIGO_MEF: IR4TA_CAS es una
+     * retención tributaria SUNAT (3042), no un concepto de ingreso MEF/AIRHSP.</p>
+     */
+    private void evaluarIr4taCas(
+            String periodo,
+            List<Empleado> activos,
+            Map<Long, String> regimenPorEmpleado,
+            Map<Long, EmpleadoPlanilla> planillaPorEmpleado,
+            Map<Long, String> nombresEmpleado,
+            List<ValidacionHallazgoDto> hallazgos) {
+
+        List<Empleado> casConRemuneracion = activos.stream()
+                .filter(e -> REG_LABORAL_CAS.equalsIgnoreCase(regimenPorEmpleado.get(e.getId())))
+                .filter(e -> {
+                    EmpleadoPlanilla pl = planillaPorEmpleado.get(e.getId());
+                    return pl != null && pl.getSueldoBasico() != null && pl.getSueldoBasico() > 0;
+                })
+                .toList();
+
+        if (casConRemuneracion.isEmpty()) {
+            return; // No hay CAS que pueda retener 4ta: nada que validar.
+        }
+
+        int anio = ParametroRemunerativoService.periodoToFechaInicio(periodo).getYear();
+        LocalDate devengue = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+
+        // V13 — parámetros tributarios presentes (técnico, BLOQUEO).
+        Optional<BigDecimal> baseInafecta =
+                parametroService.obtenerValorOpcional("BASE_INAFECTA_IR4TA", anio, null);
+        Optional<BigDecimal> tasa =
+                parametroService.obtenerValorOpcional("TASA_IR4TA", anio, null);
+        if (tasa.isEmpty()) {
+            hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                    "V13", "Parámetro",
+                    "Falta el parámetro TASA_IR4TA del año " + anio
+                            + ". Cárgalo antes de generar planilla CAS.",
+                    null, null, null));
+        }
+        if (baseInafecta.isEmpty()) {
+            hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                    "V13", "Parámetro",
+                    "Falta el parámetro BASE_INAFECTA_IR4TA del año " + anio
+                            + ". Cárgalo antes de generar planilla CAS.",
+                    null, null, null));
+        }
+
+        // V14 — concepto IR4TA_CAS configurado con tributo SUNAT 3042 (técnico, BLOQUEO).
+        Optional<ConceptoPlanilla> conceptoIr4ta =
+                conceptoRepository.findByCodigoAndActivo(CODIGO_INTERNO_IR4TA_CAS, 1);
+        if (conceptoIr4ta.isEmpty()) {
+            hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                    "V14", "Concepto",
+                    "No existe el concepto IR4TA_CAS activo. Ejecutar el seed "
+                            + "V010_49 (retención IR 4ta CAS, tributo SUNAT 3042).",
+                    null, null, null));
+        } else if (!TRIBUTO_SUNAT_IR4TA.equals(conceptoIr4ta.get().getCodigoTributoSunat())) {
+            hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                    "V14", "Concepto",
+                    "El concepto IR4TA_CAS no tiene CODIGO_TRIBUTO_SUNAT=3042. "
+                            + "Corrígelo (no usar CODIGO_MEF para la retención tributaria).",
+                    null, null, conceptoIr4ta.get().getId()));
+        }
+
+        // V11 / V12 — por empleado (solo si el umbral inafecto está disponible).
+        if (baseInafecta.isEmpty()) {
+            return;
+        }
+        BigDecimal umbral = baseInafecta.get();
+        for (Empleado e : casConRemuneracion) {
+            BigDecimal base = BigDecimal.valueOf(
+                    planillaPorEmpleado.get(e.getId()).getSueldoBasico());
+            if (base.compareTo(umbral) <= 0) {
+                continue; // inafecto: no retiene, no requiere constancia.
+            }
+            Suspension4taVigenteDto susp =
+                    suspension4taService.consultarVigente(e.getId(), devengue);
+            if (susp == null || susp.vigente()) {
+                continue; // suspensión vigente (o sin dato fiable): no se alerta.
+            }
+            if (susp.existeVencida()) {
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V12", "Empleado",
+                        "CAS con constancia de suspensión de 4ta VENCIDA: se retendrá 8%. "
+                                + "Renueva la constancia SUNAT si corresponde.",
+                        e.getId(), nombresEmpleado.get(e.getId()), null));
+            } else {
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V11", "Empleado",
+                        "CAS con base > inafecto y SIN constancia de suspensión de 4ta: "
+                                + "se retendrá 8%. Verifica si tiene suspensión SUNAT.",
+                        e.getId(), nombresEmpleado.get(e.getId()), null));
+            }
+        }
     }
 
     /**
@@ -261,15 +409,64 @@ public class ValidacionPreflightService {
      * clase (mantiene a F3.3 aislado del motor). {@code null} o "TODOS"
      * aplica a cualquier régimen; valores CSV se evalúan por token.
      */
-    private boolean regimenAplica(String regimenAplicable, String regimenEmpleado) {
-        if (regimenAplicable == null || regimenAplicable.isBlank()) return true;
-        if ("TODOS".equalsIgnoreCase(regimenAplicable)) return true;
-        if (regimenEmpleado == null) return true; // sin régimen no se puede contradecir
-        Set<String> tokens = new HashSet<>();
-        for (String t : regimenAplicable.split(",")) {
-            tokens.add(t.trim().toUpperCase());
+    /**
+     * P1 EsSalud CAS — V16 / V17.
+     *
+     * <pre>
+     *  V16 BLOQUEO  TASA_ESSALUD o ESSALUD_MINIMO faltante: el motor lanzará al intentar calcular.
+     *  V17 ALERTA   TOPE_ESSALUD_PCT_UIT faltante para CAS: el motor es defensivo (no topea la base).
+     * </pre>
+     */
+    private void evaluarEssaludCas(
+            String periodo,
+            List<Empleado> activos,
+            Map<Long, String> regimenPorEmpleado,
+            Map<Long, EmpleadoPlanilla> planillaPorEmpleado,
+            List<ValidacionHallazgoDto> hallazgos) {
+
+        if (planillaPorEmpleado.isEmpty()) return;
+
+        int anio = ParametroRemunerativoService.periodoToFechaInicio(periodo).getYear();
+
+        // V16 — TASA_ESSALUD y ESSALUD_MINIMO son requeridos (obtenerValor lanza si faltan).
+        parametroService.obtenerValorOpcional("TASA_ESSALUD", anio, null).ifPresentOrElse(
+                t -> { /* OK */ },
+                () -> hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                        "V16", "Parámetro",
+                        "Falta el parámetro TASA_ESSALUD del año " + anio
+                                + ". El motor no puede calcular el aporte EsSalud empleador.",
+                        null, null, null)));
+
+        parametroService.obtenerValorOpcional("ESSALUD_MINIMO", anio, null).ifPresentOrElse(
+                m -> { /* OK */ },
+                () -> hallazgos.add(ValidacionHallazgoDto.bloqueo(
+                        "V16", "Parámetro",
+                        "Falta el parámetro ESSALUD_MINIMO del año " + anio
+                                + ". El motor no puede aplicar el piso regulatorio (9% RMV).",
+                        null, null, null)));
+
+        // V17 — TOPE_ESSALUD_PCT_UIT es opcional pero sin él el tope CAS no se aplica.
+        boolean hayCas = activos.stream()
+                .anyMatch(e -> REG_LABORAL_CAS.equalsIgnoreCase(regimenPorEmpleado.get(e.getId()))
+                        && planillaPorEmpleado.containsKey(e.getId()));
+
+        if (hayCas) {
+            Optional<BigDecimal> tope =
+                    parametroService.obtenerValorOpcional("TOPE_ESSALUD_PCT_UIT", anio, null);
+            if (tope.isEmpty() || tope.get().signum() == 0) {
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V17", "Parámetro",
+                        "Falta el parámetro TOPE_ESSALUD_PCT_UIT del año " + anio
+                                + ". La base EsSalud de trabajadores CAS se calculará "
+                                + "sin tope (se usará la base completa).",
+                        null, null, null));
+            }
         }
-        return tokens.contains(regimenEmpleado.toUpperCase());
+    }
+
+    private boolean regimenAplica(String regimenAplicable, String regimenEmpleado) {
+        // Fuente única de la regla (incluye alias CAS≡1057). Ver RegimenAplicableHelper.
+        return RegimenAplicableHelper.aplica(regimenAplicable, regimenEmpleado);
     }
 
     private String nombrePersona(Empleado e) {

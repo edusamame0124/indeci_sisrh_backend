@@ -38,6 +38,7 @@ class ExplicacionPlanillaServiceTest {
     @Mock private BankRepository bankRepository;
     @Mock private RegimenLaboralRepository regimenRepository;
     @Mock private ConciliacionAirhspRepository conciliacionRepository;
+    @Mock private CalculoSnapshotService calculoSnapshotService;
 
     @InjectMocks private ExplicacionPlanillaService service;
 
@@ -273,6 +274,42 @@ class ExplicacionPlanillaServiceTest {
 
         ExplicacionPlanillaDto r = service.explicar(EMP_ID, PERIODO);
         assertThat(r.lineas().get(0).detalle()).contains("Reintegro 5 días");
+    }
+
+    // =================== Snapshots (FASE 2) ===================
+
+    @Test
+    void snapshots_se_proyectan_desde_el_servicio() {
+        MovimientoPlanilla mov = movimiento(100L, 5500.0, 144.0, 5356.0, "BIEN");
+        when(movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(EMP_ID, PERIODO, 1))
+                .thenReturn(Optional.of(mov));
+        when(detalleRepository.findByMovimientoPlanillaId(100L)).thenReturn(List.of());
+
+        com.indeci.rrhh.entity.CalculoSnapshot snap = new com.indeci.rrhh.entity.CalculoSnapshot();
+        snap.setRegla("IR4TA_CAS");
+        snap.setBaseCalculo(new java.math.BigDecimal("1800.00"));
+        snap.setResultado(new java.math.BigDecimal("144.00"));
+        snap.setFormula("(1800.00) × 0.08 = 144.00");
+        snap.setVersionParametros("2026");
+        snap.setParametrosJson("{\"tasa\":0.08}");
+        when(calculoSnapshotService.listar(EMP_ID, PERIODO)).thenReturn(List.of(snap));
+
+        ExplicacionPlanillaDto r = service.explicar(EMP_ID, PERIODO);
+
+        assertThat(r.snapshots()).hasSize(1);
+        assertThat(r.snapshots().get(0).regla()).isEqualTo("IR4TA_CAS");
+        assertThat(r.snapshots().get(0).resultado()).isEqualByComparingTo("144.00");
+        assertThat(r.snapshots().get(0).formula()).contains("0.08");
+        assertThat(r.snapshots().get(0).parametrosJson()).contains("tasa");
+    }
+
+    @Test
+    void sin_snapshots_devuelve_lista_vacia() {
+        stubMovimientoFeliz();
+        when(calculoSnapshotService.listar(EMP_ID, PERIODO)).thenReturn(List.of());
+
+        ExplicacionPlanillaDto r = service.explicar(EMP_ID, PERIODO);
+        assertThat(r.snapshots()).isEmpty();
     }
 
     // =================== Defensivos ===================

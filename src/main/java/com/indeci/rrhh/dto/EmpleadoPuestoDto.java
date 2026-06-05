@@ -11,17 +11,14 @@ public class EmpleadoPuestoDto {
 
     private Long nivelId;
 
-
+    private Long sedeId;
 
     private Long oficinaId;
 
     private Long jefeId;
 
-    // =====================================
-    // NUEVOS
-    // =====================================
+    private Long dependenciaId;
 
-
-
+    private Long estructuraOrganicaId;
 
 }

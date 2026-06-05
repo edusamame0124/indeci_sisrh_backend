@@ -5,12 +5,17 @@ import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
+import com.indeci.rrhh.dto.PersonaResumenPageDto;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.Profesion;
 import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.ProfesionRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.entity.EstadoCivil;
 import com.indeci.rrhh.entity.GradoAcademico;
 import com.indeci.rrhh.entity.Sexo;
@@ -25,7 +30,9 @@ import com.indeci.rrhh.repository.TipoPersonalRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -42,6 +49,9 @@ public class PersonaService {
     private final EstadoCivilRepository estadoCivilRepository;
     private final TipoDocumentoRepository tipoDocumentoRepository;
     private final TipoPersonalRepository tipoPersonalRepository;
+    // FASE1 — régimen laboral para discriminar CAS en pantallas tributarias.
+    private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    private final RegimenLaboralRepository regimenLaboralRepository;
 
     @Auditable(accion = "CREAR_PERSONA_EMPLEADO")
     public void guardar(PersonaEmpleadoDto dto) {
@@ -122,11 +132,43 @@ public class PersonaService {
         auditoriaContext.setDetalle("Creación persona DNI: " + dto.getDni());
     }
 
-    public List<PersonaEmpleadoResponseDto> listar() {
-        return personaRepository.findAll().stream().map(p -> {
-            Empleado emp = empleadoRepository.findByPersonaId(p.getId()).orElse(null);
-            return mapearPersona(p, emp);
-        }).toList();
+    @Transactional(readOnly = true)
+    public List<PersonaResumenDto> listar() {
+        return personaRepository.findAllResumenRaw().stream()
+                .map(r -> new PersonaResumenDto(
+                        toLong(r[0]),
+                        toLong(r[1]),
+                        (String) r[2],
+                        (String) r[3],
+                        (String) r[4],
+                        (String) r[5],
+                        (String) r[6]))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PersonaResumenPageDto listarPaginado(String q, int page, int size) {
+        String pattern = (q == null || q.isBlank()) ? "%" : "%" + q.trim().toUpperCase() + "%";
+        long offset = (long) page * size;
+        long total = personaRepository.countResumen(pattern);
+        int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / size);
+        List<PersonaResumenDto> content = personaRepository.findPageResumenRaw(pattern, offset, size)
+                .stream()
+                .map(r -> new PersonaResumenDto(
+                        toLong(r[0]), toLong(r[1]),
+                        (String) r[2], (String) r[3],
+                        (String) r[4], (String) r[5],
+                        (String) r[6]))
+                .toList();
+        return new PersonaResumenPageDto(content, total, totalPages, page, size);
+    }
+
+    private static Long toLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Long l) return l;
+        if (value instanceof BigDecimal bd) return bd.longValue();
+        if (value instanceof Number n) return n.longValue();
+        return null;
     }
 
     // ============================
@@ -279,6 +321,13 @@ public class PersonaService {
                     dto.setTipoPersonal(tipoPersonal.getNombre());
                 }
             }
+
+            // FASE1 — régimen laboral vigente (de la config de planilla activa).
+            empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(emp.getId(), 1)
+                    .map(EmpleadoPlanilla::getRegimenLaboralId)
+                    .filter(java.util.Objects::nonNull)
+                    .flatMap(regimenLaboralRepository::findById)
+                    .ifPresent(rl -> dto.setRegimenLaboral(rl.getCodigo()));
         }
 
         return dto;

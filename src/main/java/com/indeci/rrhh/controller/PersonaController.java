@@ -6,6 +6,8 @@ import com.indeci.security.auth.SisrhSecurityExpressions;
 import org.springframework.security.access.prepost.PreAuthorize;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
+import com.indeci.rrhh.dto.PersonaResumenPageDto;
 import com.indeci.rrhh.service.PersonaService;
 
 import lombok.RequiredArgsConstructor;
@@ -30,10 +32,22 @@ public class PersonaController {
         return new ApiResponse<>("OK", "Registrado correctamente", null);
     }
 
-    // LISTAR
+    // LISTAR completo — 1 query JOIN (usado por hub, picker y otros componentes)
     @GetMapping("/persona")
-    public ApiResponse<List<PersonaEmpleadoResponseDto>> listar() {
+    public ApiResponse<List<PersonaResumenDto>> listar() {
         return new ApiResponse<>("OK", "Listado correcto", personaService.listar());
+    }
+
+    // LISTAR PAGINADO — para la pantalla principal de personas
+    @GetMapping("/persona/page")
+    public ApiResponse<PersonaResumenPageDto> listarPaginado(
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        if (size < 1 || size > 100) size = 20;
+        if (page < 0) page = 0;
+        return new ApiResponse<>("OK", "Listado paginado", personaService.listarPaginado(q, page, size));
     }
 
     // DETALLE

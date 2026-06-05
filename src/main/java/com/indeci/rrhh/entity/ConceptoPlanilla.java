@@ -54,6 +54,14 @@ public class ConceptoPlanilla {
     @Column(name = "CODIGO_MCPP")
     private String codigoMcpp;
 
+    /**
+     * Código de tributo SUNAT (V010_49 / FASE1). Ej: 3042 = Retención Renta 4ta
+     * Categoría. Independiente de {@code CODIGO_MEF} (catálogo de ingresos
+     * MEF/AIRHSP): una retención tributaria no tiene código MEF.
+     */
+    @Column(name = "CODIGO_TRIBUTO_SUNAT")
+    private String codigoTributoSunat;
+
     /** REMUNERATIVO | NO_REMUNERATIVO | DESCUENTO | APORTE_TRABAJADOR | APORTE_EMPLEADOR. */
     @Column(name = "TIPO_CONCEPTO")
     private String tipoConcepto;

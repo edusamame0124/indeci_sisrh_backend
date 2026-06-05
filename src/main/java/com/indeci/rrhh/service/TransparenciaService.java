@@ -1,7 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.dto.TransparenciaPeriodoDto;
 import com.indeci.rrhh.dto.TransparenciaRemuneracionDto;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -82,7 +82,7 @@ public class TransparenciaService {
         }
 
         Map<Long, String> nombres = new HashMap<>();
-        for (PersonaEmpleadoResponseDto p : personaService.listar()) {
+        for (PersonaResumenDto p : personaService.listar()) {
             if (p.getEmpleadoId() != null) {
                 nombres.put(p.getEmpleadoId(), p.getNombreCompleto());
             }

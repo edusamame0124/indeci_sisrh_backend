@@ -12,7 +12,9 @@ import com.indeci.rrhh.dto.ExplicacionLineaDto;
 import com.indeci.rrhh.dto.ExplicacionPlanillaDto;
 import com.indeci.rrhh.dto.ExplicacionPlanillaDto.ExplicacionCabeceraDto;
 import com.indeci.rrhh.dto.ExplicacionPlanillaDto.ExplicacionTotalesDto;
+import com.indeci.rrhh.dto.ExplicacionSnapshotDto;
 import com.indeci.rrhh.entity.Bank;
+import com.indeci.rrhh.entity.CalculoSnapshot;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.ConciliacionAirhsp;
 import com.indeci.rrhh.entity.Empleado;
@@ -60,6 +62,8 @@ public class ExplicacionPlanillaService {
     private final BankRepository bankRepository;
     private final RegimenLaboralRepository regimenRepository;
     private final ConciliacionAirhspRepository conciliacionRepository;
+    /** FASE 2 — Snapshots de trazabilidad del cálculo (solo lectura). */
+    private final CalculoSnapshotService calculoSnapshotService;
 
     /**
      * Devuelve la explicación del cálculo del empleado para el período.
@@ -82,9 +86,28 @@ public class ExplicacionPlanillaService {
         ExplicacionCabeceraDto cabecera = construirCabecera(empleadoId);
         ExplicacionTotalesDto totales = construirTotales(mov, empleadoId);
         List<ExplicacionLineaDto> lineas = construirLineas(mov.getId());
+        List<ExplicacionSnapshotDto> snapshots = construirSnapshots(empleadoId, periodo);
 
         return new ExplicacionPlanillaDto(
-                true, empleadoId, periodo, cabecera, totales, lineas);
+                true, empleadoId, periodo, cabecera, totales, lineas, snapshots);
+    }
+
+    // ================== SNAPSHOTS (FASE 2) ==================
+
+    /** Proyecta los snapshots de trazabilidad vigentes a DTOs (solo lectura). */
+    private List<ExplicacionSnapshotDto> construirSnapshots(Long empleadoId, String periodo) {
+        List<CalculoSnapshot> snaps = calculoSnapshotService.listar(empleadoId, periodo);
+        List<ExplicacionSnapshotDto> out = new ArrayList<>(snaps.size());
+        for (CalculoSnapshot s : snaps) {
+            out.add(new ExplicacionSnapshotDto(
+                    s.getRegla(),
+                    s.getBaseCalculo(),
+                    s.getResultado(),
+                    s.getFormula(),
+                    s.getVersionParametros(),
+                    s.getParametrosJson()));
+        }
+        return out;
     }
 
     // ================== CABECERA ==================

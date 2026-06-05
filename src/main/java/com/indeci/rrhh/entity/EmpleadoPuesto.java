@@ -1,5 +1,6 @@
 package com.indeci.rrhh.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -49,14 +50,15 @@ public class EmpleadoPuesto {
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
     
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "OFICINA_ID",
             insertable = false,
             updatable = false)
     private Oficina oficina;
-    
-    
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "CARGO_ID",
