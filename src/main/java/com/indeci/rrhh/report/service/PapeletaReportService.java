@@ -2,15 +2,18 @@ package com.indeci.rrhh.report.service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.OficinaRepository;
+import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
@@ -47,6 +50,7 @@ private final TipoSolicitudRrhhRepository
 private final EmpleadoRepository
     empleadoRepository;
 
+
 private final EmpleadoPuestoRepository
 empleadoPuestoRepository;
 
@@ -55,6 +59,10 @@ oficinaRepository;
 
 private final PersonaRepository
 personaRepository;
+
+private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+
+
 
 
 
@@ -73,6 +81,11 @@ public String generarPdf(
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
+        
+        System.out.println("Solicitud ID = " + solicitud.getId());
+        System.out.println("TipoSolicitudId = " + solicitud.getTipoSolicitudId());
+        System.out.println("EmpleadoId = " + solicitud.getEmpleadoId());
+
 
         // ==========================================
         // OBTENER TIPO SOLICITUD
@@ -85,15 +98,30 @@ public String generarPdf(
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Tipo solicitud no encontrado"));
+        
+        System.out.println("TIPO OK: " + tipo.getId());
 
         // ==========================================
         // OBTENER EMPLEADO
         // ==========================================
+        
+       
 
         Empleado empleado =
                 empleadoRepository
                         .findById(
                                 solicitud.getEmpleadoId())
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Empleado no encontrado"));
+        System.out.println("EMPLEADO OK: " + empleado.getId());
+        
+      
+        
+        EmpleadoPlanilla empleadoPlanilla =
+        		empleadoPlanillaRepository
+                        .findFirstByEmpleadoIdAndActivo(
+                        		empleado.getId(),1)
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Empleado no encontrado"));
@@ -105,6 +133,8 @@ public String generarPdf(
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Persona no encontrado"));
+        System.out.println("PERSONA ID: " + empleado.getPersonaId());
+        System.out.println("PERSONA OK: " + persona.getId());
 
         // ==========================================
         // OBTENER PUESTO ACTUAL
@@ -118,16 +148,15 @@ public String generarPdf(
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Empleado sin puesto activo"));
+        
+        System.out.println("PUESTO OK: " + puesto.getId());
+        System.out.println("OFICINA ID: " + puesto.getOficinaId());
 
         // ==========================================
         // OBTENER OFICINA
         // ==========================================
 
-        Oficina oficina =
-                oficinaRepository
-                        .findById(
-                                puesto.getOficinaId())
-                        .orElse(null);
+   
 
         // ==========================================
         // CARGAR LOGO
@@ -136,7 +165,7 @@ public String generarPdf(
         InputStream logo =
                 getClass()
                         .getResourceAsStream(
-                                "/reportes/img/LogoIndeci.png");
+                                "/reportes/img/logoPeru.png");
 
         // ==========================================
         // CARGAR JASPER
@@ -145,18 +174,18 @@ public String generarPdf(
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
-                                "/reportes/rrhh/papeleta.jasper");
+                                "/reportes/rrhh/formato_1.jasper");
         
 ;
         
         if (jasperStream == null) {
             throw new RuntimeException(
-                    "No existe /reportes/rrhh/papeleta.jasper");
+                    "No existe /reportes/rrhh/formato_1.jasper");
         }
 
         if (logo == null) {
             throw new RuntimeException(
-                    "No existe /reportes/img/LogoIndeci.png");
+                    "No existe /reportes/img/logoPeru.png");
         }
 
         System.out.println("ANTES DE CARGAR JASPER");
@@ -171,12 +200,13 @@ public String generarPdf(
         // ==========================================
         // PARAMETERS
         // ==========================================
-
+        
+     
         Map<String, Object> params =
                 new HashMap<>();
 
         params.put(
-                "LOGO",
+                "P_LOGO_PERU",
                 logo);
 
         params.put(
@@ -184,72 +214,125 @@ public String generarPdf(
                 "INDECI");
 
         params.put(
-                "P_NOMBRES",
+                "P_NOMBRE_TRABAJADOR",
                 valor(
                 		persona.getNombreCompleto()));
-
+        
         params.put(
-                "P_AREA",
-                oficina != null
-                        ? valor(
-                                oficina.getNombre())
-                        : "");
-
-        params.put(
-                "P_CARGO",
+                "P_DEPENDENCIA",
                 valor(
-                        puesto.getCargo().getNombre()));
-
+                		puesto.getDependencia().getNombre()));
+       //INICIO REGIMEN LABORAL 
+        
         params.put(
-                "P_TIPO",
+                "P_REGIMEN",
                 valor(
-                        tipo.getNombre()));
+                		empleadoPlanilla.getRegimenLaboral().getCodigo()));
+      
+        
+        System.out.println("P_REGIMEN = " + params.get("P_REGIMEN"));
 
+        if(params.get("P_REGIMEN") != null){
+            System.out.println(
+                "TIPO P_REGIMEN = " +
+                params.get("P_REGIMEN").getClass().getName());
+        }
+        //FINDE REGIMEN LABORAL
+   
+        ///tipo de permiso
+        if("001".equals(tipo.getCodigo())){
+        	
+        	  params.put(
+                      "P_PERMISO_ASUNTOS",
+                
+                      		Boolean.TRUE);
+        }
+        if("002".equals(tipo.getCodigo())){
+        	
+      	  params.put(
+                    "P_CITA_MEDICA",
+                 
+                    		Boolean.TRUE);
+      }
+        
+        if("003".equals(tipo.getCodigo())){
+        	
+        	  params.put(
+                      "P_CITACION",
+                    
+                    		  Boolean.TRUE);
+        }
+        if("004".equals(tipo.getCodigo())){
+        	
+      	  params.put(
+                    "P_OMISION_REGISTRO",
+                 
+                    		Boolean.TRUE);
+      }
+        
+        if("005".equals(tipo.getCodigo())){
+        	
+        	  params.put(
+                      "P_TARDANZA",
+                  
+                    		  Boolean.TRUE);
+        }
+        
+        if("006".equals(tipo.getCodigo())){
+        	
+      	  params.put(
+                    "P_COMISION_SERVICIO",
+                    Boolean.TRUE);
+      	  
+      
+      	  params.put(
+                  "P_LUGAR",
+                  valor(
+                  		solicitud.getLugarComision()));
+      }
+        
+        if("007".equals(tipo.getCodigo())){
+        	
+        	  params.put(
+                      "P_OTROS",
+                     
+                    		  Boolean.TRUE);
+        	  
+        	  params.put(
+                      "P_DESCRIPCION_OTROS",
+                      valor(
+                    		  solicitud.getObservacion()));
+        	  
+        }
+        //tipo de permiso
         params.put(
-                "P_DIAS",
-                valor(
-                        solicitud.getCantidadDias()));
-
-        params.put(
-                "P_HORAS",
-                valor(
-                        solicitud.getCantidadHoras()));
-
-        params.put(
-                "P_DESDE",
+                "P_FECHA_PERMISO",
                 valor(
                         solicitud.getFechaInicio()));
 
+      
         params.put(
-                "P_HASTA",
+                "P_FECHA_EMISION",
                 valor(
-                        solicitud.getFechaFin()));
+                		obtenerFechaActual()));
+
 
         params.put(
-                "P_HORA_INICIO",
+                "P_HORA_SALIDA",
                 valor(
                         solicitud.getHoraInicio()));
+        
+        System.out.println("hora de inicio"+solicitud.getHoraInicio());
 
         params.put(
-                "P_HORA_FIN",
+                "P_HORA_INGRESO",
                 valor(
                         solicitud.getHoraFin()));
 
-        params.put(
-                "P_MOTIVO",
-                valor(
-                        solicitud.getMotivo()));
+        System.out.println("hora de inicio"+solicitud.getHoraFin());
 
-        params.put(
-                "P_SHOW_TIME",
-                tipo.getMostrarHoras() == 1);
-        
-
-        params.put(
-                "P_FECHA_PAPELETA",
-                obtenerFechaActual());
-        
-
+        System.out.println("P_HORA_SALIDA = [" + params.get("P_HORA_SALIDA") + "]");
+        System.out.println("P_HORA_INGRESO = [" + params.get("P_HORA_INGRESO") + "]");
 
         // ==========================================
         // GENERAR REPORTE

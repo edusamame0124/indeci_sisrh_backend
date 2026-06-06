@@ -51,13 +51,16 @@ public class SolicitudRrhhService {
     @Auditable(
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
-            SolicitudRrhhDto dto) {
+            SolicitudRrhhDto dto,
+            MultipartFile sustento) {
         Long empleadoId = SecurityUtil.getEmpleadoId();
         if (empleadoId == null) {
             throw new NegocioException(
                     "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
         }
 
+        
+        
         // ==========================================
         // VALIDAR EMPLEADO
         // ==========================================
@@ -79,10 +82,45 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Tipo solicitud no encontrado"));
+        
+        
+        if(tipo.getRequiereSustento() == 1) {
+
+            if(sustento == null
+                    || sustento.isEmpty()) {
+
+                throw new NegocioException(
+                        "Debe adjuntar sustento");
+            }
+        }
 
         // ==========================================
         // VALIDAR FECHA FIN
         // ==========================================
+        
+        if(tipo.getRequiereLugar() == 1) {
+
+            if(dto.getLugarComision() == null
+                    || dto.getLugarComision().isBlank()) {
+
+                throw new NegocioException(
+                        "Debe indicar el lugar de comisión");
+            }
+        }
+        
+     // ===============================
+     // VALIDAR OBSERVACION
+     // ===============================
+
+     if(tipo.getRequiereObservacion() == 1) {
+
+         if(dto.getObservacion() == null
+                 || dto.getObservacion().isBlank()) {
+
+             throw new NegocioException(
+                     "Debe registrar una observación");
+         }
+     }
 
         if (tipo.getMostrarHoras() == 0) {
 
@@ -142,15 +180,7 @@ public class SolicitudRrhhService {
         // VALIDAR SUSTENTO
         // ==========================================
 
-        if (tipo.getRequiereSustento() == 1) {
-
-            if (dto.getArchivoSustento() == null
-                    || dto.getArchivoSustento().isBlank()) {
-
-                throw new NegocioException(
-                        "Debe adjuntar sustento");
-            }
-        }
+   
 
         // ==========================================
         // OBTENER ESTADO BORRADOR
@@ -192,8 +222,7 @@ public class SolicitudRrhhService {
         entity.setObservacion(
                 dto.getObservacion());
 
-        entity.setArchivoSustento(
-                dto.getArchivoSustento());
+        
 
         entity.setHoraInicio(
                 dto.getHoraInicio());
@@ -202,6 +231,7 @@ public class SolicitudRrhhService {
                 dto.getHoraFin());
 
         entity.setActivo(1);
+        entity.setLugarComision(dto.getLugarComision());
 
         entity.setCreatedAt(
                 LocalDateTime.now());
@@ -236,6 +266,45 @@ public class SolicitudRrhhService {
         // ==========================================
 
         repository.save(entity);
+        
+        ///GUARDAR SUSTENTO
+        ///
+        if(sustento != null
+                && !sustento.isEmpty()) {
+
+            String ruta =
+                    ftpService.subirArchivo(
+                            sustento,
+                            "sustentos",
+                            sustento.getOriginalFilename());
+
+            SolicitudRrhhDoc doc =
+                    new SolicitudRrhhDoc();
+
+            doc.setSolicitudId(
+                    entity.getId());
+
+            doc.setEtapa(
+                    "SUSTENTO");
+
+            doc.setNombreArchivo(
+                    sustento.getOriginalFilename());
+
+            doc.setRutaArchivo(
+                    ruta);
+
+            doc.setMimeType(
+                    sustento.getContentType());
+
+            doc.setTamanioBytes(
+                    sustento.getSize());
+
+            doc.setVersionDoc(1);
+
+            doc.setActivo(1);
+
+            solicitudRrhhDocRepository.save(doc);
+        }
 
         // ==========================================
         // HISTORIAL
@@ -332,6 +401,9 @@ public class SolicitudRrhhService {
 
         dto.setEmpleadoId(
                 s.getEmpleadoId());
+        
+        dto.setLugarComision(
+                s.getLugarComision());
 
         Empleado empleado =
                 empleadoRepository
@@ -948,6 +1020,24 @@ public class SolicitudRrhhService {
     public void editar(
             Long solicitudId,
             SolicitudRrhhDto dto) {
+    	
+    	
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
+        }
+
+        // ==========================================
+        // VALIDAR EMPLEADO
+        // ==========================================
+
+        empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"));
+
 
         // ==========================================
         // OBTENER SOLICITUD
@@ -960,6 +1050,26 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
+        
+        
+        // ==========================================
+        // VALIDAR DUPLICIDAD
+        // ==========================================
+
+        boolean existe =
+                repository
+                        .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        		empleadoId,
+                                dto.getTipoSolicitudId(),
+                                1,
+                                dto.getFechaFin(),
+                                dto.getFechaInicio());
+
+        if (existe) {
+
+            throw new NegocioException(
+                    "El empleado ya tiene una solicitud de este tipo en esas fechas");
+        }
 
         // ==========================================
         // VALIDAR ESTADO
@@ -991,6 +1101,34 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Tipo solicitud no encontrado"));
+        
+     // ==========================================
+     // VALIDAR OBSERVACION
+     // ==========================================
+
+     if (tipo.getRequiereObservacion() == 1) {
+
+         if (dto.getObservacion() == null
+                 || dto.getObservacion().isBlank()) {
+
+             throw new NegocioException(
+                     "Debe ingresar una observación");
+         }
+     }
+     
+  // ==========================================
+  // VALIDAR LUGAR
+  // ==========================================
+
+  if (tipo.getRequiereLugar() == 1) {
+
+      if (dto.getLugarComision() == null
+              || dto.getLugarComision().isBlank()) {
+
+          throw new NegocioException(
+                  "Debe ingresar el lugar");
+      }
+  }
 
         // ==========================================
         // VALIDAR FECHA FIN
@@ -1035,15 +1173,6 @@ public class SolicitudRrhhService {
         // VALIDAR SUSTENTO
         // ==========================================
 
-        if (tipo.getRequiereSustento() == 1) {
-
-            if (dto.getArchivoSustento() == null
-                    || dto.getArchivoSustento().isBlank()) {
-
-                throw new NegocioException(
-                        "Debe adjuntar sustento");
-            }
-        }
 
         // ==========================================
         // ACTUALIZAR DATOS
@@ -1064,14 +1193,15 @@ public class SolicitudRrhhService {
         solicitud.setObservacion(
                 dto.getObservacion());
 
-        solicitud.setArchivoSustento(
-                dto.getArchivoSustento());
-
+      
         solicitud.setHoraInicio(
                 dto.getHoraInicio());
 
         solicitud.setHoraFin(
                 dto.getHoraFin());
+        
+        solicitud.setLugarComision(
+                dto.getLugarComision());
 
         // ==========================================
         // CALCULAR HORAS / DÍAS

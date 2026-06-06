@@ -6,6 +6,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.indeci.rrhh.entity.EmpleadoPuesto;
+import com.indeci.rrhh.entity.Oficina;
 
 public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, Long> {
 
@@ -21,4 +22,6 @@ public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, 
     findByJefeIdAndActivo(
             Long jefeId,
             Integer activo);
+    
+    List<Oficina> findBySedeId(Long sedeId);
 }

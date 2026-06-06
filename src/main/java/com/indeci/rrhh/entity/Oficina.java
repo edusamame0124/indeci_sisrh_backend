@@ -13,9 +13,6 @@ public class Oficina {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "SEDE_ID")
-    private Long sedeId;
-
     @Column(name = "NOMBRE")
     private String nombre;
 
@@ -28,12 +25,6 @@ public class Oficina {
     @Column(name = "ESTRUCTURA_ORGANICA_ID")
     private Long estructuraOrganicaId;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "SEDE_ID",
-            insertable = false,
-            updatable = false)
-    private Sede sede;
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

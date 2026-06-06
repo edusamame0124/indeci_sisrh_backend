@@ -68,11 +68,43 @@ public class Persona {
 
     @Column(name = "CORREO_INSTITUCIONAL")
     private String correoInstitucional;
+    
+    @Column(name = "PROFESION_ID")
+    private Long profesionId;
 
 
+    @Column(name = "GRADO_ACADEMICO_ID")
+    private Long gradoAcademicoId;
 
     @Column(name = "FOTO_PERFIL")
     private String fotoPerfil;
+    
+    
+    @Column(name = "TELEFONO_FIJO")
+    private String telefonoFijo;
+
+    @Column(name = "UPDATED_AT")
+    private LocalDateTime updatedAt;
+    
+    @Column(name = "TIPO_PERSONA_ID")
+    private Long tipoPersonaId;
+    
+    @Column(name = "NIVEL_INSTRUCCION_ID")
+    private Long nivelInstruccionId;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "TIPO_PERSONA_ID",
+            insertable = false,
+            updatable = false)
+    private TipoPersona tipoPersona;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "NIVEL_INSTRUCCION_ID",
+            insertable = false,
+            updatable = false)
+    private NivelInstruccion nivelInstruccion;
     
     
 

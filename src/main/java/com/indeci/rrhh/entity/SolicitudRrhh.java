@@ -68,6 +68,9 @@ public class SolicitudRrhh {
     @Column(name = "CANTIDAD_HORAS")
     private Double cantidadHoras;
     
+    @Column(name = "LUGAR_COMISION")
+    private String lugarComision;
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name="TIPO_SOLICITUD_ID",
     		insertable = false,

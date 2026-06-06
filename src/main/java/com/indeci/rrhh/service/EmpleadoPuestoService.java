@@ -215,13 +215,7 @@ public class EmpleadoPuestoService {
                     	    dto.setOficina(
                     	            oficina.getNombre());
 
-                    	    if (oficina.getSede() != null) {
-
-                    	        dto.setSede(
-                    	                oficina
-                    	                        .getSede()
-                    	                        .getNombre());
-                    	    }
+                    
 
                     	    if (oficina.getEstructuraOrganica() != null) {
 

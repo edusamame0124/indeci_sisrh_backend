@@ -9,5 +9,6 @@ import java.util.List;
 public interface OficinaRepository
         extends JpaRepository<Oficina, Long> {
 
-    List<Oficina> findBySedeId(Long sedeId);
+	List<Oficina>
+	findByEstructuraOrganicaId(Long estructuraOrganicaId);
 }

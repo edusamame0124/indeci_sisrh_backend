@@ -96,4 +96,11 @@ public class EmpleadoPlanilla {
 
     @Column(name = "AIRHSP_VIGENCIA_ID")
     private Long airhspVigenciaId;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "REGIMEN_LABORAL_ID",
+            insertable = false,
+            updatable = false)
+    private RegimenLaboral regimenLaboral;
 }

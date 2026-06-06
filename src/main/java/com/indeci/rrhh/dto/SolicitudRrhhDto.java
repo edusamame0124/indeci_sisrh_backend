@@ -19,9 +19,8 @@ public class SolicitudRrhhDto {
 
 	private String observacion;
 
-	private String archivoSustento;
-
 	private String horaInicio;
 
 	private String horaFin;
+	private String lugarComision;
 }

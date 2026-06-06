@@ -30,4 +30,10 @@ public class TipoSolicitudRrhh {
     @Column(name = "REQUIERE_SUSTENTO")
     private Integer requiereSustento;
     
+    @Column(name = "REQUIERE_LUGAR")
+    private Integer requiereLugar;
+    
+    @Column(name = "REQUIERE_OBSERVACION")
+    private Integer requiereObservacion;
+    
 }

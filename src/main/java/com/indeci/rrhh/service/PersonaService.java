@@ -15,7 +15,7 @@ import com.indeci.rrhh.entity.EstadoCivil;
 import com.indeci.rrhh.entity.GradoAcademico;
 import com.indeci.rrhh.entity.Sexo;
 import com.indeci.rrhh.entity.TipoDocumento;
-import com.indeci.rrhh.entity.TipoPersonal;
+import com.indeci.rrhh.entity.TipoPersona;
 
 import com.indeci.rrhh.repository.EstadoCivilRepository;
 import com.indeci.rrhh.repository.GradoAcademicoRepository;
@@ -93,6 +93,9 @@ public class PersonaService {
         persona.setContactoEmergenciaNombre(dto.getContactoEmergenciaNombre());
         persona.setContactoEmergenciaParentesco(dto.getContactoEmergenciaParentesco());
         persona.setContactoEmergenciaTelefono(dto.getContactoEmergenciaTelefono());
+        persona.setTipoPersonaId(dto.getTipoPersonalId());
+        persona.setProfesionId(dto.getProfesionId());
+        persona.setGradoAcademicoId(dto.getGradoAcademicoId());
         
 
         persona = personaRepository.save(persona);
@@ -105,9 +108,9 @@ public class PersonaService {
         empleado.setEstado(dto.getEstado() != null ? dto.getEstado() : "ACTIVO");
         empleado.setHasEps("N");
         empleado.setCreatedAt(LocalDateTime.now());
-        empleado.setTipoPersonalId(dto.getTipoPersonalId());
-        empleado.setProfesionId(dto.getProfesionId());
-        empleado.setGradoAcademicoId(dto.getGradoAcademicoId());
+    
+    
+     
         empleado.setConadisCodigo(dto.getConadisCodigo());
         empleado.setRegistroAirhsp(dto.getRegistroAirhsp());
 
@@ -162,6 +165,9 @@ public class PersonaService {
         persona.setContactoEmergenciaNombre(dto.getContactoEmergenciaNombre());
         persona.setContactoEmergenciaParentesco(dto.getContactoEmergenciaParentesco());
         persona.setContactoEmergenciaTelefono(dto.getContactoEmergenciaTelefono());
+        persona.setProfesionId(dto.getProfesionId());
+        persona.setTipoPersonaId(dto.getTipoPersonalId());
+        persona.setGradoAcademicoId(dto.getGradoAcademicoId());
 
         personaRepository.save(persona);
 
@@ -169,10 +175,10 @@ public class PersonaService {
                 .orElseThrow(() -> new NegocioException("Empleado no encontrado"));
 
         emp.setEstado(dto.getEstado());
-        emp.setProfesionId(dto.getProfesionId());
-        emp.setGradoAcademicoId(dto.getGradoAcademicoId());
+  
+     
         emp.setConadisCodigo(dto.getConadisCodigo());
-        emp.setTipoPersonalId(dto.getTipoPersonalId());
+     
         emp.setRegistroAirhsp(dto.getRegistroAirhsp());
         
         empleadoRepository.save(emp);
@@ -250,31 +256,31 @@ public class PersonaService {
             dto.setEmpleadoId(emp.getId());
             dto.setCodigoInterno(emp.getCodigoInterno());
             dto.setEstado(emp.getEstado());
-            dto.setProfesionId(emp.getProfesionId());
-            dto.setGradoAcademicoId(emp.getGradoAcademicoId());
+            dto.setProfesionId(p.getProfesionId());
+            dto.setGradoAcademicoId(p.getGradoAcademicoId());
             dto.setRegistroAirhsp(
                     emp.getRegistroAirhsp());
 
             
-            if (emp.getProfesionId() != null) {
-                Profesion profesion = profesionRepository.findById(emp.getProfesionId()).orElse(null);
+            if (p.getProfesionId() != null) {
+                Profesion profesion = profesionRepository.findById(p.getProfesionId()).orElse(null);
                 if (profesion != null) {
                     dto.setProfesion(profesion.getNombre());
                 }
             }
 
-            if (emp.getGradoAcademicoId() != null) {
-                GradoAcademico grado = gradoAcademicoRepository.findById(emp.getGradoAcademicoId()).orElse(null);
+            if (p.getGradoAcademicoId() != null) {
+                GradoAcademico grado = gradoAcademicoRepository.findById(p.getGradoAcademicoId()).orElse(null);
                 if (grado != null) {
                     dto.setGradoAcademico(grado.getNombre());
                 }
             }
 
             dto.setConadisCodigo(emp.getConadisCodigo());
-            dto.setTipoPersonalId(emp.getTipoPersonalId());
+            dto.setTipoPersonalId(p.getTipoPersonaId());
 
-            if (emp.getTipoPersonalId() != null) {
-                TipoPersonal tipoPersonal = tipoPersonalRepository.findById(emp.getTipoPersonalId()).orElse(null);
+            if (p.getTipoPersonaId() != null) {
+                TipoPersona tipoPersonal = tipoPersonalRepository.findById(p.getTipoPersonaId()).orElse(null);
                 if (tipoPersonal != null) {
                     dto.setTipoPersonal(tipoPersonal.getNombre());
                 }

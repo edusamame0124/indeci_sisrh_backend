@@ -31,7 +31,7 @@ import com.indeci.rrhh.entity.Sexo;
 import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.entity.TipoContrato;
 import com.indeci.rrhh.entity.TipoDocumento;
-import com.indeci.rrhh.entity.TipoPersonal;
+import com.indeci.rrhh.entity.TipoPersona;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
@@ -140,7 +140,7 @@ public class CatalogoController {
     }
     
     @GetMapping("/tipos-personal")
-    public ApiResponse<List<TipoPersonal>> tiposPersonal() {
+    public ApiResponse<List<TipoPersona>> tiposPersonal() {
 
         return new ApiResponse<>(
                 "OK",

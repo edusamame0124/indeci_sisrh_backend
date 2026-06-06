@@ -48,4 +48,6 @@ public class SolicitudRrhhResponseDto {
 
     private Double cantidadHoras;
     
+    private String lugarComision;
+    
 }

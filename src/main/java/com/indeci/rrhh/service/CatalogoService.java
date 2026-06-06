@@ -186,7 +186,7 @@ private final EstadoSolicitudRepository estadoSolicitudRepository;
     public List<TipoDocumento> listarTiposDocumento() {
         return tipoDocumentoRepository.findAll();
     }
-    public List<TipoPersonal> listarTiposPersonal() {
+    public List<TipoPersona> listarTiposPersonal() {
         return tipoPersonalRepository.findAll();
     }
     public List<EstructuraOrganica> listarEstructurasOrganicas() {
@@ -248,10 +248,10 @@ private final EstadoSolicitudRepository estadoSolicitudRepository;
     }
 
     public List<Oficina>
-    listarOficinasPorSede(Long sedeId) {
-
-        return oficinaRepository
-                .findBySedeId(sedeId);
+    listarOficinasPorSede(Long estructuraId) {
+    	
+    	return oficinaRepository
+                .findByEstructuraOrganicaId(estructuraId);
     }
     
     public List<TipoSolicitudRrhh>

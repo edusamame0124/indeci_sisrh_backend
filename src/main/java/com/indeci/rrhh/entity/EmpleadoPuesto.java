@@ -27,18 +27,21 @@ public class EmpleadoPuesto {
 
     @Column(name = "NIVEL_ID")
     private Long nivelId;
-
+    
+    @Column(name = "SEDE_ID")
+    private Long sedeId;
 
     @Column(name = "OFICINA_ID")
     private Long oficinaId;
+
+    @Column(name = "DEPENDENCIA_ID")
+    private Long dependenciaId;
 
     @Column(name = "JEFE_ID")
     private Long jefeId;
 
     @Column(name = "ACTIVO")
     private Integer activo;
-    
-
 
     @Column(name = "FECHA_INICIO")
     private LocalDate fechaInicio;
@@ -48,19 +51,32 @@ public class EmpleadoPuesto {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "OFICINA_ID",
             insertable = false,
             updatable = false)
     private Oficina oficina;
-    
-    
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "DEPENDENCIA_ID",
+            insertable = false,
+            updatable = false)
+    private Dependencia dependencia;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "CARGO_ID",
             insertable = false,
             updatable = false)
     private Cargo cargo;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "SEDE_ID",
+            insertable = false,
+            updatable = false)
+    private Sede sede;
 }
