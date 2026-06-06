@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.ConceptosAsignablesDto;
 import com.indeci.rrhh.dto.EmpleadoConceptoDto;
 import com.indeci.rrhh.dto.EmpleadoConceptoResponseDto;
 import com.indeci.rrhh.service.EmpleadoConceptoService;
@@ -42,6 +43,12 @@ public class EmpleadoConceptoController {
     @GetMapping("/{empleadoId}")
     public ApiResponse<List<EmpleadoConceptoResponseDto>> listar(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Conceptos empleado", service.listarEmpleado(empleadoId));
+    }
+
+    /** Conceptos asignables al empleado, filtrados por su régimen (mejora 2026-06-03). */
+    @GetMapping("/{empleadoId}/asignables")
+    public ApiResponse<ConceptosAsignablesDto> asignables(@PathVariable Long empleadoId) {
+        return new ApiResponse<>("OK", "Conceptos asignables", service.listarAsignables(empleadoId));
     }
 
     @PutMapping("/{id}")

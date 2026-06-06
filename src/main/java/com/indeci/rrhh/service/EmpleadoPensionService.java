@@ -21,12 +21,21 @@ import com.indeci.rrhh.repository.RegimenPensionarioRepository;
 import com.indeci.rrhh.repository.TipoComisionAfpRepository;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class EmpleadoPensionService {
+
+    private static final Set<String> TIPOS_SIN_APORTE = Set.of(
+            "PENSIONISTA",
+            "RETIRO",
+            "AFP_RETIRO",
+            "SIN_REGIMEN",
+            "SIN_REGIMEN_PENSIONARIO",
+            "SIN_APORTE");
 
     private final EmpleadoPensionRepository repository;
     private final AuditoriaContext auditoriaContext;
@@ -232,6 +241,14 @@ public class EmpleadoPensionService {
             dto.setComision(null);
             dto.setPrima(null);
             dto.setComisionParametrizada(true); // no aplica el concepto
+            return dto;
+        }
+
+        if (TIPOS_SIN_APORTE.contains(tipo)) {
+            dto.setAporte(null);
+            dto.setComision(null);
+            dto.setPrima(null);
+            dto.setComisionParametrizada(true);
             return dto;
         }
 

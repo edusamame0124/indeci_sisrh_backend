@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.McppPlanillaDisponibleDto;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -155,8 +155,8 @@ public class McppService {
                 .collect(Collectors.toMap(Empleado::getId, Empleado::getRegistroAirhsp, (a, b) -> a));
         Map<Long, String> dniPorEmpleado = personaService.listar().stream()
                 .filter(p -> p.getEmpleadoId() != null && p.getDni() != null)
-                .collect(Collectors.toMap(PersonaEmpleadoResponseDto::getEmpleadoId,
-                        PersonaEmpleadoResponseDto::getDni, (a, b) -> a));
+                .collect(Collectors.toMap(PersonaResumenDto::getEmpleadoId,
+                        PersonaResumenDto::getDni, (a, b) -> a));
         Map<Long, ConceptoPlanilla> conceptoPorId = conceptoRepository.findAll().stream()
                 .collect(Collectors.toMap(ConceptoPlanilla::getId, c -> c));
 

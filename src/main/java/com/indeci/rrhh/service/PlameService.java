@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.dto.PlamePreviewDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.CatSuspensionSunat;
@@ -208,8 +208,8 @@ public class PlameService {
     private Map<Long, String> dniPorEmpleado() {
         return personaService.listar().stream()
                 .filter(p -> p.getEmpleadoId() != null && p.getDni() != null)
-                .collect(Collectors.toMap(PersonaEmpleadoResponseDto::getEmpleadoId,
-                        PersonaEmpleadoResponseDto::getDni, (a, b) -> a));
+                .collect(Collectors.toMap(PersonaResumenDto::getEmpleadoId,
+                        PersonaResumenDto::getDni, (a, b) -> a));
     }
 
     private Map<Long, ConceptoPlanilla> conceptoPorId() {

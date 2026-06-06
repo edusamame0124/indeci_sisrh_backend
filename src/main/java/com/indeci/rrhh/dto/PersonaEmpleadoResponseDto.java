@@ -98,4 +98,10 @@ public class PersonaEmpleadoResponseDto {
     private Long tipoPersonalId;
 
     private String tipoPersonal;
+
+    // =====================================
+    // RÉGIMEN LABORAL (FASE1 — para discriminar CAS en pantallas tributarias)
+    // =====================================
+    /** Código del régimen laboral vigente del empleado (ej. CAS, 728, 276, SERVIR). */
+    private String regimenLaboral;
 }

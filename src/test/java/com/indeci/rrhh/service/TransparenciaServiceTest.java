@@ -1,7 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.dto.TransparenciaPeriodoDto;
 import com.indeci.rrhh.dto.TransparenciaRemuneracionDto;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -59,8 +59,8 @@ class TransparenciaServiceTest {
         return m;
     }
 
-    private PersonaEmpleadoResponseDto persona(Long empleadoId, String nombre) {
-        PersonaEmpleadoResponseDto p = new PersonaEmpleadoResponseDto();
+    private PersonaResumenDto persona(Long empleadoId, String nombre) {
+        PersonaResumenDto p = new PersonaResumenDto();
         p.setEmpleadoId(empleadoId);
         p.setNombreCompleto(nombre);
         return p;

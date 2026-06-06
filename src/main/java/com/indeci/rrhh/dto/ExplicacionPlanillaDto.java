@@ -22,11 +22,13 @@ public record ExplicacionPlanillaDto(
         String periodo,
         ExplicacionCabeceraDto cabecera,
         ExplicacionTotalesDto totales,
-        List<ExplicacionLineaDto> lineas) {
+        List<ExplicacionLineaDto> lineas,
+        /** FASE 2 — Snapshots de trazabilidad ("¿cómo se obtuvo?"). */
+        List<ExplicacionSnapshotDto> snapshots) {
 
     public static ExplicacionPlanillaDto noAplica(Long empleadoId, String periodo) {
         return new ExplicacionPlanillaDto(
-                false, empleadoId, periodo, null, null, List.of());
+                false, empleadoId, periodo, null, null, List.of(), List.of());
     }
 
     /** Bloque de identificación que va en el header de Ficha 360. */

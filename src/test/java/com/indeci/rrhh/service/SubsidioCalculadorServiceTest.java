@@ -1,316 +1,244 @@
 package com.indeci.rrhh.service;
 
-import com.indeci.exception.NegocioException;
-import com.indeci.rrhh.dto.SubsidioCalculadoDto;
-import com.indeci.rrhh.entity.EmpleadoEvento;
-import com.indeci.rrhh.entity.MovimientoPlanilla;
-import com.indeci.rrhh.entity.TipoEvento;
-import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.stream.IntStream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.when;
+import com.indeci.rrhh.dto.SubsidioCalculadoDto;
+import com.indeci.rrhh.entity.EmpleadoEvento;
+import com.indeci.rrhh.entity.MovimientoPlanilla;
+import com.indeci.rrhh.entity.SubsidioEventoCalculo;
+import com.indeci.rrhh.entity.TipoEvento;
+import com.indeci.rrhh.repository.EmpleadoEventoRepository;
+import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
+import com.indeci.rrhh.repository.SubsidioEventoCalculoRepository;
 
-/**
- * F2.4 — Tests del cálculo de subsidios (maternidad/enfermedad).
- */
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
+
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class SubsidioCalculadorServiceTest {
 
+    private static final Long EMPLEADO_ID = 41L;
+
     @Mock private MovimientoPlanillaRepository movimientoRepository;
-    @InjectMocks private SubsidioCalculadorService service;
+    @Mock private EmpleadoEventoRepository empleadoEventoRepository;
+    @Mock private SubsidioEventoCalculoRepository subsidioEventoCalculoRepository;
+    @Mock private ParametroRemunerativoService parametroService;
+    @Mock private CalculoSnapshotService calculoSnapshotService;
 
-    private static final Long EMP_ID = 42L;
+    private SubsidioCalculadorService service;
 
-    // ======================================================================
-    // Casos: no aplica.
-    // ======================================================================
-
-    @Test
-    void noAplica_cuando_tipo_evento_es_null() {
-        EmpleadoEvento e = new EmpleadoEvento();
-        e.setTipoEvento(null);
-        e.setEmpleadoId(EMP_ID);
-        e.setFechaInicio(LocalDate.of(2026, 5, 1));
-        e.setFechaFin(LocalDate.of(2026, 5, 30));
-
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-        assertThat(r.aplica()).isFalse();
-        assertThat(r.subsidioEssalud()).isEqualByComparingTo(BigDecimal.ZERO);
+    @BeforeEach
+    void setUp() {
+        service = new SubsidioCalculadorService(
+                movimientoRepository,
+                empleadoEventoRepository,
+                subsidioEventoCalculoRepository,
+                parametroService,
+                calculoSnapshotService);
+        lenient().when(parametroService.obtenerValor(eq("UIT"), anyInt(), any()))
+                .thenReturn(new BigDecimal("5350"));
+        lenient().when(parametroService.obtenerValor(eq("SUBSIDIO_TOPE_PCT_UIT"), anyInt(), any()))
+                .thenReturn(new BigDecimal("0.45"));
+        lenient().when(parametroService.obtenerValor(eq("SUBSIDIO_DIVISOR_PROMEDIO"), anyInt(), any()))
+                .thenReturn(new BigDecimal("360"));
+        lenient().when(empleadoEventoRepository.findEnfermedadesPreviasEnAnio(
+                        anyLong(), any(LocalDate.class), any(LocalDate.class), any()))
+                .thenReturn(List.of());
     }
 
     @Test
-    void noAplica_cuando_tipo_genera_subsidio_N() {
-        // Licencia con goce → genera_subsidio = N → no aplica.
-        EmpleadoEvento e = eventoConTipo("LICENCIA_GOCE", "N",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10));
+    void maternidad_reconoce_todos_los_dias_con_base_12_meses_topada() {
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_MATERNIDAD"), anyInt(), any()))
+                .thenReturn(BigDecimal.ZERO);
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
 
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-        assertThat(r.aplica()).isFalse();
-    }
-
-    @Test
-    void lanza_si_evento_null() {
-        assertThatThrownBy(() -> service.calcular(null, new BigDecimal("3000")))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("Evento nulo");
-    }
-
-    @Test
-    void lanza_si_fechas_null() {
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S", null, null);
-
-        assertThatThrownBy(() -> service.calcular(e, new BigDecimal("3000")))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("Evento sin fechas");
-    }
-
-    @Test
-    void lanza_si_fechaFin_anterior_a_fechaInicio() {
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 30), LocalDate.of(2026, 5, 1));
-
-        assertThatThrownBy(() -> service.calcular(e, new BigDecimal("3000")))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("fechaFin < fechaInicio");
-    }
-
-    @Test
-    void lanza_si_remuneracion_invalida() {
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-
-        assertThatThrownBy(() -> service.calcular(e, BigDecimal.ZERO))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("Remuneración mensual base inválida");
-
-        assertThatThrownBy(() -> service.calcular(e, null))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("Remuneración mensual base inválida");
-    }
-
-    // ======================================================================
-    // Casos: maternidad / enfermedad — promedio 12 meses.
-    // ======================================================================
-
-    @Test
-    void maternidad_30dias_con_12meses_de_historial_calcula_promedio_correcto() {
-        // Historial: 12 movimientos de 3000.00 cada uno (mayo-2025 a abril-2026).
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historialUniforme("3000.00", 12, YearMonthRef.de(2026, 5)));
-
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
+        SubsidioCalculadoDto r = service.calcular(
+                evento("MATERNIDAD", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 8, 6)),
+                new BigDecimal("5364.19"));
 
         assertThat(r.aplica()).isTrue();
-        assertThat(r.diasDescanso()).isEqualTo(30);
-        assertThat(r.remuneracionDiaria()).isEqualByComparingTo("100.00"); // 3000/30
-        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("3000.00"); // 30 × 100
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
-        assertThat(r.subsidioDiarioEssalud()).isEqualByComparingTo("100.00");
-        assertThat(r.subsidioEssalud()).isEqualByComparingTo("3000"); // entero
-        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("0.00");
+        assertThat(r.tipoSubsidio()).isEqualTo("MATERNIDAD");
+        assertThat(r.diasDescanso()).isEqualTo(98);
+        assertThat(r.diasEntidad()).isZero();
+        assertThat(r.diasSubsidioEssalud()).isEqualTo(98);
+        assertThat(r.codigoPlameSubsidio()).isEqualTo("0915");
+        assertThat(r.remuneracionDiaria()).isEqualByComparingTo("178.81");
+        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("17523.38");
+        assertThat(r.baseReconocidaEssalud()).isEqualByComparingTo("28890.00");
+        assertThat(r.subsidioDiarioEssalud()).isEqualByComparingTo("80.25");
+        assertThat(r.subsidioEssalud()).isEqualByComparingTo("7865");
+        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("9658.38");
     }
 
     @Test
-    void enfermedad_15dias_promedio_alto_INDECI_no_asume_si_essalud_cubre_todo() {
-        // Historial promedio = 4000 → subsidio diario 133.33 → 15 días = 2000.
-        // Subtotal remunerativo con base 3000 = 1500. INDECI asume 1500-2000 = -500.
-        // (Caso raro pero matemáticamente válido — EsSalud puede pagar más que
-        // la remuneración actual si el empleado tuvo aumentos en últimos 12m.)
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historialUniforme("4000.00", 12, YearMonthRef.de(2026, 5)));
+    void enfermedad_de_15_dias_no_genera_subsidio_essalud_por_regla_dia_21() {
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_ENFERMEDAD"), anyInt(), any()))
+                .thenReturn(new BigDecimal("20"));
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
 
-        EmpleadoEvento e = eventoConTipo("ENFERMEDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 15));
-
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
+        SubsidioCalculadoDto r = service.calcular(
+                evento("ENFERMEDAD", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 15)),
+                new BigDecimal("3000.00"));
 
         assertThat(r.diasDescanso()).isEqualTo(15);
-        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("1500.00"); // 15 × 100
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("4000.00");
-        assertThat(r.subsidioDiarioEssalud()).isEqualByComparingTo("133.33");
-        assertThat(r.subsidioEssalud()).isEqualByComparingTo("2000"); // 15 × 133.33 = 1999.95 → 2000
-        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("-500.00");
+        assertThat(r.diasAcumuladosPrevios()).isZero();
+        assertThat(r.diasEntidad()).isEqualTo(15);
+        assertThat(r.diasSubsidioEssalud()).isZero();
+        assertThat(r.codigoPlameSubsidio()).isEqualTo("0916");
+        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("1500.00");
+        assertThat(r.subsidioEssalud()).isEqualByComparingTo("0");
+        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("1500.00");
     }
 
     @Test
-    void maternidad_sin_historial_usa_fallback_remuneracion_base() {
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(List.of()); // sin historial.
+    void enfermedad_de_30_dias_reconoce_solo_10_dias_essalud() {
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_ENFERMEDAD"), anyInt(), any()))
+                .thenReturn(new BigDecimal("20"));
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
 
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
+        SubsidioCalculadoDto r = service.calcular(
+                evento("ENFERMEDAD", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30)),
+                new BigDecimal("3000.00"));
 
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-
-        // Sin historial → promedio = remuneración base = 3000.
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
-        assertThat(r.subsidioEssalud()).isEqualByComparingTo("3000");
-        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("0.00");
+        assertThat(r.diasDescanso()).isEqualTo(30);
+        assertThat(r.diasEntidad()).isEqualTo(20);
+        assertThat(r.diasSubsidioEssalud()).isEqualTo(10);
+        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("3000.00");
+        assertThat(r.subsidioDiarioEssalud()).isEqualByComparingTo("80.25");
+        assertThat(r.subsidioEssalud()).isEqualByComparingTo("803");
+        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("2197.00");
     }
 
     @Test
-    void maternidad_con_solo_3_meses_de_historial_promedia_los_disponibles() {
-        // Empleado entró hace 3 meses → solo 3 movimientos previos.
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historialUniforme("3000.00", 3, YearMonthRef.de(2026, 5)));
+    void enfermedad_acumula_20_dias_por_anio_calendario_y_reconoce_7_dias_essalud() {
+        EmpleadoEvento marzo = evento(
+                "ENFERMEDAD", LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 12));
+        marzo.setId(10L);
+        marzo.setEstado("VALIDADO");
 
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_ENFERMEDAD"), anyInt(), any()))
+                .thenReturn(new BigDecimal("20"));
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
+        when(empleadoEventoRepository.findEnfermedadesPreviasEnAnio(
+                        eq(EMPLEADO_ID),
+                        eq(LocalDate.of(2026, 1, 1)),
+                        eq(LocalDate.of(2026, 5, 31)),
+                        any()))
+                .thenReturn(List.of(marzo));
 
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
+        SubsidioCalculadoDto r = service.calcular(
+                evento("ENFERMEDAD", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 15)),
+                new BigDecimal("3000.00"));
 
-        // 3 movimientos de 3000 → suma 9000 / 3 = 3000.
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
+        assertThat(r.diasDescanso()).isEqualTo(15);
+        assertThat(r.diasAcumuladosPrevios()).isEqualTo(12);
+        assertThat(r.diasEntidad()).isEqualTo(8);
+        assertThat(r.diasSubsidioEssalud()).isEqualTo(7);
+        assertThat(r.subsidioDiarioEssalud()).isEqualByComparingTo("80.25");
+        assertThat(r.subsidioEssalud()).isEqualByComparingTo("562");
+        assertThat(r.diferenciaAsumidaIndeci()).isEqualByComparingTo("938.00");
     }
 
     @Test
-    void maternidad_98dias_clasico_descanso_pre_post_parto() {
-        // Periodo legal en Perú: 49 días pre + 49 días post = 98 días.
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historialUniforme("3000.00", 12, YearMonthRef.de(2026, 7)));
+    void historial_se_topa_mes_a_mes_para_base_reconocida() {
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_MATERNIDAD"), anyInt(), any()))
+                .thenReturn(BigDecimal.ZERO);
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of(
+                        movimiento("2026-04", 6000.0),
+                        movimiento("2026-03", 2000.0),
+                        movimiento("2025-01", 9999.0)));
 
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 25), LocalDate.of(2026, 8, 30));
+        SubsidioCalculadoDto r = service.calcular(
+                evento("MATERNIDAD", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10)),
+                new BigDecimal("3000.00"));
 
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-
-        // 2026-05-25 a 2026-08-30 = 98 días (verifica fórmula DAYS.between + 1).
-        assertThat(r.diasDescanso()).isEqualTo(98);
-        // Subtotal = 100 × 98 = 9800.
-        assertThat(r.subtotalRemunerativo()).isEqualByComparingTo("9800.00");
-        // Subsidio EsSalud = 100 × 98 = 9800 (redondeado a entero).
-        assertThat(r.subsidioEssalud()).isEqualByComparingTo("9800");
+        assertThat(r.baseReconocidaEssalud()).isEqualByComparingTo("4407.50");
     }
 
     @Test
-    void filtro_12meses_excluye_movimientos_fuera_de_ventana() {
-        // Historial con 13 movimientos (uno fuera de ventana, debería excluirse).
-        // 12 meses anteriores a mayo 2026 = mayo 2025 a abril 2026.
-        // Agregamos un movimiento de abril 2025 (fuera) que NO debe contar.
-        java.util.List<MovimientoPlanilla> historial = new java.util.ArrayList<>(
-                historialUniforme("3000.00", 12, YearMonthRef.de(2026, 5)));
-        MovimientoPlanilla fuera = mov(LocalDate.of(2025, 4, 1), "9999.00");
-        historial.add(fuera);
+    void licencia_sin_subsidio_devuelve_no_aplica() {
+        SubsidioCalculadoDto r = service.calcular(
+                evento("LICENCIA_SIN_GOCE", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 5), "N"),
+                new BigDecimal("3000.00"));
 
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historial);
-
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-
-        // El movimiento de abril 2025 NO entra → promedio sigue siendo 3000.
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
+        assertThat(r.aplica()).isFalse();
+        verifyNoInteractions(movimientoRepository);
     }
 
     @Test
-    void filtro_12meses_excluye_movimiento_del_mismo_periodo_del_evento() {
-        // El evento es en mayo 2026 → mayo 2026 NO entra en el promedio
-        // (la ventana es de los 12 meses ANTERIORES). Verifica frontera.
-        java.util.List<MovimientoPlanilla> historial = new java.util.ArrayList<>(
-                historialUniforme("3000.00", 12, YearMonthRef.de(2026, 5)));
-        // Agregamos un movimiento de mayo 2026 (el mismo mes del evento).
-        MovimientoPlanilla mayo = mov(LocalDate.of(2026, 5, 1), "9999.00");
-        historial.add(mayo);
+    void calcular_y_registrar_persiste_trazabilidad_por_evento() {
+        when(parametroService.obtenerValor(
+                eq("SUBSIDIO_DIAS_ASUME_ENTIDAD_ENFERMEDAD"), anyInt(), any()))
+                .thenReturn(new BigDecimal("20"));
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
 
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(historial);
+        EmpleadoEvento evento = evento(
+                "ENFERMEDAD", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
+        evento.setId(77L);
 
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
+        service.calcularYRegistrar(
+                evento, new BigDecimal("3000.00"), 900L, "202605", "tester");
 
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-
-        // El movimiento de mayo 2026 NO entra → promedio sigue siendo 3000.
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
+        ArgumentCaptor<SubsidioEventoCalculo> captor =
+                ArgumentCaptor.forClass(SubsidioEventoCalculo.class);
+        verify(subsidioEventoCalculoRepository).desactivarVigentesPorEvento(77L);
+        verify(subsidioEventoCalculoRepository).save(captor.capture());
+        SubsidioEventoCalculo guardado = captor.getValue();
+        assertThat(guardado.getEmpleadoEventoId()).isEqualTo(77L);
+        assertThat(guardado.getMovimientoPlanillaId()).isEqualTo(900L);
+        assertThat(guardado.getCodigoPlameSubsidio()).isEqualTo("0916");
+        assertThat(guardado.getCodigoPlameDiferencial()).isEqualTo("2073");
+        assertThat(guardado.getDiasACargoEntidad()).isEqualTo(20);
+        assertThat(guardado.getDiasSubsidioEssalud()).isEqualTo(10);
+        assertThat(guardado.getSubsidioEssalud()).isEqualByComparingTo("803");
+        assertThat(guardado.getPagoDiferencial()).isEqualByComparingTo("2197.00");
+        verify(calculoSnapshotService).registrar(any(CalculoSnapshotService.Registro.class));
     }
 
-    @Test
-    void tolera_periodos_con_y_sin_guion() {
-        // Algunos movimientos usan "YYYY-MM", otros "YYYYMM". Ambos válidos.
-        MovimientoPlanilla m1 = new MovimientoPlanilla();
-        m1.setPeriodo("2025-12");
-        m1.setTotalIngresos(3000.0);
-        MovimientoPlanilla m2 = new MovimientoPlanilla();
-        m2.setPeriodo("202601");
-        m2.setTotalIngresos(3000.0);
-
-        when(movimientoRepository.findByEmpleadoIdAndActivo(EMP_ID, 1))
-                .thenReturn(List.of(m1, m2));
-
-        EmpleadoEvento e = eventoConTipo("MATERNIDAD", "S",
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-
-        SubsidioCalculadoDto r = service.calcular(e, new BigDecimal("3000.00"));
-
-        // Ambos formatos parseados → promedio sobre 2 = 3000.
-        assertThat(r.promedioMensual12Meses()).isEqualByComparingTo("3000.00");
+    private EmpleadoEvento evento(String codigo, LocalDate inicio, LocalDate fin) {
+        return evento(codigo, inicio, fin, "S");
     }
 
-    // ======================================================================
-    // Helpers
-    // ======================================================================
+    private EmpleadoEvento evento(String codigo, LocalDate inicio, LocalDate fin, String generaSubsidio) {
+        TipoEvento tipo = new TipoEvento();
+        tipo.setCodigo(codigo);
+        tipo.setGeneraSubsidio(generaSubsidio);
 
-    private record YearMonthRef(int anio, int mes) {
-        static YearMonthRef de(int a, int m) { return new YearMonthRef(a, m); }
+        EmpleadoEvento evento = new EmpleadoEvento();
+        evento.setEmpleadoId(EMPLEADO_ID);
+        evento.setFechaInicio(inicio);
+        evento.setFechaFin(fin);
+        evento.setTipoEvento(tipo);
+        return evento;
     }
 
-    /**
-     * Genera {@code count} movimientos con el mismo {@code totalIngresos},
-     * uno por mes terminando en (eventoYM - 1).
-     */
-    private List<MovimientoPlanilla> historialUniforme(
-            String monto, int count, YearMonthRef eventoYM) {
-        return IntStream.rangeClosed(1, count)
-                .mapToObj(i -> {
-                    java.time.YearMonth ym = java.time.YearMonth
-                            .of(eventoYM.anio(), eventoYM.mes())
-                            .minusMonths(i);
-                    return mov(LocalDate.of(ym.getYear(), ym.getMonthValue(), 1), monto);
-                })
-                .toList();
-    }
-
-    private MovimientoPlanilla mov(LocalDate fechaPeriodo, String totalIngresos) {
-        MovimientoPlanilla m = new MovimientoPlanilla();
-        m.setPeriodo(String.format("%04d%02d",
-                fechaPeriodo.getYear(), fechaPeriodo.getMonthValue()));
-        m.setTotalIngresos(new BigDecimal(totalIngresos).doubleValue());
-        return m;
-    }
-
-    private EmpleadoEvento eventoConTipo(
-            String codigoTipo, String generaSubsidio,
-            LocalDate inicio, LocalDate fin) {
-        TipoEvento t = new TipoEvento();
-        t.setCodigo(codigoTipo);
-        t.setGeneraSubsidio(generaSubsidio);
-
-        EmpleadoEvento e = new EmpleadoEvento();
-        e.setEmpleadoId(EMP_ID);
-        e.setTipoEvento(t);
-        e.setFechaInicio(inicio);
-        e.setFechaFin(fin);
-        return e;
+    private MovimientoPlanilla movimiento(String periodo, Double totalIngresos) {
+        MovimientoPlanilla movimiento = new MovimientoPlanilla();
+        movimiento.setEmpleadoId(EMPLEADO_ID);
+        movimiento.setPeriodo(periodo);
+        movimiento.setTotalIngresos(totalIngresos);
+        movimiento.setActivo(1);
+        return movimiento;
     }
 }

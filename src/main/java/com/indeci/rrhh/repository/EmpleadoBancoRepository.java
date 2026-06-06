@@ -18,6 +18,12 @@ public interface EmpleadoBancoRepository extends JpaRepository<EmpleadoBanco, Lo
     	    Integer activo
     	);
 
+    /** P0 Planilla CAS Consolidada — cuentas principales activas en batch (sin N+1). */
+    List<EmpleadoBanco> findByEmpleadoIdInAndEsCuentaPlanillaAndActivo(
+            List<Long> empleadoIds,
+            Integer esCuentaPlanilla,
+            Integer activo);
+
     /** Spec 012 / C3 (BKD-006) — paso «banco» del flujo de empleado. */
     boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 }

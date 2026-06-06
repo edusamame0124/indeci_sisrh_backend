@@ -1,6 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.ConceptoSinCodigoMefException;
+import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.entity.*;
 import com.indeci.rrhh.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,9 @@ import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +60,10 @@ class GeneradorPlanillaServiceTest {
     @Mock private AbonoBancoRepository abonoBancoRepository;
     @Mock private EmpleadoReintegroRepository empleadoReintegroRepository;
     @Mock private EmpleadoEventoRepository empleadoEventoRepository;
+    @Mock private Suspension4taService suspension4taService;
+    @Mock private TipoPersonalRepository tipoPersonalRepository;
+    @Mock private CalculoSnapshotService calculoSnapshotService;
+    @Mock private SubsidioCalculadorService subsidioCalculadorService;
 
     private GeneradorPlanillaService service;
 
@@ -63,8 +71,12 @@ class GeneradorPlanillaServiceTest {
     private static final String PERIODO   = "2026-05";
     private static final Long REG_276     = 1L;
     private static final Long REG_728     = 2L;
+    private static final Long REG_CAS     = 3L;
     private static final Long REG_PENS_ONP_ID = 10L;
     private static final Long REG_PENS_AFP_ID = 11L;
+    private static final Long REG_PENS_PENSIONISTA_ID = 12L;
+    private static final Long REG_PENS_RETIRO_ID = 13L;
+    private static final Long REG_PENS_SIN_REGIMEN_ID = 14L;
 
     /** Concepto remunerativo de sueldo básico (afecto a pensión y ESSALUD). */
     private static final Long CONCEPTO_SUELDO_ID = 90000L;
@@ -87,7 +99,11 @@ class GeneradorPlanillaServiceTest {
                 conciliacionRepository,
                 abonoBancoRepository,
                 empleadoReintegroRepository,
-                empleadoEventoRepository);
+                empleadoEventoRepository,
+                suspension4taService,
+                tipoPersonalRepository,
+                calculoSnapshotService,
+                subsidioCalculadorService);
         // El proxy @Lazy `self` no se inyecta en test unitario: apuntarlo al
         // propio servicio para poder ejercitar generarTodoPeriodo.
         ReflectionTestUtils.setField(service, "self", service);
@@ -119,10 +135,18 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.of(regimenLaboral("276")));
         when(regimenLaboralRepository.findById(REG_728))
                 .thenReturn(Optional.of(regimenLaboral("728")));
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
         when(regimenPensionarioRepository.findById(REG_PENS_ONP_ID))
                 .thenReturn(Optional.of(regimenPensionario("ONP")));
         when(regimenPensionarioRepository.findById(REG_PENS_AFP_ID))
                 .thenReturn(Optional.of(regimenPensionario("AFP")));
+        when(regimenPensionarioRepository.findById(REG_PENS_PENSIONISTA_ID))
+                .thenReturn(Optional.of(regimenPensionario("PENSIONISTA")));
+        when(regimenPensionarioRepository.findById(REG_PENS_RETIRO_ID))
+                .thenReturn(Optional.of(regimenPensionario("RETIRO")));
+        when(regimenPensionarioRepository.findById(REG_PENS_SIN_REGIMEN_ID))
+                .thenReturn(Optional.of(regimenPensionario("SIN_REGIMEN")));
 
         // Parámetros 2026
         when(parametroService.obtenerValor(eq("TASA_ONP"), anyInt(), any()))
@@ -164,6 +188,9 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(new BigDecimal("0.20"));
         when(parametroService.obtenerValor(eq("IR5TA_TRAMO5_TASA"), anyInt(), any()))
                 .thenReturn(new BigDecimal("0.30"));
+        // FASE 3 — divisor del Art. 40 para el período de prueba (mayo = 8).
+        when(parametroService.obtenerValorOpcional(eq("IR5TA_DIVISOR_MES_05"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("8")));
 
         // Conceptos MEF
         when(conceptoRepository.findByCodigoMefAndActivo("05001", 1))
@@ -188,6 +215,17 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.of(conceptoMef(5401L, "05401", "Descuento por Tardanza", "DESCUENTO")));
         when(conceptoRepository.findByCodigoMefAndActivo("05402", 1))
                 .thenReturn(Optional.of(conceptoMef(5402L, "05402", "Descuento por Falta", "DESCUENTO")));
+
+        // Conceptos de remuneración BASE (mejora 2026-06-03): el motor graba la
+        // base desde EmpleadoPlanilla.sueldoBasico con el concepto base del régimen.
+        when(conceptoRepository.findByCodigoMefAndActivo("00301", 1))
+                .thenReturn(Optional.of(conceptoBaseRem(10301L, "00301", "Sueldo Básico")));
+        when(conceptoRepository.findByCodigoMefAndActivo("00501", 1))
+                .thenReturn(Optional.of(conceptoBaseRem(10501L, "00501", "Remuneración CAS")));
+        when(conceptoRepository.findByCodigoMefAndActivo("00102", 1))
+                .thenReturn(Optional.of(conceptoBaseRem(10102L, "00102", "Monto Único Consolidado")));
+        when(conceptoRepository.findByCodigoMefAndActivo("L003", 1))
+                .thenReturn(Optional.of(conceptoBaseRem(10003L, "L003", "Compensación SERVIR (carrera)")));
 
         // Sin asistencia por defecto (los tests de PASO 7 lo sobrescriben)
         when(asistenciaCabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
@@ -245,6 +283,8 @@ class GeneradorPlanillaServiceTest {
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, 0.016, 0.0174)));
         mockSueldo(4000.0);
+        // FASE 3 — histórico ene-abr (4 meses) para proyección anual Art. 40.
+        mockHistorico5ta(4102.50, 4);
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -263,14 +303,16 @@ class GeneradorPlanillaServiceTest {
                 .isCloseTo(71.38, within(0.01));
         assertThat(detallePorConcepto(capt, 601L).getMonto())   // ESSALUD 9% sobre 4000
                 .isCloseTo(360.00, within(0.01));
-        // 5ta: 4102.50×12=49230 ; −37450 = 11780 ; ×0.08 = 942.40 ; /12 = 78.53
+        // FASE 3 Art.40 — bruta = 16410 (hist) + 4102.50×8 = 49230 ; neta = 11780 ;
+        // impAnual = 11780×0.08 = 942.40 ; divisor mayo = 8 → 117.80
         assertThat(detallePorConcepto(capt, 5101L).getMonto())
-                .isCloseTo(78.53, within(0.01));
+                .isCloseTo(117.80, within(0.01));
 
         MovimientoPlanilla cabecera = capturarCabeceraFinal();
         assertThat(cabecera.getTotalIngresos()).isCloseTo(4102.50, within(0.01));
-        assertThat(cabecera.getTotalDescuentos()).isCloseTo(625.80, within(0.01));
-        assertThat(cabecera.getNetoPagar()).isCloseTo(4102.50 - 625.80, within(0.01));
+        // descuentos = aporte 410.25 + comisión 65.64 + prima 71.38 + 5ta 117.80 = 665.07
+        assertThat(cabecera.getTotalDescuentos()).isCloseTo(665.07, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(4102.50 - 665.07, within(0.01));
     }
 
     // ==================================================================
@@ -420,6 +462,7 @@ class GeneradorPlanillaServiceTest {
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(5000.0);
+        mockHistorico5ta(5000.0, 4); // ene-abr percibido → proyección anual
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -428,12 +471,13 @@ class GeneradorPlanillaServiceTest {
                 ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
         verify(detalleRepository, times(3)).save(capt.capture());
 
-        // rentaAnual = 5000×12 = 60000 ; rentaNeta = 22550 ; ×0.08 = 1804 ; /12 = 150.33
+        // Art.40: bruta = 20000 (hist) + 5000×8 = 60000 ; neta = 22550 ;
+        // impAnual = 22550×0.08 = 1804 ; divisor mayo = 8 → 225.50
         assertThat(detallePorConcepto(capt, 5101L).getMonto())
-                .isCloseTo(150.33, within(0.01));
+                .isCloseTo(225.50, within(0.01));
 
         MovimientoPlanilla cabecera = capturarCabeceraFinal();
-        assertThat(cabecera.getTotalDescuentos()).isCloseTo(150.33, within(0.01));
+        assertThat(cabecera.getTotalDescuentos()).isCloseTo(225.50, within(0.01));
     }
 
     // ==================================================================
@@ -488,6 +532,7 @@ class GeneradorPlanillaServiceTest {
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(15000.0);
+        mockHistorico5ta(15000.0, 4); // ene-abr percibido → proyección anual
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -496,11 +541,122 @@ class GeneradorPlanillaServiceTest {
                 ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
         verify(detalleRepository, times(3)).save(capt.capture());
 
-        // rentaNeta = 180000 − 37450 = 142550
+        // Art.40: bruta = 60000 (hist) + 15000×8 = 180000 ; rentaNeta = 142550
         // tramo1 26750×0.08=2140 ; tramo2 80250×0.14=11235 ; tramo3 35550×0.17=6043.50
-        // impuestoAnual = 19418.50 ; BW = 19418.50/12 = 1618.21
+        // impuestoAnual = 19418.50 ; divisor mayo = 8 → 2427.31
         assertThat(detallePorConcepto(capt, 5101L).getMonto())
-                .isCloseTo(1618.21, within(0.01));
+                .isCloseTo(2427.31, within(0.01));
+    }
+
+    // ==================================================================
+    // FASE 3 — IR 5ta categoría método Art. 40 (D.S. 122-94-EF)
+    // ==================================================================
+
+    /**
+     * Caso maestro AGUIRRE (Excel fila 5). Núcleo puro del Art. 40:
+     * bruta 177 211.14 − 7×5500 = 138 711.14 → impAnual 18 630.89 ;
+     * (18 630.89 − retenido 5 914.31) / divisor mayo 8 = 1 589.57.
+     */
+    @Test
+    void ir5ta_art40_caso_maestro_aguirre_1589_57() {
+        GeneradorPlanillaService.Ir5taResultado r = service.calcularRetencion5taArt40(
+                new BigDecimal("177211.14"), new BigDecimal("5914.31"),
+                /*mes=*/5, new BigDecimal("5500"), 2026);
+
+        assertThat(r.rentaNeta).isEqualByComparingTo("138711.14");
+        assertThat(r.impuestoAnual).isEqualByComparingTo("18630.89");
+        assertThat(r.divisor).isEqualByComparingTo("8");
+        assertThat(r.retencionMes).isCloseTo(new BigDecimal("1589.57"), within(new BigDecimal("0.01")));
+    }
+
+    /** Bajo 7 UIT → exonerado (retención 0), aun con divisor del mes. */
+    @Test
+    void ir5ta_art40_bajo_7uit_exonerado() {
+        GeneradorPlanillaService.Ir5taResultado r = service.calcularRetencion5taArt40(
+                new BigDecimal("30000"), BigDecimal.ZERO, 5, new BigDecimal("5500"), 2026);
+
+        assertThat(r.retencionMes).isEqualByComparingTo("0");
+    }
+
+    /** Diciembre: divisor = 1 → la retención del mes es el saldo completo. */
+    @Test
+    void ir5ta_art40_diciembre_divisor_uno() {
+        when(parametroService.obtenerValorOpcional(eq("IR5TA_DIVISOR_MES_12"), anyInt(), any()))
+                .thenReturn(Optional.of(BigDecimal.ONE));
+
+        GeneradorPlanillaService.Ir5taResultado r = service.calcularRetencion5taArt40(
+                new BigDecimal("177211.14"), new BigDecimal("17000"),
+                /*mes=*/12, new BigDecimal("5500"), 2026);
+
+        // impAnual 18 630.89 − 17 000 = 1 630.89 ; /1 = 1 630.89
+        assertThat(r.divisor).isEqualByComparingTo("1");
+        assertThat(r.retencionMes).isCloseTo(new BigDecimal("1630.89"), within(new BigDecimal("0.01")));
+    }
+
+    /**
+     * Aguinaldos proyectados: con IR5TA_INCLUYE_AGUINALDO=1 y factor=1, en mayo
+     * se proyectan 2 aguinaldos (FP + Navidad), elevando la base anual.
+     * bruta = 20000 (hist) + 5000×8 + 5000×2 = 70000 ; neta = 32550 ;
+     * impAnual = 2140 + 5800×0.14(=812) = 2952 ; /8 = 369.00.
+     */
+    @Test
+    void ir5ta_art40_aguinaldos_proyectados_elevan_base() {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5000.0, REG_728, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(5000.0);
+        mockHistorico5ta(5000.0, 4);
+        when(parametroService.obtenerValorOpcional(eq("IR5TA_INCLUYE_AGUINALDO"), anyInt(), any()))
+                .thenReturn(Optional.of(BigDecimal.ONE));
+        when(parametroService.obtenerValorOpcional(eq("IR5TA_AGUINALDO_FACTOR"), anyInt(), any()))
+                .thenReturn(Optional.of(BigDecimal.ONE));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        assertThat(detallePorConcepto(capt, 5101L).getMonto())
+                .isCloseTo(369.00, within(0.01));
+    }
+
+    /** CAS (D.Leg. 1057) nunca retiene 5ta (LEY-03), aun con renta alta. */
+    @Test
+    void ir5ta_cas_nunca_retiene() {
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(20000.0, REG_CAS, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(20000.0);
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        assertThat(capt.getAllValues())
+                .noneMatch(d -> Long.valueOf(5101L).equals(d.getConceptoPlanillaId()));
+    }
+
+    /**
+     * Histórico ene-{@code meses} con totalIngresos mensual = {@code ingresoMensual}.
+     * Permite proyectar la base anual del Art. 40 en tests de mayo.
+     */
+    private void mockHistorico5ta(double ingresoMensual, int meses) {
+        java.util.List<MovimientoPlanilla> previos = new java.util.ArrayList<>();
+        for (int m = 1; m <= meses; m++) {
+            MovimientoPlanilla mv = new MovimientoPlanilla();
+            mv.setId(7000L + m);
+            mv.setEmpleadoId(EMPLEADO_ID);
+            mv.setPeriodo(String.format("2026-%02d", m));
+            mv.setActivo(1);
+            mv.setTotalIngresos(ingresoMensual);
+            previos.add(mv);
+        }
+        when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(previos);
     }
 
     // ==================================================================
@@ -554,6 +710,125 @@ class GeneradorPlanillaServiceTest {
         assertThat(cabecera.getNetoPagar()).isCloseTo(1210.00, within(0.01));
         assertThat(cabecera.getEstadoNeto()).isEqualTo("NETO_NO_VA");
         assertThat(cabecera.getEstado()).isEqualTo("REVISAR");
+    }
+
+    @Test
+    void regla50_cas_resta_ir4ta_para_validar_neto() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+
+        ConceptoPlanilla descVol = conceptoMef(701L, "05310", "Otros Descuentos", "DESCUENTO");
+        when(conceptoRepository.findById(701L)).thenReturn(Optional.of(descVol));
+        EmpleadoConcepto ecDesc = new EmpleadoConcepto();
+        ecDesc.setEmpleadoId(EMPLEADO_ID);
+        ecDesc.setConceptoPlanillaId(701L);
+        ecDesc.setMonto(2450.0);
+        ecDesc.setActivo(1);
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of(ecDesc));
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.08")));
+        when(suspension4taService.consultarVigente(eq(EMPLEADO_ID), any()))
+                .thenReturn(Suspension4taVigenteDto.noRegistrada());
+        when(conceptoRepository.findByCodigoAndActivo("IR4TA_CAS", 1))
+                .thenReturn(Optional.of(conceptoMef(9042L, "NO_APLICA", "Retención IR 4ta CAS", "DESCUENTO")));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // umbral = (5364.19 - 429.14 IR4ta) * 0.5 = 2467.53.
+        // neto   = 5364.19 - 429.14 - 2450 = 2485.05 -> BIEN.
+        // Sin restar IR4ta, el umbral seria 2682.10 y marcaria NETO_NO_VA.
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getNeto50pctMinimo()).isCloseTo(2467.53, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(2485.05, within(0.01));
+        assertThat(cabecera.getEstadoNeto()).isEqualTo("BIEN");
+    }
+
+    @Test
+    void regla50_resta_onp_y_descuento_judicial_real_para_validar_neto() {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+
+        ConceptoPlanilla judicial =
+                conceptoMef(716L, "NO_APLICA", "Descuento judicial", "DESCUENTO_JUDICIAL");
+        judicial.setCodigo("DESCUENTO_JUDICIAL");
+        judicial.setCodigoSisper("716");
+        ConceptoPlanilla descVol = conceptoMef(702L, "05310", "Otros Descuentos", "DESCUENTO");
+        when(conceptoRepository.findById(716L)).thenReturn(Optional.of(judicial));
+        when(conceptoRepository.findById(702L)).thenReturn(Optional.of(descVol));
+
+        EmpleadoConcepto ecJudicial = new EmpleadoConcepto();
+        ecJudicial.setEmpleadoId(EMPLEADO_ID);
+        ecJudicial.setConceptoPlanillaId(716L);
+        ecJudicial.setMonto(1000.0);
+        ecJudicial.setActivo(1);
+        EmpleadoConcepto ecDesc = new EmpleadoConcepto();
+        ecDesc.setEmpleadoId(EMPLEADO_ID);
+        ecDesc.setConceptoPlanillaId(702L);
+        ecDesc.setMonto(750.0);
+        ecDesc.setActivo(1);
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of(ecJudicial, ecDesc));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // umbral = (3000 - 390 ONP - 1000 judicial) * 0.5 = 805.
+        // neto   = 3000 - 390 - 1000 - 750 = 860 -> BIEN.
+        // Sin restar judicial, el umbral seria 1305 y marcaria NETO_NO_VA.
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getNeto50pctMinimo()).isCloseTo(805.00, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(860.00, within(0.01));
+        assertThat(cabecera.getEstadoNeto()).isEqualTo("BIEN");
+    }
+
+    @Test
+    void regla50_resta_aporte_afp_real_para_validar_neto() {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, null, null)));
+
+        ConceptoPlanilla descVol = conceptoMef(703L, "05310", "Otros Descuentos", "DESCUENTO");
+        when(conceptoRepository.findById(703L)).thenReturn(Optional.of(descVol));
+        EmpleadoConcepto ecDesc = new EmpleadoConcepto();
+        ecDesc.setEmpleadoId(EMPLEADO_ID);
+        ecDesc.setConceptoPlanillaId(703L);
+        ecDesc.setMonto(1300.0);
+        ecDesc.setActivo(1);
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of(ecDesc));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // AFP real = 300 aporte + 41.10 prima = 341.10.
+        // umbral = (3000 - 341.10 AFP) * 0.5 = 1329.45.
+        // neto   = 3000 - 341.10 - 1300 = 1358.90 -> BIEN.
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getNeto50pctMinimo()).isCloseTo(1329.45, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(1358.90, within(0.01));
+        assertThat(cabecera.getEstadoNeto()).isEqualTo("BIEN");
+    }
+
+    @Test
+    void pensionista_no_genera_aporte_pensionario() {
+        assertRegimenPensionarioSinAporte(REG_PENS_PENSIONISTA_ID);
+    }
+
+    @Test
+    void retiro_no_genera_aporte_pensionario() {
+        assertRegimenPensionarioSinAporte(REG_PENS_RETIRO_ID);
+    }
+
+    @Test
+    void sin_regimen_no_genera_aporte_pensionario() {
+        assertRegimenPensionarioSinAporte(REG_PENS_SIN_REGIMEN_ID);
     }
 
     // ==================================================================
@@ -782,6 +1057,15 @@ class GeneradorPlanillaServiceTest {
         return c;
     }
 
+    /** Concepto de remuneración base del régimen (afecto a pensión, ESSALUD y 5ta). */
+    private ConceptoPlanilla conceptoBaseRem(Long id, String mef, String nombre) {
+        ConceptoPlanilla c = conceptoMef(id, mef, nombre, "REMUNERATIVO");
+        c.setAfectoAportePens("S");
+        c.setAfectoEssalud("S");
+        c.setAfectoIr5ta("S");
+        return c;
+    }
+
     private Empleado empleadoConEps() {
         Empleado e = new Empleado();
         e.setId(EMPLEADO_ID);
@@ -876,6 +1160,21 @@ class GeneradorPlanillaServiceTest {
         ArgumentCaptor<MovimientoPlanilla> capt = ArgumentCaptor.forClass(MovimientoPlanilla.class);
         verify(movimientoRepository, times(2)).save(capt.capture());
         return capt.getAllValues().get(capt.getAllValues().size() - 1);
+    }
+
+    private void assertRegimenPensionarioSinAporte(Long regimenPensionarioId) {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(regimenPensionarioId, null, null, null)));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getTotalIngresos()).isCloseTo(3000.00, within(0.01));
+        assertThat(cabecera.getTotalDescuentos()).isCloseTo(0.00, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(3000.00, within(0.01));
+        assertThat(cabecera.getNeto50pctMinimo()).isCloseTo(1500.00, within(0.01));
     }
 
     // ======================================================================
@@ -1347,6 +1646,137 @@ class GeneradorPlanillaServiceTest {
     }
 
     // ======================================================================
+    // FASE 1 — Cableado del motor (caller bloque 8c): suspensión + línea
+    // trazable IR4TA_CAS + cuadre. Concepto resuelto por CODIGO (no MEF).
+    // ======================================================================
+
+    /**
+     * CAS sin suspensión, base 5364.19 → IR4ta = 429.14 (= base×8%, sin restar
+     * BK porque montoNoAfectoIr4ta = 0). Graba línea trazable con el concepto
+     * IR4TA_CAS resuelto por CODIGO. NO exige CODIGO_MEF. Test maestro vs Excel.
+     */
+    @Test
+    void ir4ta_cas_sin_suspension_base_5364_19_retiene_429_14_con_linea_trazable() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(5364.19);
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.08")));
+        when(suspension4taService.consultarVigente(eq(EMPLEADO_ID), any()))
+                .thenReturn(Suspension4taVigenteDto.noRegistrada());
+        when(conceptoRepository.findByCodigoAndActivo("IR4TA_CAS", 1))
+                .thenReturn(Optional.of(conceptoMef(9042L, "NO_APLICA", "Retención IR 4ta CAS", "DESCUENTO")));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        MovimientoPlanillaDetalle linea = detallePorConcepto(capt, 9042L);
+        assertThat(linea.getMonto()).isCloseTo(429.14, within(0.01));
+        assertThat(linea.getObservacion()).contains("tributoSUNAT=3042");
+        verify(suspension4taService).consultarVigente(eq(EMPLEADO_ID), any());
+
+        // FASE 2 — Trazabilidad: se descartó el snapshot previo y se registró
+        // al menos GENERAL + IR4TA_CAS (efecto lateral, no altera el cálculo).
+        verify(calculoSnapshotService).desactivarPrevios(EMPLEADO_ID, PERIODO);
+        verify(calculoSnapshotService, atLeast(2))
+                .registrar(any(CalculoSnapshotService.Registro.class));
+
+        // Cuadre: sin pensión, el único descuento es IR4ta.
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalDescuentos()).isCloseTo(429.14, within(0.01));
+    }
+
+    /** CAS con suspensión vigente → IR4ta = 0, no se graba línea, no bloquea. */
+    @Test
+    void ir4ta_cas_con_suspension_vigente_no_retiene_ni_graba_linea() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(5364.19);
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.08")));
+        when(suspension4taService.consultarVigente(eq(EMPLEADO_ID), any()))
+                .thenReturn(new Suspension4taVigenteDto(true, false, "C-123", null, null));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // No se resuelve el concepto IR4TA_CAS porque no hay línea que grabar.
+        verify(conceptoRepository, never()).findByCodigoAndActivo("IR4TA_CAS", 1);
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalDescuentos()).isCloseTo(0.00, within(0.01));
+    }
+
+    /**
+     * Mejora 2026-06-03 — La remuneración base viene de EmpleadoPlanilla.sueldoBasico
+     * (Configuración de planilla). Un concepto base asignado a mano (legacy) con
+     * OTRO monto se IGNORA (no duplica ni manda).
+     */
+    @Test
+    void base_remunerativa_viene_de_sueldoBasico_e_ignora_concepto_base_manual() {
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5000.0, REG_CAS, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+
+        // Concepto base manual (00301) con monto distinto → debe ignorarse.
+        EmpleadoConcepto ecBaseLegacy = new EmpleadoConcepto();
+        ecBaseLegacy.setEmpleadoId(EMPLEADO_ID);
+        ecBaseLegacy.setConceptoPlanillaId(CONCEPTO_SUELDO_ID);
+        ecBaseLegacy.setMonto(9999.0);
+        ecBaseLegacy.setActivo(1);
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of(ecBaseLegacy));
+        when(conceptoRepository.findById(CONCEPTO_SUELDO_ID))
+                .thenReturn(Optional.of(conceptoSueldo())); // MEF 00301 = base → se ignora
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        // Ingresos = 5000 (de sueldoBasico), NO 9999 del concepto base manual.
+        assertThat(cab.getTotalIngresos()).isCloseTo(5000.00, within(0.01));
+    }
+
+    @Test
+    void base_remunerativa_cas_tambien_aplica_si_regimen_catalogo_es_1057() {
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("1057")));
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+
+        MovimientoPlanillaDetalle baseCas = detallePorConcepto(capt, 10501L);
+        assertThat(baseCas.getMonto()).isCloseTo(5364.19, within(0.01));
+        assertThat(baseCas.getObservacion()).contains("Remuneración base");
+
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalIngresos()).isCloseTo(5364.19, within(0.01));
+    }
+
+    // ======================================================================
     // F1.5b — Helper estático regimenAplicaConcepto (parser CSV).
     //
     // Static → no requiere instancia ni mocks.
@@ -1372,6 +1802,15 @@ class GeneradorPlanillaServiceTest {
         assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "728")).isTrue();
         assertThat(GeneradorPlanillaService.regimenAplicaConcepto("1057", "1057")).isTrue();
         assertThat(GeneradorPlanillaService.regimenAplicaConcepto("SERVIR", "SERVIR")).isTrue();
+    }
+
+    @Test
+    void regimenAplicaConcepto_alias_CAS_equivale_1057() {
+        // Mejora 2026-06-03: el catálogo usa 'CAS', los conceptos '1057' → equivalentes.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("1057", "CAS")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "CAS")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("SERVIR", "CAS")).isFalse();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "CAS")).isFalse();
     }
 
     @Test
@@ -1459,13 +1898,14 @@ class GeneradorPlanillaServiceTest {
     @Test
     void flag_on_motor_prorratea_concepto_S_prorrateable_por_dias_laborados() {
         // Flag ON + ES_PRORRATEABLE='S' + 5 días de falta → monto prorrateado a 25/30.
-        // Sueldo 3000 × 25/30 = 2500.00
+        // 3000 × 25/30 = 2500.00. La BASE viene de Config. planilla (aquí 0 para
+        // aislar el prorrateo de un concepto NO-base: incremento remunerativo).
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
         when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+                .thenReturn(Optional.of(planilla(0.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
-        ConceptoPlanilla c = conceptoSueldo();
+        ConceptoPlanilla c = conceptoBaseRem(CONCEPTO_SUELDO_ID, "00303", "Horas Extras");
         c.setEsProrrateable("S");
         c.setRegimenAplicable("TODOS");
         when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));

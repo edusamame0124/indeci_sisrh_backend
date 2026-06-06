@@ -14,7 +14,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.CatSuspensionSunat;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
@@ -76,7 +76,7 @@ class PlameServiceTest {
         ent.setRuc("20135890031");
         lenient().when(entidadRepository.findAll()).thenReturn(List.of(ent));
 
-        PersonaEmpleadoResponseDto persona = new PersonaEmpleadoResponseDto();
+        PersonaResumenDto persona = new PersonaResumenDto();
         persona.setEmpleadoId(1L);
         persona.setDni("00256418");
         lenient().when(personaService.listar()).thenReturn(List.of(persona));

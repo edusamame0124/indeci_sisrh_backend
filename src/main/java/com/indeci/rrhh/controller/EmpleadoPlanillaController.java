@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.EmpleadoPlanillaDto;
 import com.indeci.rrhh.dto.EmpleadoPlanillaResponseDto;
+import com.indeci.rrhh.dto.PlanillaConsolidadaRowDto;
 import com.indeci.rrhh.service.EmpleadoPlanillaService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
@@ -33,6 +34,12 @@ public class EmpleadoPlanillaController {
     public ApiResponse<Void> guardar(@RequestBody EmpleadoPlanillaDto dto) {
         service.guardar(dto);
         return new ApiResponse<>("OK", "Planilla registrada", null);
+    }
+
+    /** Tabla consolidada: todos los empleados activos con su planilla (o sin configurar). */
+    @GetMapping
+    public ApiResponse<List<PlanillaConsolidadaRowDto>> listarConsolidado() {
+        return new ApiResponse<>("OK", "Planillas consolidadas", service.listarConsolidado());
     }
 
     @GetMapping("/{empleadoId}")

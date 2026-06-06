@@ -9,6 +9,14 @@ public class MovimientoPlanillaResponseDto {
 
     private Long empleadoId;
 
+    private String empleadoNombre;
+
+    private String empleadoDni;
+
+    private String regimenLaboralCodigo;
+
+    private String regimenLaboralNombre;
+
     private String periodo;
 
     private Double totalIngresos;

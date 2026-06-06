@@ -39,6 +39,26 @@ public interface EmpleadoEventoRepository
     /** F3.3 — eventos activos del período (preflight). */
     List<EmpleadoEvento> findByPeriodoAndActivo(String periodo, Integer activo);
 
+    @Query("""
+            SELECT e
+              FROM EmpleadoEvento e
+              JOIN e.tipoEvento t
+             WHERE e.empleadoId          = :empleadoId
+               AND e.activo              = 1
+               AND e.estado              = 'VALIDADO'
+               AND t.activo              = 1
+               AND t.generaSubsidio      = 'S'
+               AND (e.periodo = :periodo
+                    OR (e.periodo IS NULL
+                        AND e.fechaInicio <= :periodoFin
+                        AND e.fechaFin    >= :periodoInicio))
+            """)
+    List<EmpleadoEvento> findSubsidiosParaMotor(
+            @Param("empleadoId") Long empleadoId,
+            @Param("periodo") String periodo,
+            @Param("periodoInicio") LocalDate periodoInicio,
+            @Param("periodoFin") LocalDate periodoFin);
+
     /**
      * F2.3 — Eventos del empleado en el período (activos) cuyo tipo afecta
      * días laborados. Devuelve también los que tengan PERIODO null pero cuyo
@@ -82,5 +102,29 @@ public interface EmpleadoEventoRepository
             @Param("empleadoId") Long empleadoId,
             @Param("fechaInicio") LocalDate fechaInicio,
             @Param("fechaFin") LocalDate fechaFin,
+            @Param("idExcluir") Long idExcluir);
+
+    /**
+     * P0 subsidios - eventos previos de enfermedad dentro del anio calendario.
+     * Trae eventos validados que solapan la ventana [anioInicio, diaPrevioEvento].
+     */
+    @Query("""
+            SELECT e
+              FROM EmpleadoEvento e
+              JOIN e.tipoEvento t
+             WHERE e.empleadoId = :empleadoId
+               AND e.activo = 1
+               AND e.estado = 'VALIDADO'
+               AND t.activo = 1
+               AND t.codigo = 'ENFERMEDAD'
+               AND t.generaSubsidio = 'S'
+               AND e.fechaInicio <= :hasta
+               AND e.fechaFin >= :desde
+               AND (:idExcluir IS NULL OR e.id <> :idExcluir)
+            """)
+    List<EmpleadoEvento> findEnfermedadesPreviasEnAnio(
+            @Param("empleadoId") Long empleadoId,
+            @Param("desde") LocalDate desde,
+            @Param("hasta") LocalDate hasta,
             @Param("idExcluir") Long idExcluir);
 }

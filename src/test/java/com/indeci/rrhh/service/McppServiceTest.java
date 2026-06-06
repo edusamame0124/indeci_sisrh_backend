@@ -16,7 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -87,7 +87,7 @@ class McppServiceTest {
         emp.setRegistroAirhsp("000674");
         lenient().when(empleadoRepository.findAll()).thenReturn(List.of(emp));
 
-        PersonaEmpleadoResponseDto persona = new PersonaEmpleadoResponseDto();
+        PersonaResumenDto persona = new PersonaResumenDto();
         persona.setEmpleadoId(1L);
         persona.setDni("00256418");
         lenient().when(personaService.listar()).thenReturn(List.of(persona));

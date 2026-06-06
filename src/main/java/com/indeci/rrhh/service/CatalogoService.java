@@ -73,6 +73,8 @@ public class CatalogoService {
 
 private final EstadoSolicitudRepository estadoSolicitudRepository;
 
+    private final CargoRepository cargoRepository;
+
     public List<UbigeoDto> listarUbigeo() {
         return districtRepository.listarUbigeoCompleto();
     }
@@ -200,6 +202,11 @@ private final EstadoSolicitudRepository estadoSolicitudRepository;
     public List<Dependencia> listarDependencias() {
         return dependenciaRepository.findAll();
     }
+
+    public List<Cargo> listarCargos() {
+        return cargoRepository.findByActivoOrderByNombreAsc(VIGENTE);
+    }
+
     public List<TipoComisionAfp> listarTiposComisionAfp() {
         return tipoComisionAfpRepository.findAll();
     }

@@ -2,7 +2,7 @@ package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.MovimientoPlanillaDetalleResponseDto;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
 
@@ -55,7 +55,7 @@ public class BoletaPdfService {
         List<MovimientoPlanillaDetalleResponseDto> detalle =
                 detalleService.listarDetalle(empleadoId, periodo);
 
-        PersonaEmpleadoResponseDto persona = personaService.listar().stream()
+        PersonaResumenDto persona = personaService.listar().stream()
                 .filter(p -> empleadoId.equals(p.getEmpleadoId()))
                 .findFirst()
                 .orElse(null);
@@ -143,7 +143,7 @@ public class BoletaPdfService {
     }
 
     private PdfPTable datosTrabajador(
-            PersonaEmpleadoResponseDto persona, Long empleadoId, Font fLabel, Font fTexto) {
+            PersonaResumenDto persona, Long empleadoId, Font fLabel, Font fTexto) {
 
         PdfPTable grid = new PdfPTable(4);
         grid.setWidthPercentage(100);

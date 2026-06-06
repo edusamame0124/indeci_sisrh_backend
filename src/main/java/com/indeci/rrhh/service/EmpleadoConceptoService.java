@@ -2,14 +2,21 @@ package com.indeci.rrhh.service;
 
 
 import com.indeci.exception.ConceptoNoAsignableManualmenteException;
+import com.indeci.exception.ConceptoRegimenNoAplicableException;
 import com.indeci.exception.ConceptoYaAsignadoException;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.ConceptoPlanillaResponseDto;
+import com.indeci.rrhh.dto.ConceptosAsignablesDto;
 import com.indeci.rrhh.dto.EmpleadoConceptoDto;
 import com.indeci.rrhh.dto.EmpleadoConceptoResponseDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoConcepto;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
+import com.indeci.rrhh.service.support.RegimenAplicableHelper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,10 +43,25 @@ public class EmpleadoConceptoService {
             "06001", "06002", "05309",          // ESSALUD sin/con EPS + copago EPS
             "05401", "05402");                  // descuento tardanza / falta
 
+    /**
+     * Mejora 2026-06-03 — Conceptos de remuneración base: el motor los calcula
+     * desde {@code EmpleadoPlanilla.sueldoBasico} (Configuración de planilla), por
+     * lo que NO se asignan a mano. CAS=00501, 728=00301, 276=00102(+00101 legacy);
+     * SERVIR L001–L004 (RD0111-2021-EF).
+     */
+    private static final Set<String> MEF_BASE_REMUNERATIVA = Set.of(
+            "00101", "00102", "00301", "00501",
+            "L001", "L002", "L003", "L004");
+
     private final EmpleadoConceptoRepository repository;
 
     private final ConceptoPlanillaRepository
             conceptoRepository;
+
+    // Régimen del empleado para filtrar/validar conceptos (mejora 2026-06-03).
+    private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    private final RegimenLaboralRepository regimenLaboralRepository;
+    private final ConceptoPlanillaService conceptoPlanillaService;
 
     public void guardar(
             EmpleadoConceptoDto dto) {
@@ -55,6 +77,10 @@ public class EmpleadoConceptoService {
         if (esCalculadoPorMotor(concepto)) {
             throw new ConceptoNoAsignableManualmenteException(concepto.getNombre());
         }
+
+        // VALIDACIÓN 1b (mejora 2026-06-03): el concepto debe aplicar al régimen
+        // del empleado (guard normativo — evita pagos indebidos por DS de otro régimen).
+        validarRegimenAplica(concepto, resolverRegimenEmpleado(dto.getEmpleadoId()));
 
         // Spec 013 / C1 — VALIDACIÓN 2: sin duplicados activos del concepto.
         if (repository.existsByEmpleadoIdAndConceptoPlanillaIdAndActivo(
@@ -119,6 +145,7 @@ public class EmpleadoConceptoService {
                 throw new ConceptoNoAsignableManualmenteException(
                         concepto.getNombre());
             }
+            validarRegimenAplica(concepto, resolverRegimenEmpleado(entity.getEmpleadoId()));
             if (repository.existsByEmpleadoIdAndConceptoPlanillaIdAndActivoAndIdNot(
                     entity.getEmpleadoId(), conceptoId, 1, id)) {
                 throw new ConceptoYaAsignadoException();
@@ -146,6 +173,30 @@ public class EmpleadoConceptoService {
 
         entity.setActivo(0);
         repository.save(entity);
+    }
+
+    /**
+     * Conceptos asignables a un empleado, filtrados por su régimen laboral
+     * (mejora 2026-06-03). Usa la MISMA regla que el motor/preflight
+     * ({@link RegimenAplicableHelper}) para que el dropdown y la validación no
+     * diverjan. Si el empleado no tiene planilla/régimen, devuelve régimen null
+     * y la lista sin filtro de régimen (la UI pedirá configurar la planilla).
+     */
+    public ConceptosAsignablesDto listarAsignables(Long empleadoId) {
+        String regimen = resolverRegimenEmpleado(empleadoId);
+        ConceptosAsignablesDto out = new ConceptosAsignablesDto();
+        out.setRegimenLaboral(regimen);
+        List<ConceptoPlanillaResponseDto> conceptos = conceptoPlanillaService.listar()
+                .stream()
+                .filter(c -> RegimenAplicableHelper.aplica(c.getRegimenAplicable(), regimen))
+                // Excluir los que calcula el motor (aportes, ESSALUD, 5ta, asig.
+                // familiar) y la remuneración base (viene de Configuración planilla).
+                .filter(c -> c.getCodigoMef() == null
+                        || !(MEF_AUTOCALCULADOS.contains(c.getCodigoMef())
+                                || MEF_BASE_REMUNERATIVA.contains(c.getCodigoMef())))
+                .collect(Collectors.toList());
+        out.setConceptos(conceptos);
+        return out;
     }
 
     public List<EmpleadoConceptoResponseDto>
@@ -220,6 +271,34 @@ public class EmpleadoConceptoService {
      * </ul>
      * Los REMUNERATIVO/NO_REMUNERATIVO/DESCUENTO restantes SÍ se permiten.
      */
+    /** Régimen laboral (código) del empleado, de su planilla activa; null si no tiene. */
+    private String resolverRegimenEmpleado(Long empleadoId) {
+        if (empleadoId == null) {
+            return null;
+        }
+        return empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
+                .map(EmpleadoPlanilla::getRegimenLaboralId)
+                .filter(java.util.Objects::nonNull)
+                .flatMap(regimenLaboralRepository::findById)
+                .map(rl -> rl.getCodigo())
+                .orElse(null);
+    }
+
+    /**
+     * Guard normativo (mejora 2026-06-03): rechaza asignar un concepto cuyo
+     * {@code REGIMEN_APLICABLE} no aplica al régimen del empleado (alias CAS≡1057).
+     * Si el empleado no tiene régimen, no se contradice (no bloquea).
+     */
+    private void validarRegimenAplica(ConceptoPlanilla concepto, String regimenEmpleado) {
+        if (!RegimenAplicableHelper.aplica(concepto.getRegimenAplicable(), regimenEmpleado)) {
+            throw new ConceptoRegimenNoAplicableException(
+                    concepto.getCodigoMef(),
+                    concepto.getNombre(),
+                    regimenEmpleado,
+                    concepto.getRegimenAplicable());
+        }
+    }
+
     private boolean esCalculadoPorMotor(ConceptoPlanilla concepto) {
         String tipo = concepto.getTipoConcepto();
         if (tipo != null) {
@@ -229,6 +308,7 @@ public class EmpleadoConceptoService {
             }
         }
         String mef = concepto.getCodigoMef();
-        return mef != null && MEF_AUTOCALCULADOS.contains(mef);
+        return mef != null
+                && (MEF_AUTOCALCULADOS.contains(mef) || MEF_BASE_REMUNERATIVA.contains(mef));
     }
 }

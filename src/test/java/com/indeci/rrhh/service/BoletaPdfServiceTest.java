@@ -2,7 +2,7 @@ package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.MovimientoPlanillaDetalleResponseDto;
-import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
+import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
 import org.junit.jupiter.api.Test;
@@ -57,8 +57,8 @@ class BoletaPdfServiceTest {
         return d;
     }
 
-    private PersonaEmpleadoResponseDto persona() {
-        PersonaEmpleadoResponseDto p = new PersonaEmpleadoResponseDto();
+    private PersonaResumenDto persona() {
+        PersonaResumenDto p = new PersonaResumenDto();
         p.setEmpleadoId(EMPLEADO_ID);
         p.setNombreCompleto("Ana Lopez");
         p.setDni("12345678");

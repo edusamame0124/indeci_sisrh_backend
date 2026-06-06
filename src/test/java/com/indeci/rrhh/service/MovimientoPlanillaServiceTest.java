@@ -1,15 +1,22 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.audit.context.AuditoriaContext;
+import com.indeci.rrhh.dto.MovimientoPlanillaResponseDto;
 import com.indeci.rrhh.dto.ResumenMetaDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
+import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
+import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
+import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaDetalleRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
+import com.indeci.rrhh.repository.PersonaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +46,9 @@ class MovimientoPlanillaServiceTest {
     @Mock private MovimientoPlanillaRepository repository;
     @Mock private MovimientoPlanillaDetalleRepository detalleRepository;
     @Mock private EmpleadoPlanillaRepository planillaRepository;
+    @Mock private EmpleadoRepository empleadoRepository;
+    @Mock private PersonaRepository personaRepository;
+    @Mock private RegimenLaboralRepository regimenLaboralRepository;
     @Mock private ConceptoPlanillaRepository conceptoRepository;
     @Mock private AuditoriaContext auditoriaContext;
 
@@ -139,6 +149,27 @@ class MovimientoPlanillaServiceTest {
         assertThat(resumen.get(0).getPea()).isEqualTo(1);
     }
 
+    @Test
+    void listarPeriodo_enriquece_identificacion_empleado_y_regimen() {
+        when(repository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of(
+                mov(100L, 1L, 3000.0)));
+        when(empleadoRepository.findAllById(List.of(1L))).thenReturn(List.of(
+                empleado(1L, 10L)));
+        when(personaRepository.findAllById(List.of(10L))).thenReturn(List.of(
+                persona(10L, "Ana Isabel Salas Ramos", "44552584")));
+        when(planillaRepository.findByEmpleadoIdInAndActivo(List.of(1L), 1)).thenReturn(List.of(
+                empPlanillaConRegimen(1L, 7L)));
+        when(regimenLaboralRepository.findAllById(List.of(7L))).thenReturn(List.of(
+                regimen(7L, "1057", "CAS")));
+
+        MovimientoPlanillaResponseDto dto = service.listarPeriodo(PERIODO).get(0);
+
+        assertThat(dto.getEmpleadoNombre()).isEqualTo("Ana Isabel Salas Ramos");
+        assertThat(dto.getEmpleadoDni()).isEqualTo("44552584");
+        assertThat(dto.getRegimenLaboralCodigo()).isEqualTo("1057");
+        assertThat(dto.getRegimenLaboralNombre()).isEqualTo("CAS");
+    }
+
     // ================= HELPERS =================
 
     private MovimientoPlanilla mov(Long id, Long empleadoId, Double ingresos) {
@@ -158,6 +189,36 @@ class MovimientoPlanillaServiceTest {
         e.setCentroCosto(centroCosto);
         e.setActivo(1);
         return e;
+    }
+
+    private EmpleadoPlanilla empPlanillaConRegimen(Long empleadoId, Long regimenLaboralId) {
+        EmpleadoPlanilla e = empPlanilla(empleadoId, "0001", "CC-A");
+        e.setId(50L);
+        e.setRegimenLaboralId(regimenLaboralId);
+        return e;
+    }
+
+    private Empleado empleado(Long id, Long personaId) {
+        Empleado e = new Empleado();
+        e.setId(id);
+        e.setPersonaId(personaId);
+        return e;
+    }
+
+    private Persona persona(Long id, String nombreCompleto, String dni) {
+        Persona p = new Persona();
+        p.setId(id);
+        p.setNombreCompleto(nombreCompleto);
+        p.setDni(dni);
+        return p;
+    }
+
+    private RegimenLaboral regimen(Long id, String codigo, String nombre) {
+        RegimenLaboral r = new RegimenLaboral();
+        r.setId(id);
+        r.setCodigo(codigo);
+        r.setNombre(nombre);
+        return r;
     }
 
     private MovimientoPlanillaDetalle detalle(Long conceptoId, Double monto) {

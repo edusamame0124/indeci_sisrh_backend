@@ -51,6 +51,15 @@ public class EstimacionNetoService {
             "06001", "06002", "05309",          // ESSALUD sin/con EPS + copago EPS
             "05401", "05402");                  // descuento tardanza / falta
 
+    /**
+     * Conceptos de remuneración base (mejora 2026-06-03): la base es
+     * {@code EmpleadoPlanilla.sueldoBasico} (Configuración de planilla), no un
+     * concepto manual. Se excluyen aquí para no doble-contar la base.
+     */
+    private static final Set<String> MEF_BASE_REMUNERATIVA = Set.of(
+            "00101", "00102", "00301", "00501",
+            "L001", "L002", "L003", "L004");
+
     private static final BigDecimal CIEN = new BigDecimal("100");
 
     private final EmpleadoConceptoRepository empleadoConceptoRepository;
@@ -80,7 +89,9 @@ public class EstimacionNetoService {
         List<EmpleadoConcepto> activos = empleadoConceptoRepository
                 .findByEmpleadoIdAndActivo(empleadoId, 1);
 
-        BigDecimal remuneracion = BigDecimal.ZERO;
+        // Base remunerativa = sueldoBasico (mejora 2026-06-03): igual que el motor,
+        // la base viene de Configuración de planilla, no de un concepto manual.
+        BigDecimal remuneracion = sueldoBasico;
         List<ConceptoAplicado> conceptosVariables = new ArrayList<>();
 
         for (EmpleadoConcepto ec : activos) {
@@ -90,8 +101,11 @@ public class EstimacionNetoService {
             if (cp == null) {
                 continue;
             }
-            // El motor ignora los autocalculados — la estimación también.
-            if (cp.getCodigoMef() != null && MEF_AUTOCALCULADOS.contains(cp.getCodigoMef())) {
+            // El motor ignora los autocalculados y la remuneración base — la
+            // estimación también (la base ya está incluida vía sueldoBasico).
+            if (cp.getCodigoMef() != null
+                    && (MEF_AUTOCALCULADOS.contains(cp.getCodigoMef())
+                            || MEF_BASE_REMUNERATIVA.contains(cp.getCodigoMef()))) {
                 continue;
             }
             BigDecimal monto = resolverMonto(ec, sueldoBasico);
