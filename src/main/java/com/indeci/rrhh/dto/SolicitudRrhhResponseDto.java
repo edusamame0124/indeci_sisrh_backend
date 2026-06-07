@@ -50,4 +50,12 @@ public class SolicitudRrhhResponseDto {
     
     private String lugarComision;
     
+    private LocalDate fechaNacimientoHijo;
+
+    private LocalDate fechaFinPostnatal;
+
+    private Integer minutosIngreso;
+
+    private Integer minutosSalida;
+    
 }

@@ -44,13 +44,527 @@ public class SolicitudRrhhService {
     private final FtpService ftpService;
     
     private static final String TIPO_VACACIONES = "VAC";
-
-    // ==========================================
-    // REGISTRAR
-    // ==========================================
+    
     @Auditable(
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
+            SolicitudRrhhDto dto,
+            MultipartFile sustento) {
+
+    	Long empleadoId =
+    	        obtenerEmpleadoActual();
+        TipoSolicitudRrhh tipo =
+                obtenerTipoSolicitud(
+                        dto.getTipoSolicitudId());
+
+        validarSolicitud(
+                dto,
+                tipo,
+                empleadoId,
+                sustento);
+
+        EstadoSolicitud estadoBorrador =
+                obtenerEstadoBorrador();
+
+        SolicitudRrhh entity =
+                construirSolicitud(
+                        dto,
+                        empleadoId,
+                        estadoBorrador,
+                        tipo);
+
+        repository.save(entity);
+
+        guardarSustento(
+                entity,
+                sustento);
+
+        registrarHistorial(
+                entity.getId(),
+                null,
+                entity.getEstadoSolicitudId(),
+                "CREAR",
+                "Solicitud creada");
+    }
+    
+    private Long obtenerEmpleadoActual() {
+    	
+    	Long empleadoId=SecurityUtil.getEmpleadoId();
+    	
+    	if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
+        }
+
+        
+        
+        // ==========================================
+        // VALIDAR EMPLEADO
+        // ==========================================
+
+        empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"));
+
+        return empleadoId;
+    }
+    
+    private TipoSolicitudRrhh obtenerTipoSolicitud(
+            Long id) {
+
+        return tipoSolicitudRepository
+                .findById(id)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Tipo de solicitud no existe"));
+    }
+    
+    private void guardarSustento(
+            SolicitudRrhh solicitud,
+            MultipartFile sustento) {
+
+        if(sustento != null
+                && !sustento.isEmpty()) {
+
+            String ruta =
+                    ftpService.subirArchivo(
+                            sustento,
+                            "sustentos",
+                            sustento.getOriginalFilename());
+
+            SolicitudRrhhDoc doc =
+                    new SolicitudRrhhDoc();
+
+            doc.setSolicitudId(
+            		solicitud.getId());
+
+            doc.setEtapa(
+                    "SUSTENTO");
+
+            doc.setNombreArchivo(
+                    sustento.getOriginalFilename());
+
+            doc.setRutaArchivo(
+                    ruta);
+
+            doc.setMimeType(
+                    sustento.getContentType());
+
+            doc.setTamanioBytes(
+                    sustento.getSize());
+
+            doc.setVersionDoc(1);
+
+            doc.setActivo(1);
+
+            solicitudRrhhDocRepository.save(doc);
+        }
+    }
+    
+    private EstadoSolicitud obtenerEstadoBorrador() {
+
+        return estadoSolicitudRepository
+                .findByCodigo("BORRADOR")
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Estado BORRADOR no encontrado"));
+    }
+    
+    private void validarSolicitud(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo,
+            Long empleadoId,
+            MultipartFile sustento) {
+
+        validarLactancia(
+                dto,
+                tipo);
+
+        validarSustento(
+                tipo,
+                sustento);
+
+        validarLugar(
+                dto,
+                tipo);
+
+        validarObservacion(
+                dto,
+                tipo);
+
+        validarFechas(
+                dto,
+                tipo);
+
+        validarDuplicidad(
+                dto,
+                empleadoId);
+
+        validarHoras(
+                dto,
+                tipo);
+    }
+    
+    private void validarLactancia(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        boolean esLactancia =
+                "008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo());
+
+        if(!esLactancia){
+            return;
+        }
+
+        if(dto.getFechaNacimientoHijo()
+                .isAfter(LocalDate.now())) {
+
+            throw new NegocioException(
+                    "La fecha de nacimiento del hijo no puede ser futura");
+        }
+        
+        
+        boolean continua =
+                dto.getHoraInicio() != null
+                && !dto.getHoraInicio().isBlank()
+                && dto.getHoraFin() != null
+                && !dto.getHoraFin().isBlank();
+
+        boolean fraccionada =
+                dto.getMinutosIngreso() != null
+                || dto.getMinutosSalida() != null;
+
+        
+        	
+        	
+        	
+        	if(!continua && !fraccionada) {
+
+        	    throw new NegocioException(
+        	            "Debe registrar horario o minutos fraccionados");
+        	}
+        	
+        	if(continua && fraccionada) {
+
+        	    throw new NegocioException(
+        	            "Debe elegir horario continuo o fraccionado, no ambos");
+        	}
+        	
+        	if(continua) {
+
+        	    double horas =
+        	            calcularHoras(
+        	                    dto.getHoraInicio(),
+        	                    dto.getHoraFin());
+
+        	    if(horas > 1) {
+
+        	        throw new NegocioException(
+        	                "El permiso por lactancia no puede exceder 1 hora diaria");
+        	    }
+        	    
+        		LocalTime inicio =
+            	        LocalTime.parse(dto.getHoraInicio());
+
+            	LocalTime fin =
+            	        LocalTime.parse(dto.getHoraFin());
+
+            
+            	
+            	if(!fin.isAfter(inicio)) {
+
+            	    throw new NegocioException(
+            	            "La hora fin debe ser mayor que la hora inicio");
+            	}
+        	}
+        	
+        	if(fraccionada) {
+
+        	    int ingreso =
+        	            dto.getMinutosIngreso() == null
+        	            ? 0
+        	            : dto.getMinutosIngreso();
+
+        	    int salida =
+        	            dto.getMinutosSalida() == null
+        	            ? 0
+        	            : dto.getMinutosSalida();
+
+        	    int total = ingreso + salida;
+
+        	    if(total <= 0) {
+
+        	        throw new NegocioException(
+        	                "Debe indicar minutos de ingreso o salida");
+        	    }
+
+        	    if(total > 60) {
+
+        	        throw new NegocioException(
+        	                "El permiso por lactancia no puede exceder 60 minutos diarios");
+        	    }
+        	}
+        	
+        	if(dto.getMinutosIngreso() != null
+        	        && dto.getMinutosIngreso() < 0) {
+
+        	    throw new NegocioException(
+        	            "Minutos ingreso inválidos");
+        	}
+
+        	if(dto.getMinutosSalida() != null
+        	        && dto.getMinutosSalida() < 0) {
+
+        	    throw new NegocioException(
+        	            "Minutos salida inválidos");
+        	}
+
+            if(dto.getFechaNacimientoHijo() == null) {
+                throw new NegocioException(
+                        "Fecha nacimiento del hijo es obligatoria");
+            }
+
+            if(dto.getFechaFinPostnatal() == null) {
+                throw new NegocioException(
+                        "Fecha fin postnatal es obligatoria");
+            }
+            
+            
+        	LocalDate fechaLimite =
+        	        dto.getFechaNacimientoHijo()
+        	           .plusYears(1);
+
+        	if(LocalDate.now().isAfter(fechaLimite)) {
+
+        	    throw new NegocioException(
+        	            "El menor ya cumplió un año de edad");
+        	}
+            
+        
+        
+    }
+    
+    private void validarSustento(
+            TipoSolicitudRrhh tipo,
+            MultipartFile sustento) {
+
+        if(tipo.getRequiereSustento() == 1) {
+
+            if(sustento == null
+                    || sustento.isEmpty()) {
+
+                throw new NegocioException(
+                        "Debe adjuntar sustento");
+            }
+        }
+    }
+    
+    private void validarLugar(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(tipo.getRequiereLugar() == 1) {
+
+            if(dto.getLugarComision() == null
+                    || dto.getLugarComision().isBlank()) {
+
+                throw new NegocioException(
+                        "Debe indicar el lugar de comisión");
+            }
+        }
+    }
+    
+    private void validarObservacion(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(tipo.getRequiereObservacion() == 1) {
+
+            if(dto.getObservacion() == null
+                    || dto.getObservacion().isBlank()) {
+
+                throw new NegocioException(
+                        "Debe registrar una observación");
+            }
+        }
+    }
+    
+    private void validarFechas(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(tipo.getMostrarHoras() == 0) {
+
+            if(dto.getFechaFin() == null) {
+
+                throw new NegocioException(
+                        "Fecha fin es obligatoria");
+            }
+
+        } else {
+
+            dto.setFechaFin(
+                    dto.getFechaInicio());
+        }
+    }
+    
+    private void validarDuplicidad(
+            SolicitudRrhhDto dto,
+            Long empleadoId) {
+
+        boolean existe =
+                repository
+                        .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                                empleadoId,
+                                dto.getTipoSolicitudId(),
+                                1,
+                                dto.getFechaFin(),
+                                dto.getFechaInicio());
+
+        if(existe) {
+
+            throw new NegocioException(
+                    "El empleado ya tiene una solicitud de este tipo en esas fechas");
+        }
+    }
+
+    
+    private void validarHoras(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        boolean esLactancia =
+                "008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo());
+
+        if(tipo.getMostrarHoras() == 1
+                && !esLactancia) {
+
+            if(dto.getHoraInicio() == null
+                    || dto.getHoraInicio().isBlank()) {
+
+                throw new NegocioException(
+                        "Hora inicio es obligatoria");
+            }
+
+            if(dto.getHoraFin() == null
+                    || dto.getHoraFin().isBlank()) {
+
+                throw new NegocioException(
+                        "Hora fin es obligatoria");
+            }
+        }
+    }
+    
+    private SolicitudRrhh construirSolicitud(
+            SolicitudRrhhDto dto,
+            Long empleadoId,
+            EstadoSolicitud estado,
+            TipoSolicitudRrhh tipo) {
+
+        SolicitudRrhh entity =
+                new SolicitudRrhh();
+
+        entity.setEmpleadoId(empleadoId);
+        entity.setTipoSolicitudId(dto.getTipoSolicitudId());
+        entity.setEstadoSolicitudId(estado.getId());
+
+        entity.setFechaInicio(dto.getFechaInicio());
+        entity.setFechaFin(dto.getFechaFin());
+
+        entity.setMotivo(dto.getMotivo());
+        entity.setObservacion(dto.getObservacion());
+
+        entity.setHoraInicio(dto.getHoraInicio());
+        entity.setHoraFin(dto.getHoraFin());
+
+        entity.setLugarComision(dto.getLugarComision());
+
+        entity.setFechaNacimientoHijo(
+                dto.getFechaNacimientoHijo());
+
+        entity.setFechaFinPostnatal(
+                dto.getFechaFinPostnatal());
+
+        entity.setMinutosIngreso(
+                dto.getMinutosIngreso());
+
+        entity.setMinutosSalida(
+                dto.getMinutosSalida());
+
+        entity.setActivo(1);
+
+        entity.setCreatedAt(
+                LocalDateTime.now());
+
+        calcularCantidades(
+                entity,
+                dto,
+                tipo);
+
+        return entity;
+    }
+    
+    private void calcularCantidades(
+            SolicitudRrhh entity,
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        boolean esLactancia =
+                "008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo());
+
+        boolean fraccionada =
+                dto.getMinutosIngreso() != null
+                || dto.getMinutosSalida() != null;
+
+        if(tipo.getMostrarHoras() == 0) {
+
+            entity.setCantidadDias(
+                    calcularDias(
+                            dto.getFechaInicio(),
+                            dto.getFechaFin()));
+
+            entity.setCantidadHoras(
+                    null);
+
+            return;
+        }
+
+        entity.setCantidadDias(
+                null);
+
+        if(esLactancia && fraccionada){
+
+            int ingreso =
+                    dto.getMinutosIngreso() == null
+                    ? 0
+                    : dto.getMinutosIngreso();
+
+            int salida =
+                    dto.getMinutosSalida() == null
+                    ? 0
+                    : dto.getMinutosSalida();
+
+            entity.setCantidadHoras(
+                    (ingreso + salida) / 60.0);
+
+        } else {
+
+            entity.setCantidadHoras(
+                    calcularHoras(
+                            dto.getHoraInicio(),
+                            dto.getHoraFin()));
+        }
+    }
+    // ==========================================
+    // REGISTRAR
+    // ==========================================
+  
+    public void registrarAntiguo(
             SolicitudRrhhDto dto,
             MultipartFile sustento) {
         Long empleadoId = SecurityUtil.getEmpleadoId();
@@ -82,6 +596,133 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Tipo solicitud no encontrado"));
+        
+        boolean esLactancia =
+                "008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo());
+        
+        boolean continua =
+    	        dto.getHoraInicio() != null
+    	        && !dto.getHoraInicio().isBlank()
+    	        && dto.getHoraFin() != null
+    	        && !dto.getHoraFin().isBlank();
+
+    	boolean fraccionada =
+    	        dto.getMinutosIngreso() != null
+    	        || dto.getMinutosSalida() != null;
+        
+        if(esLactancia) {
+        	
+        	
+        	
+        	if(!continua && !fraccionada) {
+
+        	    throw new NegocioException(
+        	            "Debe registrar horario o minutos fraccionados");
+        	}
+        	
+        	if(continua && fraccionada) {
+
+        	    throw new NegocioException(
+        	            "Debe elegir horario continuo o fraccionado, no ambos");
+        	}
+        	
+        	if(continua) {
+
+        	    double horas =
+        	            calcularHoras(
+        	                    dto.getHoraInicio(),
+        	                    dto.getHoraFin());
+
+        	    if(horas > 1) {
+
+        	        throw new NegocioException(
+        	                "El permiso por lactancia no puede exceder 1 hora diaria");
+        	    }
+        	    
+        		LocalTime inicio =
+            	        LocalTime.parse(dto.getHoraInicio());
+
+            	LocalTime fin =
+            	        LocalTime.parse(dto.getHoraFin());
+
+            
+            	
+            	if(!fin.isAfter(inicio)) {
+
+            	    throw new NegocioException(
+            	            "La hora fin debe ser mayor que la hora inicio");
+            	}
+        	}
+        	
+        	if(fraccionada) {
+
+        	    int ingreso =
+        	            dto.getMinutosIngreso() == null
+        	            ? 0
+        	            : dto.getMinutosIngreso();
+
+        	    int salida =
+        	            dto.getMinutosSalida() == null
+        	            ? 0
+        	            : dto.getMinutosSalida();
+
+        	    int total = ingreso + salida;
+
+        	    if(total <= 0) {
+
+        	        throw new NegocioException(
+        	                "Debe indicar minutos de ingreso o salida");
+        	    }
+
+        	    if(total > 60) {
+
+        	        throw new NegocioException(
+        	                "El permiso por lactancia no puede exceder 60 minutos diarios");
+        	    }
+        	}
+        	
+        	if(dto.getMinutosIngreso() != null
+        	        && dto.getMinutosIngreso() < 0) {
+
+        	    throw new NegocioException(
+        	            "Minutos ingreso inválidos");
+        	}
+
+        	if(dto.getMinutosSalida() != null
+        	        && dto.getMinutosSalida() < 0) {
+
+        	    throw new NegocioException(
+        	            "Minutos salida inválidos");
+        	}
+
+            if(dto.getFechaNacimientoHijo() == null) {
+                throw new NegocioException(
+                        "Fecha nacimiento del hijo es obligatoria");
+            }
+
+            if(dto.getFechaFinPostnatal() == null) {
+                throw new NegocioException(
+                        "Fecha fin postnatal es obligatoria");
+            }
+            
+            
+        	LocalDate fechaLimite =
+        	        dto.getFechaNacimientoHijo()
+        	           .plusYears(1);
+
+        	if(LocalDate.now().isAfter(fechaLimite)) {
+
+        	    throw new NegocioException(
+        	            "El menor ya cumplió un año de edad");
+        	}
+            
+        
+        }
+        
+    
+        
+        
         
         
         if(tipo.getRequiereSustento() == 1) {
@@ -158,8 +799,11 @@ public class SolicitudRrhhService {
         // ==========================================
         // VALIDAR HORAS
         // ==========================================
+        
+      
 
-        if (tipo.getMostrarHoras() == 1) {
+        if(tipo.getMostrarHoras() == 1
+                && !esLactancia) {
 
             if (dto.getHoraInicio() == null
                     || dto.getHoraInicio().isBlank()) {
@@ -232,6 +876,19 @@ public class SolicitudRrhhService {
 
         entity.setActivo(1);
         entity.setLugarComision(dto.getLugarComision());
+        
+        
+        entity.setFechaNacimientoHijo(
+                dto.getFechaNacimientoHijo());
+
+        entity.setFechaFinPostnatal(
+                dto.getFechaFinPostnatal());
+
+        entity.setMinutosIngreso(
+                dto.getMinutosIngreso());
+
+        entity.setMinutosSalida(
+                dto.getMinutosSalida());
 
         entity.setCreatedAt(
                 LocalDateTime.now());
@@ -239,26 +896,24 @@ public class SolicitudRrhhService {
         // ==========================================
         // CALCULAR HORAS / DÍAS
         // ==========================================
+        if(esLactancia && fraccionada){
 
-        if (tipo.getMostrarHoras() == 1) {
+            int ingreso =
+                    dto.getMinutosIngreso() == null ? 0 : dto.getMinutosIngreso();
+
+            int salida =
+                    dto.getMinutosSalida() == null ? 0 : dto.getMinutosSalida();
+
+            entity.setCantidadHoras(
+                    (ingreso + salida) / 60.0);
+
+        }
+        else {
 
             entity.setCantidadHoras(
                     calcularHoras(
                             dto.getHoraInicio(),
                             dto.getHoraFin()));
-
-            entity.setCantidadDias(
-                    null);
-
-        } else {
-
-            entity.setCantidadDias(
-                    calcularDias(
-                            dto.getFechaInicio(),
-                            dto.getFechaFin()));
-
-            entity.setCantidadHoras(
-                    null);
         }
 
         // ==========================================
@@ -476,6 +1131,18 @@ public class SolicitudRrhhService {
 
         dto.setCantidadHoras(
                 s.getCantidadHoras());
+        
+        dto.setFechaNacimientoHijo(
+                s.getFechaNacimientoHijo());
+
+        dto.setFechaFinPostnatal(
+                s.getFechaFinPostnatal());
+
+        dto.setMinutosIngreso(
+                s.getMinutosIngreso());
+
+        dto.setMinutosSalida(
+                s.getMinutosSalida());
 
         return dto;
     }
@@ -1020,61 +1687,26 @@ public class SolicitudRrhhService {
     public void editar(
             Long solicitudId,
             SolicitudRrhhDto dto) {
-    	
-    	
-        Long empleadoId = SecurityUtil.getEmpleadoId();
-        if (empleadoId == null) {
-            throw new NegocioException(
-                    "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
-        }
 
-        // ==========================================
-        // VALIDAR EMPLEADO
-        // ==========================================
-
-        empleadoRepository
-                .findById(empleadoId)
-                .orElseThrow(() ->
-                        new NegocioException(
-                                "Empleado no encontrado"));
-
-
-        // ==========================================
-        // OBTENER SOLICITUD
-        // ==========================================
+        Long empleadoId =
+                obtenerEmpleadoActual();
 
         SolicitudRrhh solicitud =
                 repository
-                        .findById(
-                                solicitudId)
+                        .findById(solicitudId)
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
         
-        
-        // ==========================================
-        // VALIDAR DUPLICIDAD
-        // ==========================================
-
-        boolean existe =
-                repository
-                        .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        		empleadoId,
-                                dto.getTipoSolicitudId(),
-                                1,
-                                dto.getFechaFin(),
-                                dto.getFechaInicio());
-
-        if (existe) {
+        if(!solicitud.getEmpleadoId()
+                .equals(empleadoId)) {
 
             throw new NegocioException(
-                    "El empleado ya tiene una solicitud de este tipo en esas fechas");
+                    "No puede editar solicitudes de otro empleado");
         }
+        
 
-        // ==========================================
-        // VALIDAR ESTADO
-        // ==========================================
-
+        
         EstadoSolicitud estado =
                 estadoSolicitudRepository
                         .findById(
@@ -1083,100 +1715,91 @@ public class SolicitudRrhhService {
                                 new NegocioException(
                                         "Estado no encontrado"));
 
-        if (!estado.getCodigo()
-                .equals("BORRADOR")) {
+        if (!"BORRADOR".equals(
+                estado.getCodigo())) {
 
             throw new NegocioException(
                     "Solo solicitudes en borrador pueden editarse");
         }
 
-        // ==========================================
-        // OBTENER TIPO SOLICITUD
-        // ==========================================
-
         TipoSolicitudRrhh tipo =
-                tipoSolicitudRepository
-                        .findById(
-                                dto.getTipoSolicitudId())
-                        .orElseThrow(() ->
-                                new NegocioException(
-                                        "Tipo solicitud no encontrado"));
+                obtenerTipoSolicitud(
+                        dto.getTipoSolicitudId());
         
-     // ==========================================
-     // VALIDAR OBSERVACION
-     // ==========================================
+       
 
-     if (tipo.getRequiereObservacion() == 1) {
+        validarLactancia(
+                dto,
+                tipo);
 
-         if (dto.getObservacion() == null
-                 || dto.getObservacion().isBlank()) {
+        validarObservacion(
+                dto,
+                tipo);
 
-             throw new NegocioException(
-                     "Debe ingresar una observación");
-         }
-     }
-     
-  // ==========================================
-  // VALIDAR LUGAR
-  // ==========================================
+        validarLugar(
+                dto,
+                tipo);
 
-  if (tipo.getRequiereLugar() == 1) {
+        validarFechas(
+                dto,
+                tipo);
+        
+        validarDuplicidadEditar(
+                solicitudId,
+                dto,
+                empleadoId);
 
-      if (dto.getLugarComision() == null
-              || dto.getLugarComision().isBlank()) {
+        validarHoras(
+                dto,
+                tipo);
 
-          throw new NegocioException(
-                  "Debe ingresar el lugar");
-      }
-  }
+        // OJO:
+        // aquí luego debes corregir la validación de duplicidad
+        // para excluir la propia solicitud.
 
-        // ==========================================
-        // VALIDAR FECHA FIN
-        // ==========================================
+        actualizarSolicitud(
+                solicitud,
+                dto);
 
-        if (tipo.getMostrarHoras() == 0) {
+        calcularCantidades(
+                solicitud,
+                dto,
+                tipo);
 
-            if (dto.getFechaFin() == null) {
+        repository.save(
+                solicitud);
 
-                throw new NegocioException(
-                        "Fecha fin es obligatoria");
-            }
+        auditoriaContext.setDetalle(
+                "Solicitud RRHH editada ID: "
+                        + solicitudId);
+    }
+    
+    
+    private void validarDuplicidadEditar(
+            Long solicitudId,
+            SolicitudRrhhDto dto,
+            Long empleadoId) {
 
-        } else {
+        boolean existe =
+                repository
+                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        solicitudId,
+                        empleadoId,
+                        dto.getTipoSolicitudId(),
+                        1,
+                        dto.getFechaFin(),
+                        dto.getFechaInicio());
 
-            dto.setFechaFin(
-                    dto.getFechaInicio());
+        if(existe) {
+
+            throw new NegocioException(
+                    "El empleado ya tiene una solicitud de este tipo en esas fechas");
         }
-
-        // ==========================================
-        // VALIDAR HORAS
-        // ==========================================
-
-        if (tipo.getMostrarHoras() == 1) {
-
-            if (dto.getHoraInicio() == null
-                    || dto.getHoraInicio().isBlank()) {
-
-                throw new NegocioException(
-                        "Hora inicio es obligatoria");
-            }
-
-            if (dto.getHoraFin() == null
-                    || dto.getHoraFin().isBlank()) {
-
-                throw new NegocioException(
-                        "Hora fin es obligatoria");
-            }
-        }
-
-        // ==========================================
-        // VALIDAR SUSTENTO
-        // ==========================================
-
-
-        // ==========================================
-        // ACTUALIZAR DATOS
-        // ==========================================
+    }
+    
+    private void actualizarSolicitud(
+            SolicitudRrhh solicitud,
+            SolicitudRrhhDto dto) {
 
         solicitud.setTipoSolicitudId(
                 dto.getTipoSolicitudId());
@@ -1193,57 +1816,27 @@ public class SolicitudRrhhService {
         solicitud.setObservacion(
                 dto.getObservacion());
 
-      
         solicitud.setHoraInicio(
                 dto.getHoraInicio());
 
         solicitud.setHoraFin(
                 dto.getHoraFin());
-        
+
         solicitud.setLugarComision(
                 dto.getLugarComision());
 
-        // ==========================================
-        // CALCULAR HORAS / DÍAS
-        // ==========================================
+        solicitud.setFechaNacimientoHijo(
+                dto.getFechaNacimientoHijo());
 
-        if (tipo.getMostrarHoras() == 1) {
+        solicitud.setFechaFinPostnatal(
+                dto.getFechaFinPostnatal());
 
-            solicitud.setCantidadHoras(
-                    calcularHoras(
-                            dto.getHoraInicio(),
-                            dto.getHoraFin()));
+        solicitud.setMinutosIngreso(
+                dto.getMinutosIngreso());
 
-            solicitud.setCantidadDias(
-                    null);
-
-        } else {
-
-            solicitud.setCantidadDias(
-                    calcularDias(
-                            dto.getFechaInicio(),
-                            dto.getFechaFin()));
-
-            solicitud.setCantidadHoras(
-                    null);
-        }
-
-        // ==========================================
-        // GUARDAR
-        // ==========================================
-
-        repository.save(
-                solicitud);
-
-        // ==========================================
-        // AUDITORÍA
-        // ==========================================
-
-        auditoriaContext.setDetalle(
-                "Solicitud RRHH editada ID: "
-                        + solicitudId);
+        solicitud.setMinutosSalida(
+                dto.getMinutosSalida());
     }
-    
     
     @Auditable(
             accion = "ANULAR_SOLICITUD_RRHH")

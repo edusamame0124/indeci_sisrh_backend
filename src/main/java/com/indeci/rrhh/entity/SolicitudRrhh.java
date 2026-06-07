@@ -71,6 +71,18 @@ public class SolicitudRrhh {
     @Column(name = "LUGAR_COMISION")
     private String lugarComision;
     
+    @Column(name = "FECHA_NACIMIENTO_HIJO")
+    private LocalDate fechaNacimientoHijo;
+
+    @Column(name = "FECHA_FIN_POSTNATAL")
+    private LocalDate fechaFinPostnatal;
+
+    @Column(name = "MINUTOS_INGRESO")
+    private Integer minutosIngreso;
+
+    @Column(name = "MINUTOS_SALIDA")
+    private Integer minutosSalida;
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name="TIPO_SOLICITUD_ID",
     		insertable = false,

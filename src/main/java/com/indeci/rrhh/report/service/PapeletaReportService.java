@@ -171,17 +171,24 @@ public String generarPdf(
         // CARGAR JASPER
         // ==========================================
 
+        String nombreReporte = "formato_1.jasper";
+
+        if("008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo())) {
+
+            nombreReporte = "formato_2.jasper";
+        }
+
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
-                                "/reportes/rrhh/formato_1.jasper");
+                                "/reportes/rrhh/" + nombreReporte);
+
         
-;
-        
-        if (jasperStream == null) {
-            throw new RuntimeException(
-                    "No existe /reportes/rrhh/formato_1.jasper");
-        }
+	if (jasperStream == null) {
+	    throw new RuntimeException(
+	            "No existe /reportes/rrhh/" + nombreReporte);
+	}
 
         if (logo == null) {
             throw new RuntimeException(
@@ -220,8 +227,9 @@ public String generarPdf(
         
         params.put(
                 "P_DEPENDENCIA",
-                valor(
-                		puesto.getDependencia().getNombre()));
+                puesto.getDependencia() != null
+                        ? puesto.getDependencia().getNombre()
+                        : "");
        //INICIO REGIMEN LABORAL 
         
         params.put(
@@ -304,6 +312,73 @@ public String generarPdf(
                     		  solicitud.getObservacion()));
         	  
         }
+        
+        if("008".equals(tipo.getCodigo())) {
+
+            params.put(
+                    "P_TIPO_SOLICITUD",
+                    "PRIMERA");
+        }
+
+        if("009".equals(tipo.getCodigo())) {
+
+            params.put(
+                    "P_TIPO_SOLICITUD",
+                    "MODIFICACION");
+        }
+        
+        if("008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo())) {
+
+            params.put(
+                    "P_FECHA_NACIMIENTO",
+                    valor(
+                            formatearFecha(solicitud.getFechaNacimientoHijo())));
+
+            params.put(
+                    "P_FECHA_FIN_POSTNATAL",
+                    valor(
+                            formatearFecha(solicitud.getFechaFinPostnatal())));
+
+            params.put(
+                    "P_MINUTOS_INGRESO",
+                    valor(
+                            solicitud.getMinutosIngreso()));
+
+            params.put(
+                    "P_MINUTOS_SALIDA",
+                    valor(
+                            solicitud.getMinutosSalida()));
+
+            params.put(
+                    "P_HORA_DESDE",
+                    valor(
+                            solicitud.getHoraInicio()));
+
+            params.put(
+                    "P_HORA_HASTA",
+                    valor(
+                            solicitud.getHoraFin()));
+        }
+        
+        if(solicitud.getFechaNacimientoHijo() != null) {
+
+            LocalDate primerAnio =
+                    solicitud.getFechaNacimientoHijo()
+                             .plusYears(1);
+
+            params.put(
+                    "P_FECHA_PRIMER_ANIO",
+                    primerAnio.format(
+                            DateTimeFormatter.ofPattern(
+                                    "dd/MM/yyyy")));
+        }
+        
+        params.put(
+                "P_HORAS_DIARIAS",
+                valor(
+                        solicitud.getCantidadHoras()));
+        
         //tipo de permiso
         params.put(
                 "P_FECHA_PERMISO",
@@ -405,6 +480,18 @@ private String valor(
         return "Lima, "
                 + LocalDate.now()
                         .format(formatter);
+    }
+    
+    private String formatearFecha(
+            LocalDate fecha){
+
+        if(fecha == null){
+            return "";
+        }
+
+        return fecha.format(
+                DateTimeFormatter.ofPattern(
+                        "dd/MM/yyyy"));
     }
     
     

@@ -23,4 +23,12 @@ public class SolicitudRrhhDto {
 
 	private String horaFin;
 	private String lugarComision;
+	
+	private LocalDate fechaNacimientoHijo;
+
+	private LocalDate fechaFinPostnatal;
+
+	private Integer minutosIngreso;
+
+	private Integer minutosSalida;
 }

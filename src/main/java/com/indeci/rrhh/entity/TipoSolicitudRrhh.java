@@ -36,4 +36,7 @@ public class TipoSolicitudRrhh {
     @Column(name = "REQUIERE_OBSERVACION")
     private Integer requiereObservacion;
     
+    @Column(name = "MOSTRAR_LACTANCIA")
+    private Integer mostrarLactancia;
+    
 }

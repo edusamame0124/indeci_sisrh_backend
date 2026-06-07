@@ -38,4 +38,13 @@ public interface SolicitudRrhhRepository
 	        Long tipoSolicitudId,
 	        Long estadoSolicitudId,
 	        Integer activo);
+	
+	
+	boolean existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+	        Long id,
+	        Long empleadoId,
+	        Long tipoSolicitudId,
+	        Integer activo,
+	        LocalDate fechaFin,
+	        LocalDate fechaInicio);
 }
