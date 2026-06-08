@@ -48,6 +48,18 @@ public class AsistenciaCabecera {
     @Column(name = "OBSERVACION")
     private String observacion;
 
+    @Column(name = "IMPORTACION_ID")
+    private Long importacionId;
+
+    @Column(name = "MINUTOS_SALIDA_ANTICIPADA")
+    private Integer minutosSalidaAnticipada;
+
+    @Column(name = "MARCAS_INCOMPLETAS")
+    private Integer marcasIncompletas;
+
+    @Column(name = "BASE_ASISTENCIA_ORIGEN")
+    private String baseAsistenciaOrigen;
+
     @Column(name = "ACTIVO")
     private Integer activo;
 

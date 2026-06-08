@@ -84,4 +84,26 @@ public class EmpleadoEvento {
 
     @Column(name = "CREATED_BY", length = 60)
     private String createdBy;
+
+    /** P0 maternidad — 98 o 128 días naturales. Null para otros tipos. */
+    @Column(name = "DURACION_LEGAL")
+    private Integer duracionLegal;
+
+    @Column(name = "MOTIVO_EXTENSION", length = 40)
+    private String motivoExtension;
+
+    @Column(name = "FECHA_PROBABLE_PARTO")
+    private LocalDate fechaProbableParto;
+
+    @Column(name = "DIFIERE_PRENATAL_POSTNATAL", length = 20)
+    private String difierePrenatalPostnatal;
+
+    @Column(name = "TIPO_DOCUMENTO", length = 30)
+    private String tipoDocumento;
+
+    @Column(name = "NRO_CITT", length = 50)
+    private String nroCitt;
+
+    @Column(name = "FECHA_EMISION_DOC")
+    private LocalDate fechaEmisionDoc;
 }

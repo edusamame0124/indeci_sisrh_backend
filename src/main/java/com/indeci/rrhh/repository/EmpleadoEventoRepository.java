@@ -3,6 +3,8 @@ package com.indeci.rrhh.repository;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -35,6 +37,21 @@ public interface EmpleadoEventoRepository
     List<EmpleadoEvento> findByEmpleadoIdAndActivoOrderByFechaInicioDesc(
             Long empleadoId,
             Integer activo);
+
+    /** F3.6 — bandeja operativa paginada con filtros opcionales. */
+    @Query("""
+            SELECT e
+              FROM EmpleadoEvento e
+             WHERE e.activo = 1
+               AND (:empleadoId IS NULL OR e.empleadoId = :empleadoId)
+               AND (:tipoEventoId IS NULL OR e.tipoEventoId = :tipoEventoId)
+               AND (:estado IS NULL OR e.estado = :estado)
+            """)
+    Page<EmpleadoEvento> findBandejaPaginada(
+            @Param("empleadoId") Long empleadoId,
+            @Param("tipoEventoId") Long tipoEventoId,
+            @Param("estado") String estado,
+            Pageable pageable);
 
     /** F3.3 — eventos activos del período (preflight). */
     List<EmpleadoEvento> findByPeriodoAndActivo(String periodo, Integer activo);

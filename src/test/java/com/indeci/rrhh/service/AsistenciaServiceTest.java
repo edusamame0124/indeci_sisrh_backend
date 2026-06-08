@@ -111,7 +111,7 @@ class AsistenciaServiceTest {
     @Test
     void guardar_tipo_dia_invalido_lanza_excepcion() {
         AsistenciaGuardarDto dto = dtoBase();
-        dto.setDias(List.of(dia("FERIADO", 0, 1)));
+        dto.setDias(List.of(dia("INVALIDO", 0, 1)));
 
         assertThatThrownBy(() -> service.guardar(dto))
                 .isInstanceOf(NegocioException.class)

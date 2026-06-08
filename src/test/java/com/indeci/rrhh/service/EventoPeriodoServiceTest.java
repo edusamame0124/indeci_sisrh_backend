@@ -2,12 +2,17 @@ package com.indeci.rrhh.service;
 
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.EventoDistribucionMesDto;
 import com.indeci.rrhh.dto.EventoPeriodoDto;
+import com.indeci.rrhh.dto.EventoPeriodoPageDto;
 import com.indeci.rrhh.dto.EventoPeriodoResponseDto;
 import com.indeci.rrhh.entity.EmpleadoEvento;
 import com.indeci.rrhh.entity.TipoEvento;
 import com.indeci.rrhh.repository.EmpleadoEventoRepository;
+import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.EventoDistribucionMesRepository;
 import com.indeci.rrhh.repository.TipoEventoRepository;
+import com.indeci.rrhh.service.support.DistribucionMensualCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,11 +27,16 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,7 +49,9 @@ import static org.mockito.Mockito.when;
 class EventoPeriodoServiceTest {
 
     @Mock private EmpleadoEventoRepository repository;
+    @Mock private EmpleadoRepository empleadoRepository;
     @Mock private TipoEventoRepository tipoRepository;
+    @Mock private EventoDistribucionMesRepository distribucionRepository;
     @Mock private AuditoriaContext auditoriaContext;
 
     @InjectMocks private EventoPeriodoService service;
@@ -78,37 +90,57 @@ class EventoPeriodoServiceTest {
                     if (e.getId() == null) e.setId(100L);
                     return e;
                 });
+
+        when(empleadoRepository.findPersonaResumenByEmpleadoIds(any()))
+                .thenAnswer(inv -> {
+                    List<Long> ids = inv.getArgument(0);
+                    return ids.stream()
+                            .map(id -> new Object[] {
+                                    id, "EMPLEADO " + id, "1234567" + id % 10 })
+                            .toList();
+                });
     }
 
     // ===================== CASOS FELICES =====================
 
     @Test
-    void crear_maternidad_30dias_deriva_periodo_y_diasAfectos_correctamente() {
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-        dto.setSustentoLegajoDocId(99L); // requiere adjunto
+    void crear_maternidad_98dias_deriva_periodo_y_distribucion() {
+        LocalDate inicio = LocalDate.of(2026, 5, 1);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
+        dto.setSustentoLegajoDocId(99L);
 
         EventoPeriodoResponseDto r = service.crear(dto);
 
         assertThat(r.getId()).isEqualTo(100L);
         assertThat(r.getEstado()).isEqualTo("REGISTRADO");
         assertThat(r.getPeriodo()).isEqualTo("202605");
-        assertThat(r.getDiasAfectos()).isEqualTo(30);
+        assertThat(r.getDiasAfectos()).isEqualTo(98);
+        assertThat(r.getDuracionLegal()).isEqualTo(98);
         assertThat(r.getTipoEventoCodigo()).isEqualTo("MATERNIDAD");
-        assertThat(r.getGeneraSubsidio()).isEqualTo("S");
 
-        ArgumentCaptor<EmpleadoEvento> capt = ArgumentCaptor.forClass(EmpleadoEvento.class);
-        verify(repository).save(capt.capture());
-        EmpleadoEvento guardado = capt.getValue();
-        assertThat(guardado.getActivo()).isEqualTo(1);
-        assertThat(guardado.getEstado()).isEqualTo("REGISTRADO");
-        assertThat(guardado.getSustentoLegajoDocId()).isEqualTo(99L);
+        verify(distribucionRepository, atLeastOnce()).save(any());
+    }
+
+    @Test
+    void crear_maternidad_128_multimes_persiste_tramos() {
+        LocalDate inicio = LocalDate.of(2026, 5, 1);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 128);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 128, "NACIMIENTO_MULTIPLE");
+        dto.setSustentoLegajoDocId(99L);
+
+        EventoPeriodoResponseDto r = service.crear(dto);
+
+        assertThat(r.getDiasAfectos()).isEqualTo(128);
+        assertThat(r.getMotivoExtension()).isEqualTo("NACIMIENTO_MULTIPLE");
+        verify(distribucionRepository, atLeastOnce()).save(any());
     }
 
     @Test
     void crear_normaliza_periodo_con_guion_a_canonico() {
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
+        LocalDate inicio = LocalDate.of(2026, 5, 1);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
         dto.setSustentoLegajoDocId(99L);
         dto.setPeriodo("2026-05");
 
@@ -146,8 +178,9 @@ class EventoPeriodoServiceTest {
         existente.setActivo(1);
         when(repository.findById(200L)).thenReturn(Optional.of(existente));
 
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 5), LocalDate.of(2026, 6, 4));
+        LocalDate inicio = LocalDate.of(2026, 5, 5);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
         dto.setSustentoLegajoDocId(99L);
 
         service.actualizar(200L, dto);
@@ -252,7 +285,7 @@ class EventoPeriodoServiceTest {
 
     @Test
     void crear_diasAfectos_negativos_lanza() {
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
+        EventoPeriodoDto dto = baseDto(TIPO_PERMISO,
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
         dto.setSustentoLegajoDocId(99L);
         dto.setDiasAfectos(-3);
@@ -264,13 +297,24 @@ class EventoPeriodoServiceTest {
 
     @Test
     void crear_maternidad_sin_adjunto_lanza_porque_requiereAdjunto_S() {
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 30));
-        // NO seteo sustentoLegajoDocId.
+        LocalDate inicio = LocalDate.of(2026, 5, 1);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
 
         assertThatThrownBy(() -> service.crear(dto))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("sustento documental");
+    }
+
+    @Test
+    void crear_maternidad_sin_campos_normativos_lanza() {
+        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
+                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 8, 6));
+        dto.setSustentoLegajoDocId(99L);
+
+        assertThatThrownBy(() -> service.crear(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("98 días");
     }
 
     @Test
@@ -282,8 +326,9 @@ class EventoPeriodoServiceTest {
         when(repository.findSolapados(eq(EMP_ID), any(), any(), isNull()))
                 .thenReturn(List.of(existente));
 
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 15), LocalDate.of(2026, 6, 14));
+        LocalDate inicio = LocalDate.of(2026, 5, 15);
+        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
+        EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
         dto.setSustentoLegajoDocId(99L);
 
         assertThatThrownBy(() -> service.crear(dto))
@@ -300,6 +345,31 @@ class EventoPeriodoServiceTest {
         assertThatThrownBy(() -> service.cambiarEstado(200L, "FOO"))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("Estado inválido");
+    }
+
+    @Test
+    void listar_paginado_devuelve_eventos_con_empleado_y_dni() {
+        EmpleadoEvento e1 = new EmpleadoEvento();
+        e1.setId(1L);
+        e1.setEmpleadoId(EMP_ID);
+        e1.setTipoEventoId(TIPO_MATERNIDAD);
+        e1.setEstado("VALIDADO");
+        EmpleadoEvento e2 = new EmpleadoEvento();
+        e2.setId(2L);
+        e2.setEmpleadoId(99L);
+        e2.setTipoEventoId(TIPO_PERMISO);
+        e2.setEstado("REGISTRADO");
+
+        Page<EmpleadoEvento> page = new PageImpl<>(List.of(e1, e2));
+        when(repository.findBandejaPaginada(isNull(), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(page);
+
+        EventoPeriodoPageDto r = service.listarPaginado(null, null, null, 0, 20);
+
+        assertThat(r.getContent()).hasSize(2);
+        assertThat(r.getContent().get(0).getEmpleadoNombre()).isEqualTo("EMPLEADO 42");
+        assertThat(r.getContent().get(0).getEmpleadoDni()).isNotBlank();
+        assertThat(r.getContent().get(1).getTipoEventoCodigo()).isEqualTo("PERMISO_PERSONAL");
     }
 
     @Test
@@ -324,6 +394,7 @@ class EventoPeriodoServiceTest {
 
         assertThat(r).hasSize(2);
         assertThat(r.get(0).getTipoEventoCodigo()).isEqualTo("MATERNIDAD");
+        assertThat(r.get(0).getEmpleadoNombre()).isEqualTo("EMPLEADO 42");
         assertThat(r.get(1).getTipoEventoCodigo()).isEqualTo("PERMISO_PERSONAL");
     }
 
@@ -353,6 +424,23 @@ class EventoPeriodoServiceTest {
         dto.setTipoEventoId(tipoId);
         dto.setFechaInicio(inicio);
         dto.setFechaFin(fin);
+        return dto;
+    }
+
+    private EventoPeriodoDto dtoMaternidadCompleto(
+            LocalDate inicio,
+            LocalDate fin,
+            int duracion,
+            String motivoExtension) {
+        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD, inicio, fin);
+        dto.setDuracionLegal(duracion);
+        dto.setMotivoExtension(motivoExtension);
+        dto.setFechaProbableParto(inicio);
+        dto.setDifierePrenatalPostnatal("NO");
+        dto.setTipoDocumento("CITT");
+        dto.setNroCitt("CITT-TEST-001");
+        dto.setFechaEmisionDoc(LocalDate.of(2026, 4, 15));
+        dto.setDistribucionMensual(DistribucionMensualCalculator.calcular(inicio, fin));
         return dto;
     }
 }

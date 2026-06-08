@@ -11,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.LegajoArchivoDescargaDto;
 import com.indeci.rrhh.dto.LegajoDocumentoDto;
 import com.indeci.rrhh.dto.LegajoDocumentoResponseDto;
 import com.indeci.rrhh.entity.LegajoCategoria;
@@ -77,6 +78,19 @@ public class LegajoDocumentoService {
 
     public LegajoDocumentoResponseDto obtener(Long id) {
         return toResponse(buscar(id));
+    }
+
+    public LegajoArchivoDescargaDto descargar(Long id) {
+        LegajoDocumento doc = buscarActivo(id);
+        if (doc.getRutaArchivo() == null || doc.getRutaArchivo().isBlank()) {
+            throw new NegocioException(
+                    "El documento no tiene archivo asociado en almacenamiento.");
+        }
+        byte[] contenido = ftpService.descargarArchivo(doc.getRutaArchivo());
+        return new LegajoArchivoDescargaDto(
+                contenido,
+                nombreDescarga(doc),
+                mediaTypeDe(doc.getExtension()));
     }
 
     // =================== SUBIR (CREAR) ===================
@@ -183,6 +197,42 @@ public class LegajoDocumentoService {
         return repository.findById(id)
                 .orElseThrow(() -> new NegocioException(
                         "Documento legajo no encontrado: " + id));
+    }
+
+    private LegajoDocumento buscarActivo(Long id) {
+        LegajoDocumento doc = buscar(id);
+        if (doc.getActivo() == null || doc.getActivo() != 1) {
+            throw new NegocioException("Documento legajo no disponible: " + id);
+        }
+        return doc;
+    }
+
+    private String nombreDescarga(LegajoDocumento doc) {
+        String base = doc.getNombreDocumento();
+        if (base == null || base.isBlank()) {
+            base = doc.getNombreArchivo();
+        }
+        if (base == null || base.isBlank()) {
+            base = "documento-legajo-" + doc.getId();
+        }
+        String ext = doc.getExtension();
+        if (ext != null && !ext.isBlank()
+                && !base.toLowerCase().endsWith("." + ext.toLowerCase())) {
+            base = base + "." + ext;
+        }
+        return sanitizar(base);
+    }
+
+    private static String mediaTypeDe(String extension) {
+        if (extension == null || extension.isBlank()) {
+            return "application/octet-stream";
+        }
+        return switch (extension.toLowerCase()) {
+            case "pdf" -> "application/pdf";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            default -> "application/octet-stream";
+        };
     }
 
     /**

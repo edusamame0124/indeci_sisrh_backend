@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indeci.rrhh.dto.export.PlanillaConsolidadaRowDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.Bank;
+import com.indeci.rrhh.entity.Cargo;
 import com.indeci.rrhh.entity.CalculoSnapshot;
 import com.indeci.rrhh.entity.CondicionLaboral;
 import com.indeci.rrhh.entity.Department;
@@ -27,10 +28,12 @@ import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoBanco;
 import com.indeci.rrhh.entity.EmpleadoPension;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.EstadoCivil;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
+import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.PeriodoPlanilla;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.Province;
@@ -42,6 +45,7 @@ import com.indeci.rrhh.entity.TipoContrato;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.BankRepository;
 import com.indeci.rrhh.repository.CalculoSnapshotRepository;
+import com.indeci.rrhh.repository.CargoRepository;
 import com.indeci.rrhh.repository.CondicionLaboralRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.DepartmentRepository;
@@ -49,10 +53,12 @@ import com.indeci.rrhh.repository.DistrictRepository;
 import com.indeci.rrhh.repository.EmpleadoBancoRepository;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EstadoCivilRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaDetalleRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
+import com.indeci.rrhh.repository.OficinaRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.ProvinceRepository;
@@ -96,6 +102,7 @@ public class PlanillaConsolidadaCasService {
     private final EmpleadoRepository                  empleadoRepo;
     private final PersonaRepository                   personaRepo;
     private final EmpleadoPlanillaRepository          planillaRepo;
+    private final EmpleadoPuestoRepository            puestoRepo;
     private final EmpleadoBancoRepository             bancoRepo;
     private final EmpleadoPensionRepository           pensionRepo;
     private final Suspension4taRepository             suspensionRepo;
@@ -113,6 +120,8 @@ public class PlanillaConsolidadaCasService {
     private final TipoComisionAfpRepository tipoComisionAfpRepo;
     private final CondicionLaboralRepository condicionLaboralRepo;
     private final TipoContratoRepository    tipoContratoRepo;
+    private final CargoRepository           cargoRepo;
+    private final OficinaRepository         oficinaRepo;
     // Writer + auditoría de exportación
     private final PlanillaCasExcelWriter    excelWriter;
     private final com.indeci.rrhh.repository.ExportArchivoRepository exportRepo;
@@ -188,6 +197,10 @@ public class PlanillaConsolidadaCasService {
                 planillaRepo.findByEmpleadoIdInAndActivo(empIds, 1).stream()
                         .collect(Collectors.toMap(EmpleadoPlanilla::getEmpleadoId, p -> p, (a, b) -> a));
 
+        Map<Long, EmpleadoPuesto> puestoPorEmp =
+                puestoRepo.findByEmpleadoIdInAndActivo(empIds, 1).stream()
+                        .collect(Collectors.toMap(EmpleadoPuesto::getEmpleadoId, p -> p, (a, b) -> a));
+
         Map<Long, EmpleadoBanco> bancoPorEmp =
                 bancoRepo.findByEmpleadoIdInAndEsCuentaPlanillaAndActivo(empIds, 1, 1).stream()
                         .collect(Collectors.toMap(EmpleadoBanco::getEmpleadoId, b -> b, (a, b) -> a));
@@ -238,6 +251,10 @@ public class PlanillaConsolidadaCasService {
                 .collect(Collectors.toMap(CondicionLaboral::getId, CondicionLaboral::getNombre, (a, b) -> a));
         Map<Long, String> tipoContratoNombre = tipoContratoRepo.findAll().stream()
                 .collect(Collectors.toMap(TipoContrato::getId, TipoContrato::getNombre, (a, b) -> a));
+        Map<Long, String> cargoNombre = cargoRepo.findAll().stream()
+                .collect(Collectors.toMap(Cargo::getId, Cargo::getNombre, (a, b) -> a));
+        Map<Long, Oficina> oficinaPorId = oficinaRepo.findAll().stream()
+                .collect(Collectors.toMap(Oficina::getId, o -> o, (a, b) -> a));
 
         String estadoPeriodo = periodoRepo.findAll().stream()
                 .filter(p -> periodo.equals(p.getPeriodo()))
@@ -259,6 +276,7 @@ public class PlanillaConsolidadaCasService {
             ctx.emp = emp;
             ctx.persona = persona;
             ctx.planilla = planillaPorEmp.get(empId);
+            ctx.puesto = puestoPorEmp.get(empId);
             ctx.banco = bancoPorEmp.get(empId);
             ctx.pension = pensionPorEmp.get(empId);
             ctx.suspension = suspensionPorEmp.get(empId);
@@ -276,6 +294,8 @@ public class PlanillaConsolidadaCasService {
             ctx.tipoComisionNombre = tipoComisionNombre;
             ctx.condicionNombre = condicionNombre;
             ctx.tipoContratoNombre = tipoContratoNombre;
+            ctx.cargoNombre = cargoNombre;
+            ctx.oficinaPorId = oficinaPorId;
             ctx.conceptoPorId = conceptoPorId;
 
             filas.add(buildRow(ctx));
@@ -320,6 +340,15 @@ public class PlanillaConsolidadaCasService {
             r.setCondicionLaboral(c.condicionNombre.get(c.planilla.getCondicionLaboralId()));
             r.setFechaIngreso(c.planilla.getFechaIngreso());
             r.setFechaTermino(c.planilla.getFechaCese());
+        }
+        // Cargo + dependencia (ubicación) desde el puesto activo del empleado.
+        if (c.puesto != null) {
+            r.setCargo(c.cargoNombre.get(c.puesto.getCargoId()));
+            Oficina of = c.oficinaPorId.get(c.puesto.getOficinaId());
+            if (of != null) {
+                r.setDependencia(of.getNombre());
+                r.setAbreviaturaDependencia(of.getSigla());
+            }
         }
 
         // BLOQUE 3 — Banco / Abono
@@ -634,6 +663,7 @@ public class PlanillaConsolidadaCasService {
         Empleado emp;
         Persona persona;
         EmpleadoPlanilla planilla;
+        EmpleadoPuesto puesto;
         EmpleadoBanco banco;
         EmpleadoPension pension;
         Suspension4ta suspension;
@@ -651,6 +681,8 @@ public class PlanillaConsolidadaCasService {
         Map<Long, String> tipoComisionNombre;
         Map<Long, String> condicionNombre;
         Map<Long, String> tipoContratoNombre;
+        Map<Long, String> cargoNombre;
+        Map<Long, Oficina> oficinaPorId;
         Map<Long, ConceptoPlanilla> conceptoPorId;
     }
 }
