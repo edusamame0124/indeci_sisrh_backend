@@ -8,6 +8,7 @@ import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoDescansoDoc;
+import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -18,6 +19,7 @@ import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoDescansoDocRepository;
+import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -67,6 +69,8 @@ personaRepository;
 private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
 
 private final TipoDescansoDocRepository tipoDescansoDocRepository;
+
+private final TipoLicenciaRepository tipoLicenciaRepository;
 
 
 
@@ -189,7 +193,10 @@ public String generarPdf(
 
             nombreReporte = "formato_4.jasper";
         }
+        if("011".equals(tipo.getCodigo())) {
 
+            nombreReporte = "formato_3.jasper";
+        }
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
@@ -255,7 +262,13 @@ public String generarPdf(
                     params,
                     solicitud);
         }
-      
+        if ("011".equals(tipo.getCodigo())) {
+
+            cargarParametrosLicencia(
+                    params,
+                    solicitud);
+        }
+        
         
         System.out.println("P_REGIMEN = " + params.get("P_REGIMEN"));
 
@@ -617,6 +630,52 @@ private Double calcularDias(
                 DateTimeFormatter.ofPattern(
                         "dd/MM/yyyy"));
     }
-    
+    private void cargarParametrosLicencia(
+            Map<String, Object> params,
+            SolicitudRrhh solicitud) {
+
+        TipoLicencia licencia =
+                tipoLicenciaRepository
+                        .findById(
+                                solicitud.getTipoLicenciaId())
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Tipo licencia no encontrado"));
+
+        params.put(
+                "P_TIPO_LICENCIA",
+                licencia.getCodigo());
+
+        params.put(
+                "P_MOTIVO",
+                valor(
+                        solicitud.getMotivo()));
+
+        params.put(
+                "P_FECHA_INICIO",
+                formatearFecha(
+                        solicitud.getFechaInicio()));
+
+        params.put(
+                "P_FECHA_FIN",
+                formatearFecha(
+                        solicitud.getFechaFin()));
+        
+        params.put(
+                "P_DOCUMENTO_1",
+                valor(
+                        solicitud.getDocumento1()));
+
+        params.put(
+                "P_DOCUMENTO_2",
+                valor(
+                        solicitud.getDocumento2()));
+
+        params.put(
+                "P_FOLIOS",
+                solicitud.getTotalFolios() == null
+                        ? ""
+                        : solicitud.getTotalFolios().toString());
+    }
     
 }

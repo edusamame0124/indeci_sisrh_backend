@@ -39,5 +39,13 @@ public class SolicitudRrhhDto {
 	private String nombreMedico;
 
 	private String numeroColegiatura;
+	
+	private Long tipoLicenciaId;
+	
+	private String documento1;
+
+	private String documento2;
+
+	private Integer totalFolios;
 	//*****************************************
 }

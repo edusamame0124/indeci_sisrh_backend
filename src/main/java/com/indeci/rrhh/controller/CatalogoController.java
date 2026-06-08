@@ -33,8 +33,10 @@ import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.entity.TipoContrato;
 import com.indeci.rrhh.entity.TipoDescansoMedico;
 import com.indeci.rrhh.entity.TipoDocumento;
+import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoPersona;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
+import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
 import com.indeci.rrhh.entity.GradoAcademico;
@@ -51,7 +53,11 @@ import lombok.RequiredArgsConstructor;
 @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('CAT_WRITE')")
 public class CatalogoController {
 
+  
+
     private final CatalogoService catalogoService;
+
+ 
 
     @GetMapping("/ubigeo")
     public ApiResponse<List<UbigeoDto>> ubigeo() {
@@ -335,6 +341,17 @@ public class CatalogoController {
                 "OK",
                 "Listado correcto",
                 catalogoService.obtenerDocumentos(id));
+    }
+    
+    @GetMapping("/tipos-licencia")
+    public ApiResponse<List<TipoLicencia>>
+    listarTiposLicencia() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService
+                        .listarTipoLicencia());
     }
     
 }

@@ -75,6 +75,8 @@ public class CatalogoService {
 private final EstadoSolicitudRepository estadoSolicitudRepository;
 private final TipoDescansoMedicoRepository tipoDescansoMedicoRepository;
 private final TipoDescansoDocRepository tipoDescansoDocRepository;
+private final TipoLicenciaRepository tipoLicenciaRepository;
+
 
     private final CargoRepository cargoRepository;
 
@@ -280,6 +282,14 @@ private final TipoDescansoDocRepository tipoDescansoDocRepository;
     listarActivos() {
 
         return tipoDescansoMedicoRepository
+                .findByActivoOrderByNombreAsc(1);
+    }
+    
+    
+    public List<TipoLicencia>
+    listarTipoLicencia() {
+
+        return tipoLicenciaRepository
                 .findByActivoOrderByNombreAsc(1);
     }
     

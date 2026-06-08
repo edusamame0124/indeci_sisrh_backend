@@ -42,6 +42,7 @@ public class SolicitudRrhhService {
     private final SolicitudRrhhDocRepository solicitudRrhhDocRepository;
     private final EmpleadoPuestoRepository empleadoPuestoRepository;
     private final FtpService ftpService;
+    private final TipoLicenciaRepository tipoLicenciaRepository;
     
     private static final String TIPO_VACACIONES = "VAC";
     
@@ -218,6 +219,10 @@ public class SolicitudRrhhService {
         validarDescansoMedico(
                 dto,
                 tipo);
+        
+        validarLicencia(
+                dto,
+                tipo);
 
         validarSustento(
                 tipo,
@@ -388,7 +393,10 @@ public class SolicitudRrhhService {
             TipoSolicitudRrhh tipo,
             MultipartFile sustento) {
 
-        if(tipo.getRequiereSustento() == 1) {
+
+        	
+        	if(Integer.valueOf(1)
+        	        .equals(tipo.getRequiereSustento())) {
 
             if(sustento == null
                     || sustento.isEmpty()) {
@@ -403,7 +411,8 @@ public class SolicitudRrhhService {
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
 
-        if(tipo.getRequiereLugar() == 1) {
+    	if(Integer.valueOf(1)
+    	        .equals(tipo.getRequiereLugar())) {
 
             if(dto.getLugarComision() == null
                     || dto.getLugarComision().isBlank()) {
@@ -418,7 +427,9 @@ public class SolicitudRrhhService {
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
 
-        if(tipo.getRequiereObservacion() == 1) {
+ 
+        	if(Integer.valueOf(1)
+        	        .equals(tipo.getRequiereObservacion())) {
 
             if(dto.getObservacion() == null
                     || dto.getObservacion().isBlank()) {
@@ -495,6 +506,28 @@ public class SolicitudRrhhService {
             }
         }
     }
+    private void validarLicencia(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(!Integer.valueOf(1)
+                .equals(tipo.getMostrarLicencia())) {
+            return;
+        }
+
+        if(dto.getTipoLicenciaId() == null) {
+
+            throw new NegocioException(
+                    "Debe seleccionar el tipo de licencia");
+        }
+
+        if(dto.getTotalFolios() == null
+                || dto.getTotalFolios() <= 0) {
+
+            throw new NegocioException(
+                    "Debe indicar la cantidad de folios");
+        }
+    }
     
     private SolicitudRrhh construirSolicitud(
             SolicitudRrhhDto dto,
@@ -545,6 +578,18 @@ public class SolicitudRrhhService {
 
         entity.setNumeroColegiatura(
                 dto.getNumeroColegiatura());
+        
+        entity.setTipoLicenciaId(
+                dto.getTipoLicenciaId());
+        
+        entity.setDocumento1(
+                dto.getDocumento1());
+
+        entity.setDocumento2(
+                dto.getDocumento2());
+
+        entity.setTotalFolios(
+                dto.getTotalFolios());
 
         calcularCantidades(
                 entity,
@@ -1147,7 +1192,21 @@ public class SolicitudRrhhService {
             dto.setEstadoSolicitud(
                     estado.getNombre());
         }
+        
+        if (s.getTipoLicenciaId() != null) {
 
+            TipoLicencia licencia =
+                    tipoLicenciaRepository
+                            .findById(
+                                    s.getTipoLicenciaId())
+                            .orElse(null);
+
+            if (licencia != null) {
+
+                dto.setTipoLicencia(
+                        licencia.getNombre());
+            }
+        }
         dto.setFechaInicio(
                 s.getFechaInicio());
 
@@ -1189,6 +1248,17 @@ public class SolicitudRrhhService {
 
         dto.setMinutosSalida(
                 s.getMinutosSalida());
+        
+        dto.setDocumento1(
+                s.getDocumento1());
+
+        dto.setDocumento2(
+                s.getDocumento2());
+
+        dto.setTotalFolios(
+                s.getTotalFolios());
+        
+   
 
         return dto;
     }
@@ -1781,6 +1851,10 @@ public class SolicitudRrhhService {
         validarDescansoMedico(
                 dto,
                 tipo);
+        
+        validarLicencia(
+                dto,
+                tipo);
 
         validarObservacion(
                 dto,
@@ -1895,6 +1969,18 @@ public class SolicitudRrhhService {
 
         solicitud.setNumeroColegiatura(
                 dto.getNumeroColegiatura());
+        
+        solicitud.setTipoLicenciaId(
+                dto.getTipoLicenciaId());
+        
+        solicitud.setDocumento1(
+                dto.getDocumento1());
+
+        solicitud.setDocumento2(
+                dto.getDocumento2());
+
+        solicitud.setTotalFolios(
+                dto.getTotalFolios());
     }
     
     @Auditable(

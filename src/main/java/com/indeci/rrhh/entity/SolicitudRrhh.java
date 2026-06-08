@@ -92,6 +92,26 @@ public class SolicitudRrhh {
     @Column(name = "NUMERO_COLEGIATURA")
     private String numeroColegiatura;
     
+    @Column(name = "TIPO_LICENCIA_ID")
+    private Long tipoLicenciaId;
+    
+    @Column(name = "DOCUMENTO_1")
+    private String documento1;
+    
+    @Column(name = "DOCUMENTO_2")
+    private String documento2;
+
+    @Column(name = "TOTAL_FOLIOS")
+    private Integer totalFolios;
+    
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "TIPO_LICENCIA_ID",
+            insertable = false,
+            updatable = false)
+    private TipoLicencia tipoLicencia;
+    
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

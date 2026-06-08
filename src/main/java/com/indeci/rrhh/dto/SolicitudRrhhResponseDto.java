@@ -66,4 +66,15 @@ public class SolicitudRrhhResponseDto {
 
     private String numeroColegiatura;
     
+    private Long tipoLicenciaId;
+
+    private String tipoLicencia;
+    
+    private String documento1;
+
+    private String documento2;
+
+    private Integer totalFolios;
+    
+    
 }
