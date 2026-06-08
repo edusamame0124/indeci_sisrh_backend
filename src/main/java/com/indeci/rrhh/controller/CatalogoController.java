@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 import com.indeci.rrhh.dto.CatalogoNombreRequest;
+import com.indeci.rrhh.dto.DocumentoRequeridoDto;
 import com.indeci.rrhh.dto.UbigeoDto;
 import com.indeci.rrhh.entity.AirhspVigencia;
 import com.indeci.rrhh.entity.Bank;
@@ -30,6 +31,7 @@ import com.indeci.rrhh.entity.RegimenPensionario;
 import com.indeci.rrhh.entity.Sexo;
 import com.indeci.rrhh.entity.TipoComisionAfp;
 import com.indeci.rrhh.entity.TipoContrato;
+import com.indeci.rrhh.entity.TipoDescansoMedico;
 import com.indeci.rrhh.entity.TipoDocumento;
 import com.indeci.rrhh.entity.TipoPersona;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
@@ -311,6 +313,28 @@ public class CatalogoController {
                 "Lista estados solicitud",
                 catalogoService
                         .listarEstadosSolicitud());
+    }
+    
+    @GetMapping("/tipos-descanso-medico")
+    public ApiResponse<List<TipoDescansoMedico>>
+    listar() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService.listarActivos());
+    }
+    
+    @GetMapping(
+            "/tipo-descanso/{id}/documentos")
+    public ApiResponse<List<DocumentoRequeridoDto>>
+    documentos(
+            @PathVariable Long id) {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService.obtenerDocumentos(id));
     }
     
 }

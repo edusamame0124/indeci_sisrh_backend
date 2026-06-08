@@ -24,6 +24,8 @@ public class SolicitudRrhhDto {
 	private String horaFin;
 	private String lugarComision;
 	
+	
+	//VALORES REQUERIDOS PARA LACTANCIA
 	private LocalDate fechaNacimientoHijo;
 
 	private LocalDate fechaFinPostnatal;
@@ -31,4 +33,11 @@ public class SolicitudRrhhDto {
 	private Integer minutosIngreso;
 
 	private Integer minutosSalida;
+	
+	private Long tipoDescansoMedicoId;
+
+	private String nombreMedico;
+
+	private String numeroColegiatura;
+	//*****************************************
 }

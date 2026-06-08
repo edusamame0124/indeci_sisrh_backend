@@ -39,4 +39,7 @@ public class TipoSolicitudRrhh {
     @Column(name = "MOSTRAR_LACTANCIA")
     private Integer mostrarLactancia;
     
+    @Column(name = "MOSTRAR_DESCANSO_MEDICO")
+    private Integer mostrarDescansoMedico;
+    
 }

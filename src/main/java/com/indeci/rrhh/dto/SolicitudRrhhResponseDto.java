@@ -58,4 +58,12 @@ public class SolicitudRrhhResponseDto {
 
     private Integer minutosSalida;
     
+    private Long tipoDescansoMedicoId;
+
+    private String tipoDescansoMedico;
+
+    private String nombreMedico;
+
+    private String numeroColegiatura;
+    
 }

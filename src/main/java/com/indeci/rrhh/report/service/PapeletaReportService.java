@@ -7,6 +7,7 @@ import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.SolicitudRrhh;
+import com.indeci.rrhh.entity.TipoDescansoDoc;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -16,6 +17,7 @@ import com.indeci.rrhh.repository.OficinaRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
+import com.indeci.rrhh.repository.TipoDescansoDocRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -31,9 +33,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 
 @Service
@@ -61,6 +65,8 @@ private final PersonaRepository
 personaRepository;
 
 private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+
+private final TipoDescansoDocRepository tipoDescansoDocRepository;
 
 
 
@@ -178,6 +184,11 @@ public String generarPdf(
 
             nombreReporte = "formato_2.jasper";
         }
+        
+        if("010".equals(tipo.getCodigo())) {
+
+            nombreReporte = "formato_4.jasper";
+        }
 
         InputStream jasperStream =
                 getClass()
@@ -236,6 +247,14 @@ public String generarPdf(
                 "P_REGIMEN",
                 valor(
                 		empleadoPlanilla.getRegimenLaboral().getCodigo()));
+        
+        
+        if ("010".equals(tipo.getCodigo())) {
+
+            cargarParametrosDescansoMedico(
+                    params,
+                    solicitud);
+        }
       
         
         System.out.println("P_REGIMEN = " + params.get("P_REGIMEN"));
@@ -466,8 +485,113 @@ private String valor(
             : "";
 }
 
+private void cargarParametrosDescansoMedico(
+        Map<String, Object> params,
+        SolicitudRrhh solicitud) {
 
+    params.put(
+            "P_NOMBRE_MEDICO",
+            valor(
+                    solicitud.getNombreMedico()));
+
+    params.put(
+            "P_COLEGIATURA",
+            valor(
+                    solicitud.getNumeroColegiatura()));
     
+    
+
+    params.put(
+            "P_FECHA_INICIO",
+            formatearFecha(
+                    solicitud.getFechaInicio()));
+
+    params.put(
+            "P_FECHA_FIN",
+            formatearFecha(
+                    solicitud.getFechaFin()));
+
+    params.put(
+            "P_DIAS",
+            valor(
+                    solicitud.getCantidadDias()));
+    
+    params.put(
+            "P_EXPEDIDO_POR",
+            solicitud.getTipoDescansoMedicoId() != null
+                    ? solicitud.getTipoDescansoMedicoId().toString()
+                    : "");
+    
+    List<TipoDescansoDoc> docs =
+            tipoDescansoDocRepository
+                    .findByTipoDescansoIdAndActivo(
+                            solicitud.getTipoDescansoMedicoId(),
+                            1);
+    
+
+    boolean citt = false;
+    boolean comprobanteAtencion = false;
+    boolean receta = false;
+    boolean comprobanteTratamiento = false;
+
+    for(TipoDescansoDoc doc : docs){
+
+        String codigo =
+                doc.getDocumento()
+                   .getCodigo();
+
+        switch(codigo){
+
+            case "001":
+                citt = true;
+                break;
+
+            case "002":
+                comprobanteAtencion = true;
+                break;
+
+            case "003":
+                receta = true;
+                break;
+
+            case "004":
+                comprobanteTratamiento = true;
+                break;
+        }
+    }
+    
+    params.put("P_DOC_CITT", citt);
+
+    params.put(
+            "P_DOC_COMPROBANTE_ATENCION",
+            comprobanteAtencion);
+
+    params.put(
+            "P_DOC_RECETA",
+            receta);
+
+    params.put(
+            "P_DOC_COMPROBANTE_TRATAMIENTO",
+            comprobanteTratamiento);
+    
+    
+}
+    
+private Double calcularDias(
+        LocalDate fechaInicio,
+        LocalDate fechaFin) {
+
+    if (fechaInicio == null
+            || fechaFin == null) {
+
+        return 0.0;
+    }
+
+    return (double)
+            ChronoUnit.DAYS.between(
+                    fechaInicio,
+                    fechaFin) + 1;
+}
     private String obtenerFechaActual() {
 
         Locale locale = new Locale("es", "PE");

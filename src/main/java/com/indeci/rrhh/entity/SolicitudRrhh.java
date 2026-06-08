@@ -83,6 +83,23 @@ public class SolicitudRrhh {
     @Column(name = "MINUTOS_SALIDA")
     private Integer minutosSalida;
     
+    @Column(name = "TIPO_DESCANSO_MEDICO_ID")
+    private Long tipoDescansoMedicoId;
+
+    @Column(name = "NOMBRE_MEDICO")
+    private String nombreMedico;
+
+    @Column(name = "NUMERO_COLEGIATURA")
+    private String numeroColegiatura;
+    
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "TIPO_DESCANSO_MEDICO_ID",
+            insertable = false,
+            updatable = false)
+    private TipoDescansoMedico tipoDescansoMedico;
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name="TIPO_SOLICITUD_ID",
     		insertable = false,

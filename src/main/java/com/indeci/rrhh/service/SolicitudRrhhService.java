@@ -87,6 +87,39 @@ public class SolicitudRrhhService {
                 "Solicitud creada");
     }
     
+    private void validarDescansoMedico(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        boolean esDescanso =
+                "010".equals(
+                        tipo.getCodigo());
+
+        if(!esDescanso) {
+            return;
+        }
+
+        if(dto.getTipoDescansoMedicoId() == null) {
+
+            throw new NegocioException(
+                    "Debe seleccionar el tipo de descanso médico");
+        }
+
+        if(dto.getNombreMedico() == null
+                || dto.getNombreMedico().isBlank()) {
+
+            throw new NegocioException(
+                    "Debe ingresar el nombre del médico");
+        }
+
+        if(dto.getNumeroColegiatura() == null
+                || dto.getNumeroColegiatura().isBlank()) {
+
+            throw new NegocioException(
+                    "Debe ingresar el número de colegiatura");
+        }
+    }
+    
     private Long obtenerEmpleadoActual() {
     	
     	Long empleadoId=SecurityUtil.getEmpleadoId();
@@ -179,6 +212,10 @@ public class SolicitudRrhhService {
             MultipartFile sustento) {
 
         validarLactancia(
+                dto,
+                tipo);
+        
+        validarDescansoMedico(
                 dto,
                 tipo);
 
@@ -499,6 +536,15 @@ public class SolicitudRrhhService {
 
         entity.setCreatedAt(
                 LocalDateTime.now());
+        
+        entity.setTipoDescansoMedicoId(
+                dto.getTipoDescansoMedicoId());
+
+        entity.setNombreMedico(
+                dto.getNombreMedico());
+
+        entity.setNumeroColegiatura(
+                dto.getNumeroColegiatura());
 
         calcularCantidades(
                 entity,
@@ -1731,6 +1777,10 @@ public class SolicitudRrhhService {
         validarLactancia(
                 dto,
                 tipo);
+        
+        validarDescansoMedico(
+                dto,
+                tipo);
 
         validarObservacion(
                 dto,
@@ -1836,6 +1886,15 @@ public class SolicitudRrhhService {
 
         solicitud.setMinutosSalida(
                 dto.getMinutosSalida());
+        
+        solicitud.setTipoDescansoMedicoId(
+                dto.getTipoDescansoMedicoId());
+
+        solicitud.setNombreMedico(
+                dto.getNombreMedico());
+
+        solicitud.setNumeroColegiatura(
+                dto.getNumeroColegiatura());
     }
     
     @Auditable(

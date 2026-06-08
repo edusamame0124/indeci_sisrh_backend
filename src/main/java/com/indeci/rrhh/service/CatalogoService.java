@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.CatalogoNombreRequest;
+import com.indeci.rrhh.dto.DocumentoRequeridoDto;
 import com.indeci.rrhh.dto.UbigeoDto;
 import com.indeci.rrhh.entity.Bank;
 import com.indeci.rrhh.entity.BankAccountType;
@@ -72,6 +73,8 @@ public class CatalogoService {
     private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
 
 private final EstadoSolicitudRepository estadoSolicitudRepository;
+private final TipoDescansoMedicoRepository tipoDescansoMedicoRepository;
+private final TipoDescansoDocRepository tipoDescansoDocRepository;
 
     private final CargoRepository cargoRepository;
 
@@ -271,6 +274,44 @@ private final EstadoSolicitudRepository estadoSolicitudRepository;
     listarEstadosSolicitud() {
 
         return estadoSolicitudRepository.findAll();
+    }
+    
+    public List<TipoDescansoMedico>
+    listarActivos() {
+
+        return tipoDescansoMedicoRepository
+                .findByActivoOrderByNombreAsc(1);
+    }
+    
+    public List<DocumentoRequeridoDto>
+    obtenerDocumentos(
+            Long tipoDescansoId) {
+
+        return tipoDescansoDocRepository
+                .findByTipoDescansoIdAndActivo(
+                        tipoDescansoId,
+                        1)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+    
+    private DocumentoRequeridoDto toDto(
+            TipoDescansoDoc entity) {
+
+        DocumentoRequeridoDto dto =
+                new DocumentoRequeridoDto();
+
+        dto.setId(
+                entity.getDocumento()
+                      .getId());
+
+        dto.setNombre(
+                entity.getDocumento()
+                      .getNombre());
+        dto.setObligatorio(true);
+
+        return dto;
     }
     
 }
