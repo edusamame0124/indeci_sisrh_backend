@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * F2.5 — Response de eventos del período. Denormaliza datos del catálogo
@@ -15,6 +16,9 @@ public class EventoPeriodoResponseDto {
 
     private Long id;
     private Long empleadoId;
+    /** Denormalizado para bandeja operativa (listado global). */
+    private String empleadoNombre;
+    private String empleadoDni;
 
     private Long tipoEventoId;
     private String tipoEventoCodigo;
@@ -34,4 +38,13 @@ public class EventoPeriodoResponseDto {
     private String estado;
     private LocalDateTime createdAt;
     private String createdBy;
+
+    private Integer duracionLegal;
+    private String motivoExtension;
+    private LocalDate fechaProbableParto;
+    private String difierePrenatalPostnatal;
+    private String tipoDocumento;
+    private String nroCitt;
+    private LocalDate fechaEmisionDoc;
+    private List<EventoDistribucionMesDto> distribucionMensual;
 }

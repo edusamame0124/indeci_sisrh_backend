@@ -7,7 +7,8 @@ import java.time.LocalDate;
 
 /**
  * Día calendario de la asistencia de un período (M04 / SPEC §12.2 PANTALLA-02).
- * TIPO_DIA: LABORAL | FALTA | TARDANZA | LICENCIA | VACACIONES | DESCANSO.
+ * TIPO_DIA: LABORAL | FALTA | TARDANZA | LICENCIA | VACACIONES | DESCANSO
+ *           | FERIADO | OBSERVADO.
  */
 @Entity
 @Table(name = "INDECI_ASISTENCIA_DETALLE", schema = "GESTIONRRHH")
@@ -32,4 +33,37 @@ public class AsistenciaDetalle {
 
     @Column(name = "OBSERVACION")
     private String observacion;
+
+    @Column(name = "MARCA_ENTRADA", length = 16)
+    private String marcaEntrada;
+
+    @Column(name = "MARCA_SALIDA", length = 16)
+    private String marcaSalida;
+
+    @Column(name = "HORA_ENTRADA_ESPERADA", length = 16)
+    private String horaEntradaEsperada;
+
+    @Column(name = "MINUTOS_SALIDA_ANTICIPADA")
+    private Integer minutosSalidaAnticipada;
+
+    @Column(name = "HORAS_TRABAJADAS_MIN")
+    private Integer horasTrabajadasMin;
+
+    @Column(name = "HORAS_EXTRA_25_MIN")
+    private Integer horasExtra25Min;
+
+    @Column(name = "HORAS_EXTRA_35_MIN")
+    private Integer horasExtra35Min;
+
+    @Column(name = "HORAS_EXTRA_100_MIN")
+    private Integer horasExtra100Min;
+
+    @Column(name = "HORAS_EXTRA_TOTAL_MIN")
+    private Integer horasExtraTotalMin;
+
+    @Column(name = "DIA_SEMANA", length = 8)
+    private String diaSemana;
+
+    @Column(name = "ORIGEN", length = 32)
+    private String origen;
 }

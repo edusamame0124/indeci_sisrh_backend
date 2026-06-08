@@ -3,6 +3,7 @@ package com.indeci.rrhh.dto;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * F2.5 — Request para crear/actualizar un evento del período del empleado.
@@ -36,4 +37,15 @@ public class EventoPeriodoDto {
     private Long sustentoLegajoDocId;
 
     private String observacion;
+
+    // --- P0 maternidad (opcionales salvo tipo MATERNIDAD) ---
+
+    private Integer duracionLegal;
+    private String motivoExtension;
+    private LocalDate fechaProbableParto;
+    private String difierePrenatalPostnatal;
+    private String tipoDocumento;
+    private String nroCitt;
+    private LocalDate fechaEmisionDoc;
+    private List<EventoDistribucionMesDto> distribucionMensual;
 }

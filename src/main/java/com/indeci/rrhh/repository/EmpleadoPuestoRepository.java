@@ -14,6 +14,9 @@ public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, 
 
     Optional<EmpleadoPuesto> findFirstByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 
+    /** P0 Planilla CAS Consolidada — puestos activos en batch (sin N+1). */
+    List<EmpleadoPuesto> findByEmpleadoIdInAndActivo(List<Long> empleadoIds, Integer activo);
+
     /** Spec 012 / C3 (BKD-006) — paso «puesto» del flujo de empleado. */
     boolean existsByEmpleadoId(Long empleadoId);
     

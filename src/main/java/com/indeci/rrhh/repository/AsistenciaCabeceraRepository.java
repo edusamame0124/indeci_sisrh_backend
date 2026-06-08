@@ -19,4 +19,9 @@ public interface AsistenciaCabeceraRepository
     findByPeriodoAndActivo(
             String periodo,
             Integer activo);
+
+    List<AsistenciaCabecera>
+    findByImportacionIdAndActivo(
+            Long importacionId,
+            Integer activo);
 }

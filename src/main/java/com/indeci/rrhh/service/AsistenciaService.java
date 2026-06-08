@@ -10,14 +10,13 @@ import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +42,11 @@ public class AsistenciaService {
 
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
-            "LABORAL", "FALTA", "TARDANZA", "LICENCIA", "VACACIONES", "DESCANSO");
+            "LABORAL", "FALTA", "TARDANZA", "LICENCIA", "VACACIONES", "DESCANSO",
+            "FERIADO", "OBSERVADO");
+
+    private static final Set<String> ESTADOS_CABECERA = Set.of(
+            "BORRADOR", "PREVALIDADA", "LISTA_PARA_VALIDAR", "OBSERVADA", "VALIDADA");
 
     /** Tipos que cuentan como día efectivamente laborado. */
     private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA");
@@ -94,39 +97,14 @@ public class AsistenciaService {
         List<AsistenciaDiaDto> dias =
                 dto.getDias() != null ? dto.getDias() : new ArrayList<>();
 
-        // ----- Recalcular agregados desde el detalle -----
-        int diasLaborados = 0;
-        int diasFalta = 0;
-        int totalMin = 0;
-
-        for (AsistenciaDiaDto d : dias) {
-            String tipo = d.getTipoDia();
-
-            if (tipo == null || !TIPOS_DIA.contains(tipo)) {
-                throw new NegocioException(
-                        "Tipo de día inválido: " + tipo);
-            }
-
-            if (TIPOS_LABORADOS.contains(tipo)) {
-                diasLaborados++;
-            }
-            if ("FALTA".equals(tipo)) {
-                diasFalta++;
-            }
-            if ("TARDANZA".equals(tipo)
-                    && d.getMinutosTardanza() != null) {
-                totalMin += Math.max(0, d.getMinutosTardanza());
-            }
-        }
+        validarTiposDia(dias);
 
         double remun = dto.getRemuneracionBase() != null
                 ? dto.getRemuneracionBase()
                 : 0.0;
 
-        double descTardanza =
-                calcularDescuentoTardanza(remun, totalMin);
-        double descFalta =
-                calcularDescuentoFalta(remun, diasFalta);
+        AsistenciaResumenCalculator.Resumen agregados =
+                AsistenciaResumenCalculator.calcular(dias, remun);
 
         // ----- UPSERT de la cabecera -----
         AsistenciaCabecera cab = cabeceraRepository
@@ -142,36 +120,22 @@ public class AsistenciaService {
                 });
 
         cab.setRemuneracionBase(dto.getRemuneracionBase());
-        cab.setDiasLaborados(diasLaborados);
-        cab.setDiasFalta(diasFalta);
-        cab.setTotalMinTardanza(totalMin);
-        cab.setDescuentoTardanza(descTardanza);
-        cab.setDescuentoFalta(descFalta);
+        cab.setDiasLaborados(agregados.getDiasLaborados());
+        cab.setDiasFalta(agregados.getDiasFalta());
+        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
+        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
+        cab.setDescuentoFalta(agregados.getDescuentoFalta());
+        cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
+        cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
         cab.setObservacion(dto.getObservacion());
-        cab.setEstado(
-                "VALIDADA".equals(dto.getEstado())
-                        ? "VALIDADA"
-                        : "BORRADOR");
+        cab.setEstado(normalizarEstado(dto.getEstado()));
 
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
 
         // ----- Reemplazar el detalle -----
         detalleRepository.deleteByCabeceraId(guardada.getId());
 
-        List<AsistenciaDetalle> detalles = new ArrayList<>();
-        for (AsistenciaDiaDto d : dias) {
-            AsistenciaDetalle det = new AsistenciaDetalle();
-            det.setCabeceraId(guardada.getId());
-            det.setDia(d.getDia());
-            det.setTipoDia(d.getTipoDia());
-            det.setMinutosTardanza(
-                    d.getMinutosTardanza() != null
-                            ? Math.max(0, d.getMinutosTardanza())
-                            : 0);
-            det.setObservacion(d.getObservacion());
-            detalles.add(det);
-        }
-        detalleRepository.saveAll(detalles);
+        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias));
 
         auditoriaContext.setDetalle(
                 "Asistencia guardada empleado " + dto.getEmpleadoId()
@@ -179,33 +143,112 @@ public class AsistenciaService {
                         + " (" + dias.size() + " días)");
     }
 
-    // ==========================================
-    // CÁLCULO DESCUENTO — D.Leg. 276 Art. 24 (REGLA 276-02)
-    // ==========================================
-
     /**
-     * ROUND((remuneracion / 30 / 8 / 60) * minutos, 2).
-     * Se multiplica antes de dividir para redondear una sola vez (sin drift).
+     * Persiste asistencia proveniente de importación masiva del marcador.
      */
-    double calcularDescuentoTardanza(double remuneracion, int minutos) {
-        if (remuneracion <= 0 || minutos <= 0) {
-            return 0.0;
-        }
-        return BigDecimal.valueOf(remuneracion)
-                .multiply(BigDecimal.valueOf(minutos))
-                .divide(BigDecimal.valueOf(30L * 8 * 60), 2, RoundingMode.HALF_UP)
-                .doubleValue();
+    @Transactional
+    public void guardarImportacion(
+            Long empleadoId,
+            String periodo,
+            double remuneracionBase,
+            String baseOrigen,
+            String estado,
+            Long importacionId,
+            List<AsistenciaDiaDto> dias) {
+
+        AsistenciaGuardarDto dto = new AsistenciaGuardarDto();
+        dto.setEmpleadoId(empleadoId);
+        dto.setPeriodo(periodo);
+        dto.setRemuneracionBase(remuneracionBase);
+        dto.setEstado(estado);
+        dto.setDias(dias);
+        dto.setObservacion("Importación marcador ID " + importacionId);
+
+        AsistenciaCabecera cab = cabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                .orElseGet(() -> {
+                    AsistenciaCabecera nueva = new AsistenciaCabecera();
+                    nueva.setEmpleadoId(empleadoId);
+                    nueva.setPeriodo(periodo);
+                    nueva.setActivo(1);
+                    nueva.setCreatedAt(LocalDateTime.now());
+                    return nueva;
+                });
+
+        validarTiposDia(dias);
+        AsistenciaResumenCalculator.Resumen agregados =
+                AsistenciaResumenCalculator.calcular(dias, remuneracionBase);
+
+        cab.setRemuneracionBase(remuneracionBase);
+        cab.setDiasLaborados(agregados.getDiasLaborados());
+        cab.setDiasFalta(agregados.getDiasFalta());
+        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
+        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
+        cab.setDescuentoFalta(agregados.getDescuentoFalta());
+        cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
+        cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
+        cab.setBaseAsistenciaOrigen(baseOrigen);
+        cab.setImportacionId(importacionId);
+        cab.setEstado(normalizarEstado(estado));
+
+        AsistenciaCabecera guardada = cabeceraRepository.save(cab);
+        detalleRepository.deleteByCabeceraId(guardada.getId());
+        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias));
     }
 
-    /** ROUND((remuneracion / 30) * dias_falta, 2). */
-    double calcularDescuentoFalta(double remuneracion, int diasFalta) {
-        if (remuneracion <= 0 || diasFalta <= 0) {
-            return 0.0;
+    void validarTiposDia(List<AsistenciaDiaDto> dias) {
+        for (AsistenciaDiaDto d : dias) {
+            String tipo = d.getTipoDia();
+            if (tipo == null || !TIPOS_DIA.contains(tipo)) {
+                throw new NegocioException("Tipo de día inválido: " + tipo);
+            }
         }
-        return BigDecimal.valueOf(remuneracion)
-                .multiply(BigDecimal.valueOf(diasFalta))
-                .divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP)
-                .doubleValue();
+    }
+
+    String normalizarEstado(String estado) {
+        if (estado != null && ESTADOS_CABECERA.contains(estado)) {
+            return estado;
+        }
+        return "BORRADOR";
+    }
+
+    /**
+     * ROUND((remuneracion / 30 / 8 / 60) * minutos, 2) — expuesto para tests.
+     */
+    double calcularDescuentoTardanza(double remuneracion, int minutos) {
+        return AsistenciaResumenCalculator.calcularDescuentoTardanza(remuneracion, minutos);
+    }
+
+    /** ROUND((remuneracion / 30) * dias_falta, 2) — expuesto para tests. */
+    double calcularDescuentoFalta(double remuneracion, int diasFalta) {
+        return AsistenciaResumenCalculator.calcularDescuentoFalta(remuneracion, diasFalta);
+    }
+
+    private List<AsistenciaDetalle> mapearDetalles(Long cabeceraId, List<AsistenciaDiaDto> dias) {
+        List<AsistenciaDetalle> detalles = new ArrayList<>();
+        for (AsistenciaDiaDto d : dias) {
+            AsistenciaDetalle det = new AsistenciaDetalle();
+            det.setCabeceraId(cabeceraId);
+            det.setDia(d.getDia());
+            det.setTipoDia(d.getTipoDia());
+            det.setMinutosTardanza(
+                    d.getMinutosTardanza() != null ? Math.max(0, d.getMinutosTardanza()) : 0);
+            det.setObservacion(d.getObservacion());
+            det.setMarcaEntrada(d.getMarcaEntrada());
+            det.setMarcaSalida(d.getMarcaSalida());
+            det.setHoraEntradaEsperada(d.getHoraEntradaEsperada());
+            det.setMinutosSalidaAnticipada(
+                    d.getMinutosSalidaAnticipada() != null ? d.getMinutosSalidaAnticipada() : 0);
+            det.setHorasTrabajadasMin(d.getHorasTrabajadasMin());
+            det.setHorasExtra25Min(d.getHorasExtra25Min());
+            det.setHorasExtra35Min(d.getHorasExtra35Min());
+            det.setHorasExtra100Min(d.getHorasExtra100Min());
+            det.setHorasExtraTotalMin(d.getHorasExtraTotalMin());
+            det.setDiaSemana(d.getDiaSemana());
+            det.setOrigen(d.getOrigen() != null ? d.getOrigen() : "MANUAL");
+            detalles.add(det);
+        }
+        return detalles;
     }
 
     // ==========================================

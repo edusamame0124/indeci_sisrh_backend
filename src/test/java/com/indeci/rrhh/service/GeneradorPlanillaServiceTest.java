@@ -1,6 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.ConceptoSinCodigoMefException;
+import com.indeci.rrhh.dto.SubsidioCalculadoDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.entity.*;
 import com.indeci.rrhh.repository.*;
@@ -60,6 +61,7 @@ class GeneradorPlanillaServiceTest {
     @Mock private AbonoBancoRepository abonoBancoRepository;
     @Mock private EmpleadoReintegroRepository empleadoReintegroRepository;
     @Mock private EmpleadoEventoRepository empleadoEventoRepository;
+    @Mock private EventoDistribucionMesRepository eventoDistribucionMesRepository;
     @Mock private Suspension4taService suspension4taService;
     @Mock private TipoPersonalRepository tipoPersonalRepository;
     @Mock private CalculoSnapshotService calculoSnapshotService;
@@ -100,6 +102,7 @@ class GeneradorPlanillaServiceTest {
                 abonoBancoRepository,
                 empleadoReintegroRepository,
                 empleadoEventoRepository,
+                eventoDistribucionMesRepository,
                 suspension4taService,
                 tipoPersonalRepository,
                 calculoSnapshotService,
@@ -115,6 +118,13 @@ class GeneradorPlanillaServiceTest {
         periodo.setActivo(1);
         when(periodoRepository.findByPeriodoAndActivo(PERIODO, 1))
                 .thenReturn(Optional.of(periodo));
+
+        when(eventoDistribucionMesRepository
+                .findTramosDiasLaboradosPorEmpleadoYPeriodo(any(), any()))
+                .thenReturn(List.of());
+        when(eventoDistribucionMesRepository
+                .findEventoIdsConTramoEnPeriodo(any(), any()))
+                .thenReturn(List.of());
 
         // No hay movimiento anterior
         when(movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
@@ -657,6 +667,88 @@ class GeneradorPlanillaServiceTest {
             previos.add(mv);
         }
         when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(previos);
+    }
+
+    // ==================================================================
+    // FASE 4 — Subsidio (maternidad/enfermedad) → neto del trabajador
+    // ==================================================================
+
+    /**
+     * Evento de subsidio con AFECTA_DIAS_LABORADOS='S': el sueldo ya se
+     * prorrateó por los días de descanso, así que el subsidio_total_100 entra
+     * como ingreso NO remunerativo y suma al neto (rellena el hueco).
+     */
+    @Test
+    void subsidio_con_afecta_dias_S_suma_al_neto() {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(3000.0);
+        mockSubsidioEvento("ENFERMEDAD", "S", new BigDecimal("1333.33"));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        assertThat(detallePorConcepto(capt, 7916L).getMonto())
+                .isCloseTo(1333.33, within(0.01));
+
+        // remunerativo 3000 + subsidio_total_100 1333.33 = 4333.33
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalIngresos()).isCloseTo(4333.33, within(0.01));
+    }
+
+    /**
+     * Evento de subsidio con AFECTA_DIAS_LABORADOS='N': el sueldo NO se redujo,
+     * así que el subsidio NO suma al neto (guard anti-doble-pago). Solo queda en
+     * trazabilidad (calcularYRegistrar). No se graba línea de subsidio.
+     */
+    @Test
+    void subsidio_con_afecta_dias_N_no_suma_al_neto() {
+        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(3000.0);
+        mockSubsidioEvento("ENFERMEDAD", "N", new BigDecimal("1333.33"));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        assertThat(capt.getAllValues())
+                .noneMatch(d -> Long.valueOf(7916L).equals(d.getConceptoPlanillaId()));
+
+        MovimientoPlanilla cab = capturarCabeceraFinal();
+        assertThat(cab.getTotalIngresos()).isCloseTo(3000.00, within(0.01));
+    }
+
+    /** Configura un evento de subsidio del período + el cálculo mockeado. */
+    private void mockSubsidioEvento(String tipoSubsidio, String afectaDias, BigDecimal total100) {
+        TipoEvento tipo = new TipoEvento();
+        tipo.setNombre("Descanso médico");
+        tipo.setGeneraSubsidio("S");
+        tipo.setAfectaDiasLaborados(afectaDias);
+        EmpleadoEvento ev = new EmpleadoEvento();
+        ev.setId(8001L);
+        ev.setEmpleadoId(EMPLEADO_ID);
+        ev.setTipoEvento(tipo);
+        when(empleadoEventoRepository.findSubsidiosParaMotor(eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(List.of(ev));
+
+        SubsidioCalculadoDto dto = new SubsidioCalculadoDto(
+                true, tipoSubsidio, 8, 0, 0, 8, "0916", "2073",
+                new BigDecimal("166.67"), total100,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("500.00"), total100.subtract(new BigDecimal("500.00")));
+        when(subsidioCalculadorService.calcularYRegistrar(any(), any(), any(), any(), any()))
+                .thenReturn(dto);
+        when(conceptoRepository.findByCodigoAndActivo("SUBSIDIO_ENFERMEDAD", 1))
+                .thenReturn(Optional.of(conceptoMef(
+                        7916L, "NA_0916", "Subsidio enfermedad", "NO_REMUNERATIVO")));
     }
 
     // ==================================================================
@@ -1970,8 +2062,37 @@ class GeneradorPlanillaServiceTest {
         when(empleadoEventoRepository.findVigentesParaMotor(
                 eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
                 .thenReturn(java.util.List.of(e));
+        when(eventoDistribucionMesRepository
+                .findTramosDiasLaboradosPorEmpleadoYPeriodo(EMPLEADO_ID, PERIODO))
+                .thenReturn(java.util.List.of());
+        when(eventoDistribucionMesRepository
+                .findEventoIdsConTramoEnPeriodo(EMPLEADO_ID, PERIODO))
+                .thenReturn(java.util.List.of());
 
         assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(25);
+    }
+
+    @Test
+    void calcularDiasLaborados_maternidad_usa_tramo_distribucion_no_total_evento() {
+        EventoDistribucionMes tramo = new EventoDistribucionMes();
+        tramo.setEmpleadoEventoId(500L);
+        tramo.setDiasSubsidio(27);
+        tramo.setAfectaDiasLaborados("S");
+        when(eventoDistribucionMesRepository
+                .findTramosDiasLaboradosPorEmpleadoYPeriodo(EMPLEADO_ID, PERIODO))
+                .thenReturn(java.util.List.of(tramo));
+        when(eventoDistribucionMesRepository
+                .findEventoIdsConTramoEnPeriodo(EMPLEADO_ID, PERIODO))
+                .thenReturn(java.util.List.of(500L));
+
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setId(500L);
+        e.setDiasAfectos(98);
+        when(empleadoEventoRepository.findVigentesParaMotor(
+                eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(java.util.List.of(e));
+
+        assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(3);
     }
 
     @Test

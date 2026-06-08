@@ -10,11 +10,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.EventoPeriodoDto;
+import com.indeci.rrhh.dto.EventoPeriodoPageDto;
 import com.indeci.rrhh.dto.EventoPeriodoResponseDto;
+import com.indeci.rrhh.dto.MaternidadPreviewDto;
 import com.indeci.rrhh.entity.TipoEvento;
 import com.indeci.rrhh.repository.TipoEventoRepository;
 import com.indeci.rrhh.service.EventoPeriodoService;
@@ -28,6 +31,7 @@ import lombok.RequiredArgsConstructor;
  * <p>Rutas:</p>
  * <ul>
  *   <li>{@code GET    /api/rrhh/evento-periodo/tipos}                  — catálogo de tipos</li>
+ *   <li>{@code GET    /api/rrhh/evento-periodo}                        — bandeja paginada</li>
  *   <li>{@code GET    /api/rrhh/evento-periodo/{id}}                   — obtener uno</li>
  *   <li>{@code GET    /api/rrhh/evento-periodo/empleado/{empleadoId}}  — listar por empleado</li>
  *   <li>{@code POST   /api/rrhh/evento-periodo}                        — crear</li>
@@ -66,6 +70,19 @@ public class EventoPeriodoController {
                 service.listarPorEmpleado(empleadoId));
     }
 
+    @GetMapping
+    public ApiResponse<EventoPeriodoPageDto> listar(
+            @RequestParam(required = false) Long empleadoId,
+            @RequestParam(required = false) Long tipoEventoId,
+            @RequestParam(required = false) String estado,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return new ApiResponse<>(
+                "OK",
+                "Eventos del período registrados",
+                service.listarPaginado(empleadoId, tipoEventoId, estado, page, size));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<EventoPeriodoResponseDto> obtener(@PathVariable Long id) {
         return new ApiResponse<>("OK", "Evento", service.obtener(id));
@@ -77,6 +94,14 @@ public class EventoPeriodoController {
             @RequestBody EventoPeriodoDto dto) {
         return new ApiResponse<>(
                 "OK", "Evento registrado", service.crear(dto));
+    }
+
+    @PostMapping("/preview-maternidad")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+    public ApiResponse<MaternidadPreviewDto> previewMaternidad(
+            @RequestBody EventoPeriodoDto dto) {
+        return new ApiResponse<>(
+                "OK", "Preview de impacto maternidad", service.previewMaternidad(dto));
     }
 
     @PutMapping("/{id}")

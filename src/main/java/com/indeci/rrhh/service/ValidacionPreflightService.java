@@ -29,6 +29,7 @@ import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
 import com.indeci.rrhh.repository.EmpleadoEventoRepository;
+import com.indeci.rrhh.repository.EventoDistribucionMesRepository;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
@@ -63,6 +64,8 @@ import lombok.RequiredArgsConstructor;
  *  V15 ALERTA   Activo con planilla pero SIN sueldo básico          FIX base remun.
  *  V16 BLOQUEO  Falta TASA_ESSALUD o ESSALUD_MINIMO del año         P1 EsSalud CAS
  *  V17 ALERTA   Falta TOPE_ESSALUD_PCT_UIT (CAS sin tope de base)   P1 EsSalud CAS
+ *  V18 ALERTA   Subsidio (GENERA_SUBSIDIO='S') que NO resta días    Fase 4 subsidio→neto
+ *  V19 ALERTA   Maternidad multi-mes: subsidio al neto diferido P1   P0 maternidad
  * </pre>
  *
  * <p>El servicio prioriza no romper si los datos están incompletos
@@ -86,6 +89,7 @@ public class ValidacionPreflightService {
     private final AsistenciaCabeceraRepository asistenciaRepository;
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final EmpleadoEventoRepository empleadoEventoRepository;
+    private final EventoDistribucionMesRepository eventoDistribucionMesRepository;
     private final TipoEventoRepository tipoEventoRepository;
     // FASE 1 — IR 4ta CAS (V11–V14).
     private final ParametroRemunerativoService parametroService;
@@ -279,6 +283,47 @@ public class ValidacionPreflightService {
                 hallazgos.add(ValidacionHallazgoDto.alerta(
                         "V10", "Evento",
                         "Evento '" + tipo.getNombre() + "' sin documento de sustento adjunto.",
+                        ev.getEmpleadoId(),
+                        nombresEmpleado.get(ev.getEmpleadoId()),
+                        ev.getId()));
+            }
+
+            // V19 — Maternidad que cruza meses: imputación al neto diferida (P1).
+            if ("MATERNIDAD".equalsIgnoreCase(tipo.getCodigo())
+                    && eventoDistribucionMesRepository
+                            .countDistinctPeriodosByEmpleadoEventoId(ev.getId()) > 1) {
+                if (!nombresEmpleado.containsKey(ev.getEmpleadoId())) {
+                    Empleado e = empleadoRepository.findById(ev.getEmpleadoId()).orElse(null);
+                    nombresEmpleado.put(ev.getEmpleadoId(), e != null ? nombrePersona(e) : null);
+                }
+                long periodos = eventoDistribucionMesRepository
+                        .countDistinctPeriodosByEmpleadoEventoId(ev.getId());
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V19", "Evento",
+                        "Evento maternidad ID " + ev.getId() + " cruza " + periodos
+                                + " periodos. Subsidio al neto diferido hasta imputación "
+                                + "mensual (P1).",
+                        ev.getEmpleadoId(),
+                        nombresEmpleado.get(ev.getEmpleadoId()),
+                        ev.getId()));
+            }
+
+            // V18 — Subsidio mal configurado: GENERA_SUBSIDIO='S' pero
+            //   AFECTA_DIAS_LABORADOS='N'. El motor NO suma el subsidio al neto
+            //   (el sueldo no se prorrateó), para evitar doble pago. Se alerta a
+            //   RR. HH. (no bloquea): hay que marcar el tipo como que resta días.
+            if ("S".equalsIgnoreCase(tipo.getGeneraSubsidio())
+                    && !"S".equalsIgnoreCase(tipo.getAfectaDiasLaborados())) {
+                if (!nombresEmpleado.containsKey(ev.getEmpleadoId())) {
+                    Empleado e = empleadoRepository.findById(ev.getEmpleadoId()).orElse(null);
+                    nombresEmpleado.put(ev.getEmpleadoId(), e != null ? nombrePersona(e) : null);
+                }
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V18", "Evento",
+                        "Evento '" + tipo.getNombre() + "' genera subsidio pero su tipo NO "
+                                + "resta días laborados: el subsidio NO se sumará al neto "
+                                + "(se evita doble pago). Marca AFECTA_DIAS_LABORADOS='S' si "
+                                + "corresponde pagarlo por planilla.",
                         ev.getEmpleadoId(),
                         nombresEmpleado.get(ev.getEmpleadoId()),
                         ev.getId()));

@@ -4,7 +4,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.LegajoArchivoDescargaDto;
 import com.indeci.rrhh.dto.LegajoDocumentoDto;
 import com.indeci.rrhh.dto.LegajoDocumentoResponseDto;
 import com.indeci.rrhh.entity.LegajoCategoria;
@@ -38,6 +42,7 @@ import lombok.RequiredArgsConstructor;
  *   <li>{@code GET    /api/rrhh/legajo/empleado/{empleadoId}}          — listar por empleado</li>
  *   <li>{@code GET    /api/rrhh/legajo/empleado/{empleadoId}/categoria/{catId}} — por categoría</li>
  *   <li>{@code GET    /api/rrhh/legajo/{id}}                           — obtener uno</li>
+ *   <li>{@code GET    /api/rrhh/legajo/{id}/download}                  — descarga binario</li>
  *   <li>{@code POST   /api/rrhh/legajo/upload}                         — sube archivo (multipart)</li>
  *   <li>{@code DELETE /api/rrhh/legajo/{id}}                           — baja lógica</li>
  * </ul>
@@ -110,6 +115,19 @@ public class LegajoDocumentoController {
     @GetMapping("/{id}")
     public ApiResponse<LegajoDocumentoResponseDto> obtener(@PathVariable Long id) {
         return new ApiResponse<>("OK", "Documento", service.obtener(id));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> descargar(@PathVariable Long id) {
+        LegajoArchivoDescargaDto archivo = service.descargar(id);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(archivo.mediaType()));
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(archivo.nombreArchivo())
+                .build());
+
+        return ResponseEntity.ok().headers(headers).body(archivo.contenido());
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -6,6 +6,7 @@ import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.GeneracionFallidaDto;
 import com.indeci.rrhh.dto.GeneracionMasivaResultDto;
 import com.indeci.rrhh.dto.ResumenPlanillaDto;
+import com.indeci.rrhh.dto.SubsidioCalculadoDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.entity.*;
 import com.indeci.rrhh.repository.*;
@@ -83,6 +84,15 @@ public class GeneradorPlanillaService {
      * y NUNCA debe bloquear la planilla.
      */
     private static final String CODIGO_INTERNO_IR4TA_CAS = "IR4TA_CAS";
+
+    /**
+     * FASE 4 — CODIGO interno de los conceptos de subsidio (V010_58). Se
+     * resuelven por CODIGO (no por CODIGO_MEF): son conceptos PLAME/SUNAT
+     * (0915/0916), NO MEF/AIRHSP. Son NO_REMUNERATIVO (no afectan IR/EsSalud/AFP).
+     */
+    private static final String CODIGO_SUBSIDIO_MATERNIDAD = "SUBSIDIO_MATERNIDAD";
+    private static final String CODIGO_SUBSIDIO_ENFERMEDAD = "SUBSIDIO_ENFERMEDAD";
+    private static final String TIPO_SUBSIDIO_MATERNIDAD   = "MATERNIDAD";
 
     /**
      * Mejora 2026-06-03 — Remuneración base por régimen (CODIGO_MEF). La base
@@ -179,6 +189,8 @@ public class GeneradorPlanillaService {
     private final EmpleadoReintegroRepository empleadoReintegroRepository;
     /** F2.3 — Eventos del período (motor PASO 3, afecta días laborados). */
     private final EmpleadoEventoRepository empleadoEventoRepository;
+    /** P0 maternidad — tramos mensuales del descanso subsidiado. */
+    private final EventoDistribucionMesRepository eventoDistribucionMesRepository;
 
     /** FASE 1 — Vigencia de suspensión de retención de 4ta (motor PASO 8c). */
     private final Suspension4taService suspension4taService;
@@ -209,7 +221,31 @@ public class GeneradorPlanillaService {
     @Value("${motor.v3.prorrateo.enabled:false}")
     private boolean motorV3ProrrateoEnabled;
 
-    private void registrarSubsidiosEventos(
+    /**
+     * FASE 4 — Calcula + registra los subsidios del período y devuelve el
+     * INGRESO no remunerativo que debe sumarse al neto del trabajador.
+     *
+     * <p>Criterio normativo (confirmado RRHH 2026-06-06): el sueldo ya se
+     * prorratea hacia abajo por los días de descanso del evento (cuando el
+     * TipoEvento tiene {@code AFECTA_DIAS_LABORADOS='S'}). Por eso el
+     * {@code subsidio_total_100} entra como ingreso NO remunerativo que rellena
+     * ese hueco → el neto del trabajador queda ≈ mes completo, sin doble pago.</p>
+     *
+     * <pre>
+     *  GENERA_SUBSIDIO='S' + AFECTA_DIAS_LABORADOS='S'
+     *      → línea SUBSIDIO_* + suma subsidio_total_100 al neto.
+     *  GENERA_SUBSIDIO='S' + AFECTA_DIAS_LABORADOS='N'
+     *      → NO suma al neto (el sueldo no se redujo): solo trazabilidad.
+     *        Preflight V18 alerta la posible mala configuración.
+     * </pre>
+     *
+     * <p>El diferencial entidad (PLAME 2073) <b>nunca</b> suma al neto del
+     * trabajador: es costo del empleador, ya está en la trazabilidad/snapshot.</p>
+     *
+     * @return ingreso de subsidio a sumar a {@code totalIngresos} (NO a las
+     *         bases imponibles: es no remunerativo, no afecta IR/EsSalud/AFP).
+     */
+    private BigDecimal registrarSubsidiosEventos(
             Long empleadoId,
             String periodo,
             MovimientoPlanilla movimiento,
@@ -217,7 +253,7 @@ public class GeneradorPlanillaService {
 
         BigDecimal remuneracionBase = toBigDecimal(planilla.getSueldoBasico());
         if (remuneracionBase.signum() <= 0) {
-            return;
+            return BigDecimal.ZERO;
         }
 
         LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
@@ -225,17 +261,56 @@ public class GeneradorPlanillaService {
         List<EmpleadoEvento> eventos = empleadoEventoRepository
                 .findSubsidiosParaMotor(empleadoId, periodo, inicio, fin);
         if (eventos == null || eventos.isEmpty()) {
-            return;
+            return BigDecimal.ZERO;
         }
 
+        BigDecimal ingresoSubsidio = BigDecimal.ZERO;
         for (EmpleadoEvento evento : eventos) {
-            subsidioCalculadorService.calcularYRegistrar(
-                    evento,
-                    remuneracionBase,
-                    movimiento.getId(),
-                    periodo,
-                    "SISTEMA");
+            // calcularYRegistrar ya graba trazabilidad (INDECI_SUBSIDIO_EVENTO_CALCULO)
+            // + snapshot REGLA_SUBSIDIO. Aquí solo decidimos el impacto en el neto.
+            SubsidioCalculadoDto calculo = subsidioCalculadorService.calcularYRegistrar(
+                    evento, remuneracionBase, movimiento.getId(), periodo, "SISTEMA");
+            if (!calculo.aplica()) {
+                continue;
+            }
+
+            // Guard anti-doble-pago: solo entra al neto si el evento redujo días
+            // laborados (el sueldo ya se prorrateó). Si no, queda solo en
+            // trazabilidad y el preflight V18 lo señala a RR. HH.
+            TipoEvento tipo = evento.getTipoEvento();
+            boolean reduceDias = tipo != null
+                    && "S".equalsIgnoreCase(tipo.getAfectaDiasLaborados());
+            if (!reduceDias) {
+                continue;
+            }
+
+            // P0 guardrail: no imputar subsidio al neto si el descanso cruza meses.
+            if (eventoCruzaMeses(evento.getId())) {
+                continue;
+            }
+
+            ConceptoPlanilla concepto = conceptoSubsidio(calculo.tipoSubsidio());
+            BigDecimal monto = calculo.subtotalRemunerativo();
+            grabarDetalle(movimiento.getId(), concepto, monto, String.format(
+                    "Subsidio %s | PLAME %s | días=%d | reembolsoEsSalud=%s | "
+                            + "diferencialEntidad(2073)=%s | NO remunerativo",
+                    calculo.tipoSubsidio(), calculo.codigoPlameSubsidio(),
+                    calculo.diasDescanso(), escala(calculo.subsidioEssalud()),
+                    escala(calculo.diferenciaAsumidaIndeci())));
+            ingresoSubsidio = ingresoSubsidio.add(monto);
         }
+        return ingresoSubsidio;
+    }
+
+    /** Resuelve el concepto de subsidio por CODIGO interno (PLAME, no MEF). */
+    private ConceptoPlanilla conceptoSubsidio(String tipoSubsidio) {
+        String codigo = TIPO_SUBSIDIO_MATERNIDAD.equalsIgnoreCase(tipoSubsidio)
+                ? CODIGO_SUBSIDIO_MATERNIDAD
+                : CODIGO_SUBSIDIO_ENFERMEDAD;
+        return conceptoRepository.findByCodigoAndActivo(codigo, 1)
+                .orElseThrow(() -> new NegocioException(
+                        "Concepto de subsidio '" + codigo + "' no configurado o inactivo. "
+                                + "Ejecutar seed V010_58__conceptos_subsidio_plame.sql."));
     }
 
     // ======================================================================
@@ -336,11 +411,18 @@ public class GeneradorPlanillaService {
             }
         }
 
+        // 7c. FASE 4 — Subsidios (maternidad/enfermedad): el subsidio_total_100
+        //     rellena el sueldo que ya se prorrateó por los días de descanso.
+        //     Entra como INGRESO no remunerativo → suma al neto pero NO a las
+        //     bases imponibles (no afecta IR/EsSalud/AFP). El diferencial 2073
+        //     queda en trazabilidad/snapshot (costo de entidad, no neto).
+        BigDecimal ingresoSubsidio =
+                registrarSubsidiosEventos(empleadoId, periodo, movimiento, planilla);
+        totalIngresos = totalIngresos.add(ingresoSubsidio);
+
         // 7b. Descuento de asistencia (PASO 7) — tardanzas + faltas de la
         //     asistencia VALIDADA del período (D.Leg. 276 Art. 24). No reduce
         //     la base imponible: es una deducción sobre el bruto.
-        registrarSubsidiosEventos(empleadoId, periodo, movimiento, planilla);
-
         BigDecimal descuentoAsistencia =
                 calcularDescuentoAsistencia(movimiento, empleadoId, periodo);
         totalDescuentos = totalDescuentos.add(descuentoAsistencia);
@@ -1680,20 +1762,40 @@ public class GeneradorPlanillaService {
         java.time.LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
         java.time.LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
 
+        int totalDistribucion = eventoDistribucionMesRepository
+                .findTramosDiasLaboradosPorEmpleadoYPeriodo(empleadoId, periodo)
+                .stream()
+                .mapToInt(d -> d.getDiasSubsidio() != null ? d.getDiasSubsidio() : 0)
+                .sum();
+
+        java.util.Set<Long> eventosConDistribucion = new java.util.HashSet<>(
+                eventoDistribucionMesRepository.findEventoIdsConTramoEnPeriodo(
+                        empleadoId, periodo));
+
         var eventos = empleadoEventoRepository
                 .findVigentesParaMotor(empleadoId, periodo, inicio, fin);
 
-        int total = 0;
+        int totalEventos = 0;
         for (var e : eventos) {
+            if (eventosConDistribucion.contains(e.getId())) {
+                continue;
+            }
             if (e.getDiasAfectos() != null) {
-                total += e.getDiasAfectos();
+                totalEventos += e.getDiasAfectos();
             } else if (e.getFechaInicio() != null && e.getFechaFin() != null) {
-                // Derivar: días naturales del rango.
-                total += (int) (java.time.temporal.ChronoUnit.DAYS
+                totalEventos += (int) (java.time.temporal.ChronoUnit.DAYS
                         .between(e.getFechaInicio(), e.getFechaFin()) + 1);
             }
         }
-        return total;
+        return totalDistribucion + totalEventos;
+    }
+
+    /** P0 — true si el evento tiene desglose en más de un periodo de planilla. */
+    private boolean eventoCruzaMeses(Long eventoId) {
+        if (eventoId == null) {
+            return false;
+        }
+        return eventoDistribucionMesRepository.countDistinctPeriodosByEmpleadoEventoId(eventoId) > 1;
     }
 
     /**
