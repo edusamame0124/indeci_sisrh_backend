@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.indeci.admin.dto.AdminPersonaLookupResponse;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserEmpleadoPutRequest;
@@ -52,6 +53,12 @@ public class AdminUserController {
         var pageable = PageRequest.of(Math.max(page, 0), safeSize);
         var result = adminUserService.listUsers(q, status, sistema, pageable);
         return new ApiResponse<>("OK", "Usuarios", result);
+    }
+
+    @GetMapping("/persona-lookup")
+    public ApiResponse<List<AdminPersonaLookupResponse>> personaLookup(
+            @RequestParam(defaultValue = "") String q) {
+        return new ApiResponse<>("OK", "Personas", adminUserService.lookupPersonasForUserCreate(q));
     }
 
     @GetMapping("/{id}")

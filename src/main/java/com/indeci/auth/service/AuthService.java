@@ -29,6 +29,8 @@ import com.indeci.security.captcha.TurnstileService;
 import com.indeci.security.jwt.JwtProvider;
 import com.indeci.security.otp.OtpService;
 import com.indeci.security.ratelimit.LoginRateLimiter;
+import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.sistema.service.UsuarioSistemaService;
 import com.indeci.user.entity.*;
 import com.indeci.user.repository.*;
@@ -57,6 +59,7 @@ public class AuthService {
     private final OtpService otpService;
     private final AuthRefreshTokenRepository authRefreshTokenRepository;
     private final UsuarioSistemaService usuarioSistemaService;
+    private final PersonaRepository personaRepository;
 
     // 🔥 TEMPORAL EN MEMORIA (como SIGCO)
     private final Map<String, String> secretTemporal = new ConcurrentHashMap<>();
@@ -223,13 +226,16 @@ public class AuthService {
          secretTemporal.remove(username);
      }
 
-     // 🔥 4. GENERAR TOKEN FINAL — Fase 3 SSO: claims "sistemas" y "areas".
+     // 🔥 4. GENERAR TOKEN FINAL — Fase 3 SSO: claims "sistemas", "areas" y "dni".
      List<String> roles = obtenerRoles(user);
      List<String> permisos = obtenerPermisos(user);
      Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
      Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
+     Persona persona = personaRepository.findByUserId(user.getId()).orElse(null);
+     String dni = persona != null ? persona.getDni() : null;
+     String nombre = persona != null ? persona.getNombreCompleto() : null;
 
-     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
+     String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas, dni, nombre);
      String refreshToken = jwtProvider.generarRefreshToken(user);
 
      // 🔥 GUARDAR EN BD
@@ -277,8 +283,11 @@ public class AuthService {
         List<String> permisos = obtenerPermisos(user);
         Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
         Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
+        Persona persona = personaRepository.findByUserId(user.getId()).orElse(null);
+        String dni = persona != null ? persona.getDni() : null;
+        String nombre = persona != null ? persona.getNombreCompleto() : null;
 
-        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
+        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas, dni, nombre);
         String refreshToken = jwtProvider.generarRefreshToken(user);
 
         // 🔥 GUARDAR EN BD
@@ -454,13 +463,16 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
 
-        // 🔥 5. GENERAR NUEVO ACCESS — Fase 3 SSO: re-resuelve sistemas y areas.
+        // 🔥 5. GENERAR NUEVO ACCESS — Fase 3 SSO: re-resuelve sistemas, areas y dni.
         List<String> roles = obtenerRoles(user);
         List<String> permisos = obtenerPermisos(user);
         Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
         Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
+        Persona persona = personaRepository.findByUserId(user.getId()).orElse(null);
+        String dni = persona != null ? persona.getDni() : null;
+        String nombre = persona != null ? persona.getNombreCompleto() : null;
 
-        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas);
+        String nuevoAccess = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas, dni, nombre);
 
         // 🔥 6. ROTACIÓN DEL TOKEN (invalidar anterior)
         tokenEntity.setActivo("N");

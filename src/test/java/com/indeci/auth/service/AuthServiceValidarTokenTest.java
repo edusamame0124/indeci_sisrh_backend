@@ -20,6 +20,7 @@ import com.indeci.security.jwt.JwtProperties;
 import com.indeci.security.jwt.JwtProvider;
 import com.indeci.security.otp.OtpService;
 import com.indeci.security.ratelimit.LoginRateLimiter;
+import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.sistema.service.UsuarioSistemaService;
 import com.indeci.user.entity.User;
 import com.indeci.user.repository.PermisoRepository;
@@ -54,6 +55,7 @@ class AuthServiceValidarTokenTest {
     @Mock private OtpService otpService;
     @Mock private AuthRefreshTokenRepository authRefreshTokenRepository;
     @Mock private UsuarioSistemaService usuarioSistemaService;
+    @Mock private PersonaRepository personaRepository;
 
     private JwtProvider jwtProvider;
     private AuthService service;
@@ -71,7 +73,8 @@ class AuthServiceValidarTokenTest {
                 rolPermisoRepository, permisoRepository, usuarioPermisoDenyRepository,
                 usuarioPermisoRepository, jwtProvider,
                 passwordEncoder, turnstileService, loginRateLimiter,
-                otpService, authRefreshTokenRepository, usuarioSistemaService);
+                otpService, authRefreshTokenRepository, usuarioSistemaService,
+                personaRepository);
 
         userOk = new User();
         userOk.setUsername("anibal");

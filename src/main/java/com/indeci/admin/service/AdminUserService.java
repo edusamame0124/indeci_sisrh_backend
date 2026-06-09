@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indeci.admin.dto.AccesoSistemaDto;
 import com.indeci.admin.dto.AccesoSistemaPutItem;
 import com.indeci.admin.dto.AccesosPutRequest;
+import com.indeci.admin.dto.AdminPersonaLookupResponse;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
@@ -31,6 +33,10 @@ import com.indeci.admin.dto.AdminUserSummaryResponse;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.sistema.entity.Sistema;
 import com.indeci.sistema.entity.UsuarioSistema;
 import com.indeci.sistema.repository.SistemaAreaRepository;
@@ -71,6 +77,8 @@ public class AdminUserService {
     private final SistemaRolRepository sistemaRolRepository;
     private final SistemaAreaRepository sistemaAreaRepository;
     private final ObjectMapper objectMapper;
+    private final PersonaRepository personaRepository;
+    private final EmpleadoRepository empleadoRepository;
 
     @Value("${indeci.admin.new-user-default-role-id:}")
     private String newUserDefaultRoleIdRaw;
@@ -112,15 +120,41 @@ public class AdminUserService {
         return new AdminUserDetailResponse(
                 u.getId(),
                 u.getUsername(),
+                resolveDniForUser(id),
                 u.getStatus(),
                 roles,
                 denied,
                 buildAccesos(u.getId()));
     }
 
+    @Transactional(readOnly = true)
+    public List<AdminPersonaLookupResponse> lookupPersonasForUserCreate(String q) {
+        String clean = q == null ? "" : q.trim();
+        if (clean.isEmpty()) {
+            return List.of();
+        }
+        List<AdminPersonaLookupResponse> out = new ArrayList<>();
+        if (clean.matches("\\d{8}")) {
+            personaRepository.findByDni(clean).ifPresent(p -> out.add(toPersonaLookup(p)));
+            if (!out.isEmpty()) {
+                return out;
+            }
+        }
+        String pattern = "%" + clean.toUpperCase(Locale.ROOT) + "%";
+        for (Object[] row : personaRepository.findPageResumenRaw(pattern, 0, 12)) {
+            Long personaId = toLong(row[0]);
+            if (personaId == null) {
+                continue;
+            }
+            personaRepository.findById(personaId).ifPresent(p -> out.add(toPersonaLookup(p)));
+        }
+        return out;
+    }
+
     @Auditable(accion = "ADMIN_USER_CREATE")
     @Transactional
     public AdminUserDetailResponse createUser(AdminUserCreateRequest req) {
+        String dni = normalizeDni(req.getDni());
         String username = req.getUsername().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByUsernameIgnoreCase(username)) {
             throw new NegocioException("El nombre de usuario ya existe");
@@ -150,7 +184,83 @@ public class AdminUserService {
         ur.setSistema("SISRH");
         usuarioRolRepository.save(ur);
 
+        vincularPersonaPorDni(saved, dni);
+
         return getUser(saved.getId());
+    }
+
+    private void vincularPersonaPorDni(User user, String dni) {
+        Optional<Persona> existente = personaRepository.findByDni(dni);
+        if (existente.isPresent()) {
+            Persona persona = existente.get();
+            Long linkedUserId = persona.getUserId();
+            if (linkedUserId != null && !linkedUserId.equals(user.getId())) {
+                throw new NegocioException("Esta persona ya tiene una cuenta institucional vinculada");
+            }
+            persona.setUserId(user.getId());
+            personaRepository.save(persona);
+            empleadoRepository.findByPersonaId(persona.getId()).ifPresent(emp -> {
+                user.setEmpleadoId(emp.getId());
+                userRepository.save(user);
+            });
+            return;
+        }
+        Persona persona = new Persona();
+        persona.setDni(dni);
+        persona.setUserId(user.getId());
+        persona.setNombreCompleto(user.getUsername().toUpperCase(Locale.ROOT));
+        persona.setCreatedAt(LocalDateTime.now());
+        personaRepository.save(persona);
+    }
+
+    private AdminPersonaLookupResponse toPersonaLookup(Persona persona) {
+        Empleado empleado = empleadoRepository.findByPersonaId(persona.getId()).orElse(null);
+        Long userId = persona.getUserId();
+        boolean cuentaVinculada = userId != null;
+        String usernameVinculado = null;
+        if (cuentaVinculada) {
+            usernameVinculado = userRepository.findById(userId)
+                    .map(User::getUsername)
+                    .orElse(null);
+        }
+        return new AdminPersonaLookupResponse(
+                persona.getId(),
+                persona.getDni(),
+                persona.getNombreCompleto(),
+                empleado != null ? empleado.getId() : null,
+                empleado != null ? empleado.getCodigoInterno() : null,
+                cuentaVinculada,
+                usernameVinculado);
+    }
+
+    private String resolveDniForUser(Long userId) {
+        return personaRepository.findByUserId(userId)
+                .map(Persona::getDni)
+                .orElse(null);
+    }
+
+    private String normalizeDni(String raw) {
+        if (raw == null) {
+            throw new NegocioException("El DNI es obligatorio");
+        }
+        String dni = raw.replaceAll("\\D", "");
+        if (!dni.matches("\\d{8}")) {
+            throw new NegocioException("El DNI debe tener 8 dígitos");
+        }
+        return dni;
+    }
+
+    private static Long toLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Long l) {
+            return l;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        return null;
     }
 
     /**
@@ -342,6 +452,11 @@ public class AdminUserService {
                 }
             }
             String areaCodigo = item.area() != null ? item.area().trim() : null;
+            boolean tieneCatalogoAreas = sistemaAreaRepository.existsBySistemaIdAndActivo(sistema.getId(), 1);
+            if (Boolean.TRUE.equals(item.activo()) && tieneCatalogoAreas
+                    && (areaCodigo == null || areaCodigo.isEmpty())) {
+                throw new NegocioException("Debe seleccionar la oficina para " + sistema.getNombre());
+            }
             if (areaCodigo != null && !areaCodigo.isEmpty()
                     && !sistemaAreaRepository.existsBySistemaIdAndCodigoAreaAndActivo(sistema.getId(), areaCodigo, 1)) {
                 throw new NegocioException("Área inválida para " + sistema.getNombre() + ": " + areaCodigo);
