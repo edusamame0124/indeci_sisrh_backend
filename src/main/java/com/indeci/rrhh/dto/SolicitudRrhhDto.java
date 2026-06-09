@@ -3,6 +3,7 @@ package com.indeci.rrhh.dto;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 public class SolicitudRrhhDto {
@@ -47,5 +48,9 @@ public class SolicitudRrhhDto {
 	private String documento2;
 
 	private Integer totalFolios;
+	
+	private Long tipoVacacionId;
+	
+	private List<SolicitudVacacionDetDto> detallesVacacion;
 	//*****************************************
 }

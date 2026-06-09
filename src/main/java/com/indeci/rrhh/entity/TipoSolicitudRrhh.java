@@ -45,4 +45,7 @@ public class TipoSolicitudRrhh {
     @Column(name = "MOSTRAR_LICENCIA")
     private Integer mostrarLicencia;
     
+    @Column(name = "MOSTRAR_VACACION")
+    private Integer mostrarVacacion;
+    
 }

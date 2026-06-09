@@ -76,6 +76,7 @@ private final EstadoSolicitudRepository estadoSolicitudRepository;
 private final TipoDescansoMedicoRepository tipoDescansoMedicoRepository;
 private final TipoDescansoDocRepository tipoDescansoDocRepository;
 private final TipoLicenciaRepository tipoLicenciaRepository;
+private final TipoVacacionRepository tipoVacacionRepository;
 
 
     private final CargoRepository cargoRepository;
@@ -322,6 +323,14 @@ private final TipoLicenciaRepository tipoLicenciaRepository;
         dto.setObligatorio(true);
 
         return dto;
+    }
+    
+    public List<TipoVacacion>
+    listarTiposVacacion() {
+
+        return tipoVacacionRepository
+                .findByActivoOrderByNombreAsc(
+                        1);
     }
     
 }

@@ -104,6 +104,16 @@ public class SolicitudRrhh {
     @Column(name = "TOTAL_FOLIOS")
     private Integer totalFolios;
     
+    @Column(name = "TIPO_VACACION_ID")
+    private Long tipoVacacionId;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "TIPO_VACACION_ID",
+            insertable = false,
+            updatable = false)
+    private TipoVacacion tipoVacacion;
+    
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

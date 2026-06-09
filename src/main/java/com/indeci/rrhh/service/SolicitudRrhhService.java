@@ -4,6 +4,7 @@ import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.SaldoVacacionalDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
+import com.indeci.rrhh.dto.SolicitudVacacionDetDto;
 import com.indeci.rrhh.dto.SolicitudWorkflowDocumentoDto;
 import com.indeci.rrhh.entity.*;
 
@@ -44,8 +45,13 @@ public class SolicitudRrhhService {
     private final FtpService ftpService;
     private final TipoLicenciaRepository tipoLicenciaRepository;
     
-    private static final String TIPO_VACACIONES = "VAC";
+    private final TipoVacacionRepository tipoVacacionRepository;
+
+    private final SolicitudVacacionDetRepository solicitudVacacionDetRepository;
     
+    //private static final String TIPO_VACACIONES = "VAC";
+    
+
     @Auditable(
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
@@ -75,6 +81,10 @@ public class SolicitudRrhhService {
                         tipo);
 
         repository.save(entity);
+        
+        guardarDetalleVacacion(
+                entity.getId(),
+                dto);
 
         guardarSustento(
                 entity,
@@ -86,6 +96,66 @@ public class SolicitudRrhhService {
                 entity.getEstadoSolicitudId(),
                 "CREAR",
                 "Solicitud creada");
+    }
+    
+    private void guardarDetalleVacacion(
+            Long solicitudId,
+            SolicitudRrhhDto dto) {
+
+        if(dto.getDetallesVacacion() == null
+                || dto.getDetallesVacacion().isEmpty()) {
+            return;
+        }
+
+        for(SolicitudVacacionDetDto det
+                : dto.getDetallesVacacion()) {
+
+            SolicitudVacacionDet entity =
+                    new SolicitudVacacionDet();
+
+            entity.setSolicitudId(
+                    solicitudId);
+
+            entity.setTipo(
+                    det.getTipo());
+
+            entity.setFechaInicio(
+                    det.getFechaInicio());
+
+            entity.setFechaFin(
+                    det.getFechaFin());
+
+            entity.setTotalDias(
+                    det.getTotalDias());
+
+            entity.setActivo(1);
+
+            solicitudVacacionDetRepository
+                    .save(entity);
+        }
+    }
+    
+    private void validarVacacion(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(!Integer.valueOf(1)
+                .equals(tipo.getMostrarVacacion())) {
+            return;
+        }
+
+        if(dto.getTipoVacacionId() == null) {
+
+            throw new NegocioException(
+                    "Debe seleccionar el tipo de vacación");
+        }
+
+        if(dto.getDetallesVacacion() == null
+                || dto.getDetallesVacacion().isEmpty()) {
+
+            throw new NegocioException(
+                    "Debe registrar el detalle de vacaciones");
+        }
     }
     
     private void validarDescansoMedico(
@@ -221,6 +291,9 @@ public class SolicitudRrhhService {
                 tipo);
         
         validarLicencia(
+                dto,
+                tipo);
+        validarVacacion(
                 dto,
                 tipo);
 
@@ -443,6 +516,11 @@ public class SolicitudRrhhService {
     private void validarFechas(
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
+    	
+    	if(Integer.valueOf(1)
+    	        .equals(tipo.getMostrarVacacion())) {
+    	    return;
+    	}
 
         if(tipo.getMostrarHoras() == 0) {
 
@@ -590,6 +668,8 @@ public class SolicitudRrhhService {
 
         entity.setTotalFolios(
                 dto.getTotalFolios());
+        entity.setTipoVacacionId(
+                dto.getTipoVacacionId());
 
         calcularCantidades(
                 entity,
@@ -603,6 +683,28 @@ public class SolicitudRrhhService {
             SolicitudRrhh entity,
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
+    	
+    	
+    	if(Integer.valueOf(1)
+    	        .equals(tipo.getMostrarVacacion())) {
+
+    	    double total =
+    	            dto.getDetallesVacacion()
+    	               .stream()
+    	               .mapToDouble(
+    	                    d -> d.getTotalDias() == null
+    	                         ? 0
+    	                         : d.getTotalDias())
+    	               .sum();
+
+    	    entity.setCantidadDias(
+    	            total);
+
+    	    entity.setCantidadHoras(
+    	            null);
+
+    	    return;
+    	}
 
         boolean esLactancia =
                 "008".equals(tipo.getCodigo())
@@ -1258,6 +1360,57 @@ public class SolicitudRrhhService {
         dto.setTotalFolios(
                 s.getTotalFolios());
         
+        dto.setTipoVacacionId(
+                s.getTipoVacacionId());
+        
+        
+        
+        
+        if(s.getTipoVacacionId() != null) {
+
+            TipoVacacion vacacion =
+                    tipoVacacionRepository
+                            .findById(
+                                    s.getTipoVacacionId())
+                            .orElse(null);
+
+            if(vacacion != null) {
+
+                dto.setTipoVacacion(
+                        vacacion.getNombre());
+            }
+        }
+        
+        List<SolicitudVacacionDetDto> detalles =
+                solicitudVacacionDetRepository
+                        .findBySolicitudIdAndActivo(
+                                s.getId(),
+                                1)
+                        .stream()
+                        .map(det -> {
+
+                            SolicitudVacacionDetDto d =
+                                    new SolicitudVacacionDetDto();
+
+                            d.setTipo(
+                                    det.getTipo());
+
+                            d.setFechaInicio(
+                                    det.getFechaInicio());
+
+                            d.setFechaFin(
+                                    det.getFechaFin());
+
+                            d.setTotalDias(
+                                    det.getTotalDias());
+
+                            return d;
+                        })
+                        .toList();
+
+        dto.setDetallesVacacion(
+                detalles);
+        
    
 
         return dto;
@@ -1628,7 +1781,7 @@ public class SolicitudRrhhService {
                                 new NegocioException(
                                         "Tipo solicitud no encontrado"));
         
-        if(TIPO_VACACIONES.equals(
+      /*  if(TIPO_VACACIONES.equals(
                 tipoSolicitud.getCodigo())) {
 
             SaldoVacacionalDto saldo =
@@ -1646,7 +1799,7 @@ public class SolicitudRrhhService {
                         "Saldo vacacional insuficiente. Disponible: "
                                 + saldo.getSaldo());
             }
-        }
+        }*/
 
         // ==========================================
         // VALIDAR ARCHIVO
@@ -1847,6 +2000,9 @@ public class SolicitudRrhhService {
         validarLactancia(
                 dto,
                 tipo);
+        validarVacacion(
+                dto,
+                tipo);
         
         validarDescansoMedico(
                 dto,
@@ -1892,12 +2048,27 @@ public class SolicitudRrhhService {
 
         repository.save(
                 solicitud);
+        
+        actualizarDetalleVacacion(
+                solicitudId,
+                dto);
 
         auditoriaContext.setDetalle(
                 "Solicitud RRHH editada ID: "
                         + solicitudId);
     }
-    
+    private void actualizarDetalleVacacion(
+            Long solicitudId,
+            SolicitudRrhhDto dto) {
+
+        solicitudVacacionDetRepository
+                .deleteBySolicitudId(
+                        solicitudId);
+
+        guardarDetalleVacacion(
+                solicitudId,
+                dto);
+    }
     
     private void validarDuplicidadEditar(
             Long solicitudId,
@@ -1981,6 +2152,8 @@ public class SolicitudRrhhService {
 
         solicitud.setTotalFolios(
                 dto.getTotalFolios());
+        solicitud.setTipoVacacionId(
+                dto.getTipoVacacionId());
     }
     
     @Auditable(

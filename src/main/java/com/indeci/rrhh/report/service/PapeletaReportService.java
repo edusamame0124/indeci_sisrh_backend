@@ -1,26 +1,34 @@
 package com.indeci.rrhh.report.service;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.entity.SolicitudRrhh;
+import com.indeci.rrhh.entity.SolicitudVacacionDet;
 import com.indeci.rrhh.entity.TipoDescansoDoc;
 import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
+import com.indeci.rrhh.entity.TipoVacacion;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
+import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.OficinaRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
+import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
+import com.indeci.rrhh.repository.SolicitudVacacionDetRepository;
 import com.indeci.rrhh.repository.TipoDescansoDocRepository;
 import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
+import com.indeci.rrhh.repository.TipoVacacionRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -46,6 +54,35 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class PapeletaReportService {
 	
+    private static final String VAC_PROGRAMACION =
+            "PROGRAMACION";
+
+    private static final String VAC_ADELANTO =
+            "ADELANTO";
+
+    private static final String VAC_REPROG_ACTUAL =
+            "REPROG_ACTUAL";
+
+    private static final String VAC_REPROG_NUEVO =
+            "REPROG_NUEVO";
+
+    private static final String VAC_FRACC_ACTUAL =
+            "FRACC_ACTUAL";
+
+    private static final String VAC_FRACC_1 =
+            "FRACC_1";
+
+    private static final String VAC_FRACC_2 =
+            "FRACC_2";
+
+    private static final String VAC_FRACC_3 =
+            "FRACC_3";
+
+    private static final String VAC_FRACC_4 =
+            "FRACC_4";
+    
+  
+	
 	
 	private final SolicitudRrhhRepository
     solicitudRepository;
@@ -60,8 +97,8 @@ private final EmpleadoRepository
 private final EmpleadoPuestoRepository
 empleadoPuestoRepository;
 
-private final OficinaRepository
-oficinaRepository;
+private final DependenciaRepository
+dependenciaRepository;
 
 private final PersonaRepository
 personaRepository;
@@ -72,7 +109,201 @@ private final TipoDescansoDocRepository tipoDescansoDocRepository;
 
 private final TipoLicenciaRepository tipoLicenciaRepository;
 
+private final TipoVacacionRepository tipoVacacionRepository;
 
+private final SolicitudVacacionDetRepository
+solicitudVacacionDetRepository;
+
+private final RegimenLaboralRepository regimenLaboralRepository;
+
+
+private void cargarParametrosVacacion(
+        Map<String, Object> params,
+        SolicitudRrhh solicitud) {
+
+    TipoVacacion tipoVacacion =
+            tipoVacacionRepository
+                    .findById(
+                            solicitud.getTipoVacacionId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Tipo vacación no encontrada"));
+
+    params.put(
+            "P_TIPO_VACACION",
+            tipoVacacion.getCodigo());
+
+    List<SolicitudVacacionDet> detalles =
+            solicitudVacacionDetRepository
+                    .findBySolicitudIdAndActivo(
+                            solicitud.getId(),
+                            1);
+
+    if(detalles.isEmpty()) {
+        return;
+    }
+    int contadorReprog = 1;
+    
+    int contadorFracc = 1;
+    for(SolicitudVacacionDet det : detalles) {
+    	
+    	
+
+        switch(det.getTipo()) {
+        
+        case VAC_REPROG_ACTUAL:
+
+            params.put(
+                    "P_REPROG_ACTUAL_DEL",
+                    formatearFecha(
+                            det.getFechaInicio()));
+
+            params.put(
+                    "P_REPROG_ACTUAL_AL",
+                    formatearFecha(
+                            det.getFechaFin()));
+
+            params.put(
+                    "P_REPROG_ACTUAL_DIAS",
+                    valor(
+                            det.getTotalDias()));
+
+            break;
+
+            case VAC_PROGRAMACION:
+
+                params.put(
+                        "P_PROGRAM_DEL",
+                        formatearFecha(
+                                det.getFechaInicio()));
+
+                params.put(
+                        "P_PROGRAM_AL",
+                        formatearFecha(
+                                det.getFechaFin()));
+
+                params.put(
+                        "P_PROGRAM_DIAS",
+                        valor(
+                                det.getTotalDias()));
+
+                break;
+
+            case VAC_ADELANTO:
+
+                params.put(
+                        "P_ADELANTO_DEL",
+                        formatearFecha(
+                                det.getFechaInicio()));
+
+                params.put(
+                        "P_ADELANTO_AL",
+                        formatearFecha(
+                                det.getFechaFin()));
+
+                params.put(
+                        "P_ADELANTO_DIAS",
+                        valor(
+                                det.getTotalDias()));
+
+                break;
+            case VAC_REPROG_NUEVO:
+
+                if(contadorReprog == 1) {
+
+                    params.put(
+                            "P_REPROG_NUEVO_DEL_1",
+                            formatearFecha(
+                                    det.getFechaInicio()));
+
+                    params.put(
+                            "P_REPROG_NUEVO_AL_1",
+                            formatearFecha(
+                                    det.getFechaFin()));
+
+                    params.put(
+                            "P_REPROG_NUEVO_DIAS_1",
+                            valor(
+                                    det.getTotalDias()));
+                }
+
+                if(contadorReprog == 2) {
+
+                    params.put(
+                            "P_REPROG_NUEVO_DEL_2",
+                            formatearFecha(
+                                    det.getFechaInicio()));
+
+                    params.put(
+                            "P_REPROG_NUEVO_AL_2",
+                            formatearFecha(
+                                    det.getFechaFin()));
+
+                    params.put(
+                            "P_REPROG_NUEVO_DIAS_2",
+                            valor(
+                                    det.getTotalDias()));
+                }
+
+                contadorReprog++;
+
+                break;
+                
+            case VAC_FRACC_ACTUAL:
+
+                params.put(
+                        "P_FRACC_ACTUAL_DEL",
+                        formatearFecha(
+                                det.getFechaInicio()));
+
+                params.put(
+                        "P_FRACC_ACTUAL_AL",
+                        formatearFecha(
+                                det.getFechaFin()));
+
+                params.put(
+                        "P_FRACC_ACTUAL_DIAS",
+                        valor(
+                                det.getTotalDias()));
+
+                break;
+                
+            case VAC_FRACC_1:
+            case VAC_FRACC_2:
+            case VAC_FRACC_3:
+            case VAC_FRACC_4:
+
+                params.put(
+                        "P_FRACC_DEL_" + contadorFracc,
+                        formatearFecha(
+                                det.getFechaInicio()));
+
+                params.put(
+                        "P_FRACC_AL_" + contadorFracc,
+                        formatearFecha(
+                                det.getFechaFin()));
+
+                params.put(
+                        "P_FRACC_DIAS_" + contadorFracc,
+                        valor(
+                                det.getTotalDias()));
+
+                contadorFracc++;
+
+                break;
+        }
+        
+        
+    }
+    
+    params.put(
+            "P_OFICINA_DESTINO",
+            "OFICINA DE RECURSOS HUMANOS");
+
+    params.put(
+            "P_FECHA_EMISION",
+            obtenerFechaActual());
+}
 
 
 
@@ -197,6 +428,11 @@ public String generarPdf(
 
             nombreReporte = "formato_3.jasper";
         }
+        
+        if("012".equals(tipo.getCodigo())) {
+
+            nombreReporte = "formato_5.jasper";
+        }
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
@@ -243,18 +479,46 @@ public String generarPdf(
                 valor(
                 		persona.getNombreCompleto()));
         
+        String nombreDependencia = "";
+
+        if (puesto.getDependenciaId() != null) {
+
+            nombreDependencia =
+                    dependenciaRepository
+                            .findById(
+                                    puesto.getDependenciaId())
+                            .map(Dependencia::getNombre)
+                            .orElse("");
+        }
+
         params.put(
                 "P_DEPENDENCIA",
-                puesto.getDependencia() != null
-                        ? puesto.getDependencia().getNombre()
-                        : "");
+                nombreDependencia);
+        
+       
        //INICIO REGIMEN LABORAL 
         
+        RegimenLaboral reg =
+                regimenLaboralRepository
+                        .findById(
+                                empleadoPlanilla.getRegimenLaboralId())
+                        .orElse(null);
+
+        String regimenCodigo = "";
+        String regimenNombre = "";
+
+        if(reg != null){
+            regimenCodigo = reg.getCodigo();
+            regimenNombre = reg.getNombre();
+        }
+
         params.put(
                 "P_REGIMEN",
-                valor(
-                		empleadoPlanilla.getRegimenLaboral().getCodigo()));
-        
+                regimenCodigo);
+
+        params.put(
+                "P_REGIMEN_NOMBRE",
+                regimenNombre);
         
         if ("010".equals(tipo.getCodigo())) {
 
@@ -265,6 +529,13 @@ public String generarPdf(
         if ("011".equals(tipo.getCodigo())) {
 
             cargarParametrosLicencia(
+                    params,
+                    solicitud);
+        }
+        
+        
+        if("012".equals(tipo.getCodigo())) {
+            cargarParametrosVacacion(
                     params,
                     solicitud);
         }
@@ -435,6 +706,8 @@ public String generarPdf(
                 "P_HORA_INGRESO",
                 valor(
                         solicitud.getHoraFin()));
+        
+       
 
         System.out.println("hora de inicio"+solicitud.getHoraFin());
 

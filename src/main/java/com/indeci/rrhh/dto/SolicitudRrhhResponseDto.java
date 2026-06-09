@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class SolicitudRrhhResponseDto {
@@ -75,6 +76,12 @@ public class SolicitudRrhhResponseDto {
     private String documento2;
 
     private Integer totalFolios;
+    
+    private Long tipoVacacionId;
+
+    private String tipoVacacion;
+    
+    private List<SolicitudVacacionDetDto> detallesVacacion;
     
     
 }

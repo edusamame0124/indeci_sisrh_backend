@@ -36,6 +36,7 @@ import com.indeci.rrhh.entity.TipoDocumento;
 import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoPersona;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
+import com.indeci.rrhh.entity.TipoVacacion;
 import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
@@ -353,5 +354,17 @@ public class CatalogoController {
                 catalogoService
                         .listarTipoLicencia());
     }
+
+    @GetMapping("/tipos-vacacion")
+    public ApiResponse<List<TipoVacacion>>
+    listarTiposVacacion() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService.listarTiposVacacion());
+    }
+    
+    
     
 }
