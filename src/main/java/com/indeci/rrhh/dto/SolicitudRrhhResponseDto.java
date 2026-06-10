@@ -83,5 +83,8 @@ public class SolicitudRrhhResponseDto {
     
     private List<SolicitudVacacionDetDto> detallesVacacion;
     
+    private List<SolicitudCompensacionDetDto>
+    detallesCompensacion;
+    
     
 }

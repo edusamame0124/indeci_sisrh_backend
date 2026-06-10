@@ -2,6 +2,7 @@ package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.SaldoVacacionalDto;
+import com.indeci.rrhh.dto.SolicitudCompensacionDetDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
 import com.indeci.rrhh.dto.SolicitudVacacionDetDto;
@@ -48,6 +49,8 @@ public class SolicitudRrhhService {
     private final TipoVacacionRepository tipoVacacionRepository;
 
     private final SolicitudVacacionDetRepository solicitudVacacionDetRepository;
+    private final SolicitudCompensacionDetRepository
+    solicitudCompensacionDetRepository;
     
     //private static final String TIPO_VACACIONES = "VAC";
     
@@ -63,6 +66,13 @@ public class SolicitudRrhhService {
         TipoSolicitudRrhh tipo =
                 obtenerTipoSolicitud(
                         dto.getTipoSolicitudId());
+        
+        System.out.println("TIPO COMPLETO = " + tipo);
+        
+        System.out.println("TIPO ID = " + tipo.getId());
+        System.out.println("TIPO CODIGO = " + tipo.getCodigo());
+        System.out.println("TIPO NOMBRE = " + tipo.getNombre());
+        System.out.println("TIPO MOSTRAR HORAS = " + tipo.getMostrarHoras());
 
         validarSolicitud(
                 dto,
@@ -79,11 +89,22 @@ public class SolicitudRrhhService {
                         empleadoId,
                         estadoBorrador,
                         tipo);
+        
+        System.out.println("=================================");
+        System.out.println("horaInicio=" + entity.getHoraInicio());
+        System.out.println("horaFin=" + entity.getHoraFin());
+        System.out.println("cantidadHoras=" + entity.getCantidadHoras());
+        System.out.println("cantidadDias=" + entity.getCantidadDias());
+        System.out.println("=================================");
 
         repository.save(entity);
         
         guardarDetalleVacacion(
                 entity.getId(),
+                dto);
+        
+        guardarDetalleCompensacion(
+        		entity.getId(),
                 dto);
 
         guardarSustento(
@@ -134,7 +155,62 @@ public class SolicitudRrhhService {
                     .save(entity);
         }
     }
+    private void guardarDetalleCompensacion(
+            Long solicitudId,
+            SolicitudRrhhDto dto) {
+
+        if(dto.getDetallesCompensacion() == null
+                || dto.getDetallesCompensacion()
+                      .isEmpty()) {
+            return;
+        }
+
+        for(SolicitudCompensacionDetDto det
+                : dto.getDetallesCompensacion()) {
+
+            SolicitudCompensacionDet entity =
+                    new SolicitudCompensacionDet();
+
+            entity.setSolicitudId(
+                    solicitudId);
+
+            entity.setFechaCompensacion(
+                    det.getFechaCompensacion());
+
+            entity.setHoraInicio(
+                    det.getHoraInicio());
+
+            entity.setHoraFin(
+                    det.getHoraFin());
+
+            entity.setCantidadHoras(
+                    det.getCantidadHoras());
+
+            entity.setActivo(1);
+
+            solicitudCompensacionDetRepository
+                    .save(entity);
+        }
+    }
     
+    private void validarCompensacion(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(!Integer.valueOf(1)
+                .equals(
+                        tipo.getMostrarCompensacion())) {
+            return;
+        }
+
+        if(dto.getDetallesCompensacion() == null
+                || dto.getDetallesCompensacion()
+                        .isEmpty()) {
+
+            throw new NegocioException(
+                    "Debe registrar el cronograma de compensación");
+        }
+    }
     private void validarVacacion(
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
@@ -156,6 +232,222 @@ public class SolicitudRrhhService {
             throw new NegocioException(
                     "Debe registrar el detalle de vacaciones");
         }
+    }
+    
+    private void validarDetalleVacacion(
+            SolicitudRrhhDto dto) {
+
+        if(dto.getTipoVacacionId() == null
+                || dto.getDetallesVacacion() == null) {
+            return;
+        }
+
+        TipoVacacion tipoVacacion =
+                tipoVacacionRepository
+                        .findById(
+                                dto.getTipoVacacionId())
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Tipo vacación no encontrado"));
+
+        String codigo =
+                tipoVacacion.getCodigo();
+
+        switch(codigo) {
+
+            case "001":
+                validarProgramacion(
+                        dto.getDetallesVacacion());
+                break;
+
+            case "002":
+                validarAdelanto(
+                        dto.getDetallesVacacion());
+                break;
+
+            case "003":
+                validarReprogramacion(
+                        dto.getDetallesVacacion());
+                break;
+
+            case "004":
+                validarFraccionamiento(
+                        dto.getDetallesVacacion());
+                break;
+        }
+    }
+    
+    private void validarReprogramacion(
+            List<SolicitudVacacionDetDto> detalles) {
+
+        long actual =
+                detalles.stream()
+                        .filter(d ->
+                                "REPROG_ACTUAL"
+                                        .equals(
+                                                d.getTipo()))
+                        .count();
+
+        long nuevos =
+                detalles.stream()
+                        .filter(d ->
+                                "REPROG_NUEVO"
+                                        .equals(
+                                                d.getTipo()))
+                        .count();
+
+        if(actual != 1) {
+
+            throw new NegocioException(
+                    "Debe existir un detalle REPROG_ACTUAL");
+        }
+
+        if(nuevos < 1) {
+
+            throw new NegocioException(
+                    "Debe existir al menos un detalle REPROG_NUEVO");
+        }
+
+        if(nuevos > 2) {
+
+            throw new NegocioException(
+                    "Solo se permiten 2 reprogramaciones");
+        }
+        
+        double diasActual =
+                detalles.stream()
+                        .filter(d ->
+                                "REPROG_ACTUAL"
+                                        .equals(
+                                                d.getTipo()))
+                        .mapToDouble(
+                                d -> d.getTotalDias() == null
+                                        ? 0
+                                        : d.getTotalDias())
+                        .sum();
+
+        double diasNuevos =
+                detalles.stream()
+                        .filter(d ->
+                                "REPROG_NUEVO"
+                                        .equals(
+                                                d.getTipo()))
+                        .mapToDouble(
+                                d -> d.getTotalDias() == null
+                                        ? 0
+                                        : d.getTotalDias())
+                        .sum();
+
+        if(Double.compare(
+                diasActual,
+                diasNuevos) != 0) {
+
+            throw new NegocioException(
+                    "La suma de los días reprogramados debe ser igual a los días de la programación actual");
+        }
+        
+        
+    }
+    
+    private void validarFraccionamiento(
+            List<SolicitudVacacionDetDto> detalles) {
+
+        long actual =
+                detalles.stream()
+                        .filter(d ->
+                                "FRACC_ACTUAL"
+                                        .equals(
+                                                d.getTipo()))
+                        .count();
+
+        if(actual != 1) {
+
+            throw new NegocioException(
+                    "Debe existir un detalle FRACC_ACTUAL");
+        }
+
+        long fracciones =
+                detalles.stream()
+                        .filter(d ->
+                                d.getTipo() != null
+                                        &&
+                                        d.getTipo()
+                                                .startsWith(
+                                                        "FRACC_")
+                                        &&
+                                        !"FRACC_ACTUAL"
+                                                .equals(
+                                                        d.getTipo()))
+                        .count();
+
+        if(fracciones < 1) {
+
+            throw new NegocioException(
+                    "Debe existir al menos una fracción");
+        }
+
+        if(fracciones > 4) {
+
+            throw new NegocioException(
+                    "Solo se permiten 4 fracciones");
+        }
+        
+        double diasActual =
+                detalles.stream()
+                        .filter(d ->
+                                "FRACC_ACTUAL"
+                                        .equals(
+                                                d.getTipo()))
+                        .mapToDouble(
+                                d -> d.getTotalDias() == null
+                                        ? 0
+                                        : d.getTotalDias())
+                        .sum();
+
+        double diasFraccionados =
+                detalles.stream()
+                        .filter(d ->
+                                d.getTipo() != null
+                                        &&
+                                        d.getTipo()
+                                                .startsWith(
+                                                        "FRACC_")
+                                        &&
+                                        !"FRACC_ACTUAL"
+                                                .equals(
+                                                        d.getTipo()))
+                        .mapToDouble(
+                                d -> d.getTotalDias() == null
+                                        ? 0
+                                        : d.getTotalDias())
+                        .sum();
+
+        if(Double.compare(
+                diasActual,
+                diasFraccionados) != 0) {
+
+            throw new NegocioException(
+                    "La suma de las fracciones debe ser igual a los días de la programación actual");
+        }
+    }
+    private void completarFechasVacacion(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if(!Integer.valueOf(1)
+                .equals(tipo.getMostrarVacacion())) {
+            return;
+        }
+
+        SolicitudVacacionDetDto detalle =
+                dto.getDetallesVacacion()
+                        .get(0);
+
+        dto.setFechaInicio(
+                detalle.getFechaInicio());
+
+        dto.setFechaFin(
+                detalle.getFechaFin());
     }
     
     private void validarDescansoMedico(
@@ -296,6 +588,26 @@ public class SolicitudRrhhService {
         validarVacacion(
                 dto,
                 tipo);
+        
+        validarDetalleVacacion(
+                dto); 
+        
+        completarFechasVacacion(
+                dto,
+                tipo);
+        
+        validarCompensacion(
+                dto,
+                tipo);
+
+        if(Integer.valueOf(1)
+                .equals(tipo.getMostrarCompensacion())) {
+            validarHorasCompensacion(dto);
+        }
+
+        validarDetalleVacacion(
+                dto);
+        
 
         validarSustento(
                 tipo,
@@ -320,6 +632,41 @@ public class SolicitudRrhhService {
         validarHoras(
                 dto,
                 tipo);
+    }
+    private void validarProgramacion(
+            List<SolicitudVacacionDetDto> detalles) {
+
+        long total =
+                detalles.stream()
+                        .filter(d ->
+                                "PROGRAMACION"
+                                        .equals(
+                                                d.getTipo()))
+                        .count();
+
+        if(total != 1) {
+
+            throw new NegocioException(
+                    "Debe existir un detalle PROGRAMACION");
+        }
+    }
+    
+    private void validarAdelanto(
+            List<SolicitudVacacionDetDto> detalles) {
+
+        long total =
+                detalles.stream()
+                        .filter(d ->
+                                "ADELANTO"
+                                        .equals(
+                                                d.getTipo()))
+                        .count();
+
+        if(total != 1) {
+
+            throw new NegocioException(
+                    "Debe existir un detalle ADELANTO");
+        }
     }
     
     private void validarLactancia(
@@ -684,6 +1031,10 @@ public class SolicitudRrhhService {
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
     	
+    	System.out.println("codigo=" + tipo.getCodigo());
+    	System.out.println("mostrarHoras=" + tipo.getMostrarHoras());
+    	System.out.println("horaInicio dto=" + dto.getHoraInicio());
+    	System.out.println("horaFin dto=" + dto.getHoraFin());
     	
     	if(Integer.valueOf(1)
     	        .equals(tipo.getMostrarVacacion())) {
@@ -746,6 +1097,15 @@ public class SolicitudRrhhService {
                     (ingreso + salida) / 60.0);
 
         } else {
+        	
+        	System.out.println("Ingrese a HORAS CALCULADAS=");
+        	Double horas =
+        	        calcularHoras(
+        	                dto.getHoraInicio(),
+        	                dto.getHoraFin());
+
+        	System.out.println("HORAS CALCULADAS=" + horas);
+
 
             entity.setCantidadHoras(
                     calcularHoras(
@@ -1411,7 +1771,39 @@ public class SolicitudRrhhService {
         dto.setDetallesVacacion(
                 detalles);
         
-   
+        List<SolicitudCompensacionDet> detallesCompensacion =
+                solicitudCompensacionDetRepository
+                        .findBySolicitudIdAndActivo(
+                                s.getId(),
+                                1);
+
+        if(!detallesCompensacion.isEmpty()) {
+
+            dto.setDetallesCompensacion(
+                    detallesCompensacion
+                            .stream()
+                            .map(det -> {
+
+                                SolicitudCompensacionDetDto d =
+                                        new SolicitudCompensacionDetDto();
+
+                                d.setFechaCompensacion(
+                                        det.getFechaCompensacion());
+
+                                d.setHoraInicio(
+                                        det.getHoraInicio());
+
+                                d.setHoraFin(
+                                        det.getHoraFin());
+
+                                d.setCantidadHoras(
+                                        det.getCantidadHoras());
+
+                                return d;
+
+                            })
+                            .toList());
+        }
 
         return dto;
     }
@@ -2003,6 +2395,11 @@ public class SolicitudRrhhService {
         validarVacacion(
                 dto,
                 tipo);
+        validarCompensacion(
+                dto,
+                tipo);
+        validarHorasCompensacion(
+                dto);
         
         validarDescansoMedico(
                 dto,
@@ -2056,6 +2453,32 @@ public class SolicitudRrhhService {
         auditoriaContext.setDetalle(
                 "Solicitud RRHH editada ID: "
                         + solicitudId);
+    }
+    
+    private void validarHorasCompensacion(
+            SolicitudRrhhDto dto) {
+
+        double horasPermiso =
+                dto.getCantidadHoras() == null
+                        ? 0
+                        : dto.getCantidadHoras();
+
+        double horasCompensacion =
+                dto.getDetallesCompensacion()
+                        .stream()
+                        .mapToDouble(
+                                d -> d.getCantidadHoras() == null
+                                        ? 0
+                                        : d.getCantidadHoras())
+                        .sum();
+
+        if(Double.compare(
+                horasPermiso,
+                horasCompensacion) != 0) {
+
+            throw new NegocioException(
+                    "Las horas compensadas deben ser iguales a las horas solicitadas");
+        }
     }
     private void actualizarDetalleVacacion(
             Long solicitudId,

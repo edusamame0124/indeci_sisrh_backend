@@ -52,5 +52,10 @@ public class SolicitudRrhhDto {
 	private Long tipoVacacionId;
 	
 	private List<SolicitudVacacionDetDto> detallesVacacion;
+	
+	private List<SolicitudCompensacionDetDto>
+    detallesCompensacion;
+	
+	private Double cantidadHoras;
 	//*****************************************
 }

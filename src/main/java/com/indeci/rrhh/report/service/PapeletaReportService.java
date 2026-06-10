@@ -8,12 +8,14 @@ import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.RegimenLaboral;
+import com.indeci.rrhh.entity.SolicitudCompensacionDet;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.SolicitudVacacionDet;
 import com.indeci.rrhh.entity.TipoDescansoDoc;
 import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.entity.TipoVacacion;
+import com.indeci.rrhh.report.dto.CompensacionReporteDto;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
 import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -23,6 +25,7 @@ import com.indeci.rrhh.repository.OficinaRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.RegimenLaboralRepository;
+import com.indeci.rrhh.repository.SolicitudCompensacionDetRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.SolicitudVacacionDetRepository;
 import com.indeci.rrhh.repository.TipoDescansoDocRepository;
@@ -33,6 +36,7 @@ import com.indeci.rrhh.repository.TipoVacacionRepository;
 import lombok.RequiredArgsConstructor;
 
 import net.sf.jasperreports.engine.*;
+import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.util.JRLoader;
 
 import org.springframework.stereotype.Service;
@@ -115,6 +119,8 @@ private final SolicitudVacacionDetRepository
 solicitudVacacionDetRepository;
 
 private final RegimenLaboralRepository regimenLaboralRepository;
+private final SolicitudCompensacionDetRepository
+solicitudCompensacionDetRepository;
 
 
 private void cargarParametrosVacacion(
@@ -305,7 +311,58 @@ private void cargarParametrosVacacion(
             obtenerFechaActual());
 }
 
+private void cargarParametrosCompensacion(
+        Map<String,Object> params,
+        SolicitudRrhh solicitud){
 
+    params.put(
+            "P_HORAS_PERMISO",
+            valor(
+                    solicitud.getCantidadHoras()));
+
+    params.put(
+            "P_FECHA_PERMISO",
+            formatearFecha(
+                    solicitud.getFechaInicio()));
+
+    params.put(
+            "P_HORA_INICIO",
+            valor(
+                    solicitud.getHoraInicio()));
+
+    params.put(
+            "P_HORA_FIN",
+            valor(
+                    solicitud.getHoraFin()));
+
+    params.put(
+            "P_FECHA_EMISION",
+            obtenerFechaActual());
+    
+    List<SolicitudCompensacionDet> detalles =
+            solicitudCompensacionDetRepository
+                    .findBySolicitudIdAndActivo(
+                            solicitud.getId(),
+                            1);
+    
+    List<CompensacionReporteDto> data =
+            detalles.stream()
+                    .map(d ->
+                            new CompensacionReporteDto(
+                                    valor(d.getCantidadHoras()),
+                                    formatearFecha(
+                                            d.getFechaCompensacion()),
+                                    valor(
+                                            d.getHoraInicio()),
+                                    valor(
+                                            d.getHoraFin())))
+                    .toList();
+
+    params.put(
+            "DS_COMPENSACIONES",
+            new JRBeanCollectionDataSource(
+                    data));
+}
 
 public String generarPdf(
         Long solicitudId) {
@@ -433,6 +490,11 @@ public String generarPdf(
 
             nombreReporte = "formato_5.jasper";
         }
+        
+        if("013".equals(tipo.getCodigo())) {
+
+            nombreReporte = "formato_6.jasper";
+        }
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
@@ -539,7 +601,11 @@ public String generarPdf(
                     params,
                     solicitud);
         }
-        
+        if("013".equals(tipo.getCodigo())) {
+            cargarParametrosCompensacion(
+                    params,
+                    solicitud);
+        }
         
         System.out.println("P_REGIMEN = " + params.get("P_REGIMEN"));
 
