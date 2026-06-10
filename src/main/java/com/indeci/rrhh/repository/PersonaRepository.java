@@ -17,6 +17,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
 
     Optional<Persona> findByDni(String dni);
 
+    Optional<Persona> findByUserId(Long userId);
+
     /**
      * Proyección ligera para el listado: 1 JOIN entre INDECI_PERSONA e INDECI_EMPLEADO
      * + 1 subquery escalar para el régimen laboral vigente.

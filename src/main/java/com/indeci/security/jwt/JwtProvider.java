@@ -98,6 +98,32 @@ public class JwtProvider {
                                          List<String> permisos,
                                          Map<String, List<String>> sistemas,
                                          Map<String, String> areas) {
+        return generarTokenDefinitivo(usuario, roles, permisos, sistemas, areas, null, null);
+    }
+
+    public String generarTokenDefinitivo(User usuario,
+                                         List<String> roles,
+                                         List<String> permisos,
+                                         Map<String, List<String>> sistemas,
+                                         Map<String, String> areas,
+                                         String dni) {
+        return generarTokenDefinitivo(usuario, roles, permisos, sistemas, areas, dni, null);
+    }
+
+    /**
+     * SSO / GDR: emite el token definitivo agregando los claims {@code dni} y
+     * {@code nombre}. GDR los usa para crear/vincular su {@code HR_PERSON}
+     * (DNI = llave puente entre INDECI_PERSONA y HR_PERSON; nombre = DISPLAY_NAME
+     * institucional). Se omiten si el usuario no tiene persona vinculada para no
+     * inflar tokens de cuentas técnicas legacy.
+     */
+    public String generarTokenDefinitivo(User usuario,
+                                         List<String> roles,
+                                         List<String> permisos,
+                                         Map<String, List<String>> sistemas,
+                                         Map<String, String> areas,
+                                         String dni,
+                                         String nombre) {
 
         Date ahora = new Date();
         Date expiracion = new Date(ahora.getTime() + jwtProperties.getExpiration());
@@ -115,6 +141,12 @@ public class JwtProvider {
         }
         if (areas != null && !areas.isEmpty()) {
             builder = builder.claim("areas", areas);
+        }
+        if (dni != null && !dni.isBlank()) {
+            builder = builder.claim("dni", dni.trim());
+        }
+        if (nombre != null && !nombre.isBlank()) {
+            builder = builder.claim("nombre", nombre.trim());
         }
 
         return builder
