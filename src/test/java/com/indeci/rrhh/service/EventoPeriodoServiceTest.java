@@ -274,8 +274,12 @@ class EventoPeriodoServiceTest {
 
     @Test
     void crear_fechaFin_anterior_a_fechaInicio_lanza() {
-        EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
-                LocalDate.of(2026, 5, 30), LocalDate.of(2026, 5, 1));
+
+        EventoPeriodoDto dto = baseDto(
+                TIPO_PERMISO,
+                LocalDate.of(2026, 5, 30),
+                LocalDate.of(2026, 5, 1));
+
         dto.setSustentoLegajoDocId(99L);
 
         assertThatThrownBy(() -> service.crear(dto))

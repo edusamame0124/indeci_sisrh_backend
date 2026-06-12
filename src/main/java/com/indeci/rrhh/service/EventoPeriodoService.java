@@ -206,8 +206,9 @@ public class EventoPeriodoService {
                 throw new NegocioException(
                         "El evento requiere fecha de inicio y fin");
             }
-            normalizarMaternidad(dto);
             MaternidadEventoValidator.validar(dto);
+            normalizarMaternidad(dto);
+            
         } else {
             if (dto.getFechaInicio() == null || dto.getFechaFin() == null) {
                 throw new NegocioException(

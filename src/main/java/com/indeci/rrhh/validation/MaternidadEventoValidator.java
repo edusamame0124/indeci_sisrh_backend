@@ -36,17 +36,17 @@ public final class MaternidadEventoValidator {
             throw new NegocioException(
                     "La fecha probable de parto es obligatoria para subsidio por maternidad.");
         }
-        if (dto.getFechaInicio() == null || dto.getFechaFin() == null) {
+        if (dto.getFechaInicio() == null) {
             throw new NegocioException(
-                    "El evento de maternidad requiere fecha de inicio y fin del descanso.");
+                    "El evento de maternidad requiere fecha de inicio del descanso.");
         }
-        LocalDate finEsperada = DistribucionMensualCalculator.calcularFechaFin(
+   /*     LocalDate finEsperada = DistribucionMensualCalculator.calcularFechaFin(
                 dto.getFechaInicio(), dto.getDuracionLegal());
         if (!dto.getFechaFin().equals(finEsperada)) {
             throw new NegocioException(
                     "Las fechas no son coherentes con la duración legal del descanso "
                             + "(" + dto.getDuracionLegal() + " días naturales).");
-        }
+        }*/
         if (dto.getDuracionLegal() == 128
                 && (dto.getMotivoExtension() == null || dto.getMotivoExtension().isBlank())) {
             throw new NegocioException(
