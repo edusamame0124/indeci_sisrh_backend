@@ -58,4 +58,8 @@ public class SolicitudRrhhDto {
 	
 	private Double cantidadHoras;
 	//*****************************************
+	private List<DocumentoAdjuntoDto>
+    documentosAdjuntos;
+	
+	
 }

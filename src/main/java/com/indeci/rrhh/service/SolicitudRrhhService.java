@@ -1,6 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.DocumentoAdjuntoDto;
 import com.indeci.rrhh.dto.SaldoVacacionalDto;
 import com.indeci.rrhh.dto.SolicitudCompensacionDetDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
@@ -26,6 +27,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -49,8 +52,8 @@ public class SolicitudRrhhService {
     private final TipoVacacionRepository tipoVacacionRepository;
 
     private final SolicitudVacacionDetRepository solicitudVacacionDetRepository;
-    private final SolicitudCompensacionDetRepository
-    solicitudCompensacionDetRepository;
+    private final SolicitudCompensacionDetRepository solicitudCompensacionDetRepository;
+    private final TipoDescansoDocRepository tipoDescansoDocRepository;
     
     //private static final String TIPO_VACACIONES = "VAC";
     
@@ -59,7 +62,8 @@ public class SolicitudRrhhService {
             accion = "CREAR_SOLICITUD_RRHH")
     public void registrar(
             SolicitudRrhhDto dto,
-            MultipartFile sustento) {
+            MultipartFile sustento,
+            List<MultipartFile> documentos){
 
     	Long empleadoId =
     	        obtenerEmpleadoActual();
@@ -78,7 +82,8 @@ public class SolicitudRrhhService {
                 dto,
                 tipo,
                 empleadoId,
-                sustento);
+                sustento,
+                documentos);
 
         EstadoSolicitud estadoBorrador =
                 obtenerEstadoBorrador();
@@ -110,6 +115,11 @@ public class SolicitudRrhhService {
         guardarSustento(
                 entity,
                 sustento);
+        
+        guardarDocumentosRequeridos(
+                entity.getId(),
+                documentos,
+                dto);
 
         registrarHistorial(
                 entity.getId(),
@@ -119,6 +129,78 @@ public class SolicitudRrhhService {
                 "Solicitud creada");
     }
     
+    private void guardarDocumentosRequeridos(
+            Long solicitudId,
+            List<MultipartFile> documentos,
+            SolicitudRrhhDto dto) {
+
+        if(documentos == null
+                || documentos.isEmpty()) {
+            return;
+        }
+
+        for(int i = 0;
+        	    i < documentos.size();
+        	    i++) {
+
+        	    MultipartFile archivo =
+        	            documentos.get(i);
+        	    
+        	    DocumentoAdjuntoDto meta = null;
+
+        	    if(dto.getDocumentosAdjuntos() != null
+        	            && dto.getDocumentosAdjuntos().size() > i) {
+
+        	        meta =
+        	                dto.getDocumentosAdjuntos()
+        	                   .get(i);
+        	    }
+
+            if(archivo == null
+                    || archivo.isEmpty()) {
+                continue;
+            }
+
+            String ruta =
+                    ftpService.subirArchivo(
+                            archivo,
+                            "sustentos",
+                            archivo.getOriginalFilename());
+
+            SolicitudRrhhDoc doc =
+                    new SolicitudRrhhDoc();
+
+            doc.setSolicitudId(
+                    solicitudId);
+
+            doc.setEtapa(
+                    "REQUISITO");
+
+            doc.setNombreArchivo(
+                    archivo.getOriginalFilename());
+
+            doc.setRutaArchivo(
+                    ruta);
+
+            doc.setMimeType(
+                    archivo.getContentType());
+
+            doc.setTamanioBytes(
+                    archivo.getSize());
+
+            doc.setVersionDoc(1);
+
+            doc.setActivo(1);
+            
+            if(meta != null) {
+
+                doc.setDocumentoRequeridoId(
+                        meta.getDocumentoRequeridoId());
+            }
+
+            solicitudRrhhDocRepository.save(doc);
+        }
+    }
     private void guardarDetalleVacacion(
             Long solicitudId,
             SolicitudRrhhDto dto) {
@@ -572,7 +654,8 @@ public class SolicitudRrhhService {
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo,
             Long empleadoId,
-            MultipartFile sustento) {
+            MultipartFile sustento,
+            List<MultipartFile> documentos){
 
         validarLactancia(
                 dto,
@@ -581,6 +664,10 @@ public class SolicitudRrhhService {
         validarDescansoMedico(
                 dto,
                 tipo);
+        
+        validarDocumentosRequeridos(
+                dto,
+                documentos);
         
         validarLicencia(
                 dto,
@@ -632,6 +719,86 @@ public class SolicitudRrhhService {
         validarHoras(
                 dto,
                 tipo);
+    }
+    
+    private void validarDocumentosRequeridos(
+            SolicitudRrhhDto dto,
+            List<MultipartFile> documentos) {
+
+        if(dto.getTipoDescansoMedicoId() == null) {
+            return;
+        }
+
+        List<TipoDescansoDoc> requeridos =
+                tipoDescansoDocRepository
+                        .findByTipoDescansoIdAndActivo(
+                                dto.getTipoDescansoMedicoId(),
+                                1);
+
+        if(requeridos.isEmpty()) {
+            return;
+        }
+
+        if(dto.getDocumentosAdjuntos() == null
+                || dto.getDocumentosAdjuntos().isEmpty()) {
+
+            throw new NegocioException(
+                    "Debe adjuntar los documentos requeridos");
+        }
+        if(documentos == null
+                || documentos.isEmpty()) {
+
+            throw new NegocioException(
+                    "Debe adjuntar los archivos de los documentos requeridos");
+        }
+
+        if(documentos.size()
+                != dto.getDocumentosAdjuntos().size()) {
+
+            throw new NegocioException(
+                    "La cantidad de archivos no coincide con los documentos enviados");
+        }
+        
+        Set<Long> ids =
+                dto.getDocumentosAdjuntos()
+                        .stream()
+                        .map(
+                            DocumentoAdjuntoDto::getDocumentoRequeridoId)
+                        .collect(
+                            Collectors.toSet());
+
+        if(ids.size()
+                != dto.getDocumentosAdjuntos().size()) {
+
+            throw new NegocioException(
+                    "Existen documentos repetidos");
+        }
+        if(documentos.size()
+                != dto.getDocumentosAdjuntos().size()) {
+
+            throw new NegocioException(
+                    "La cantidad de archivos no coincide con los documentos enviados");
+        }
+
+        for(TipoDescansoDoc requerido
+                : requeridos) {
+
+            boolean existe =
+                    dto.getDocumentosAdjuntos()
+                            .stream()
+                            .anyMatch(
+                                    d ->
+                                        requerido.getDocumentoId()
+                                                .equals(
+                                                        d.getDocumentoRequeridoId()));
+
+            if(!existe) {
+
+                throw new NegocioException(
+                        "Falta adjuntar el documento: "
+                        + requerido.getDocumento().getNombre());
+            }
+        }
     }
     private void validarProgramacion(
             List<SolicitudVacacionDetDto> detalles) {

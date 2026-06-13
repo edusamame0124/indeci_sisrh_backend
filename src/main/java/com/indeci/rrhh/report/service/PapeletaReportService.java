@@ -823,6 +823,9 @@ public String generarPdf(
 
     } catch (Exception e) {
 
+        System.err.println("========== ERROR PDF ==========");
+        e.printStackTrace();
+
         throw new NegocioException(
                 "Error generando PDF: "
                         + e.getMessage());

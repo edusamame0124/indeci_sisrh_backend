@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.List;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.DocumentoAdjuntoDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
 import com.indeci.rrhh.service.SolicitudRrhhService;
@@ -26,7 +27,6 @@ public class SolicitudRrhhController {
     // ==========================================
     // REGISTRAR
     // ==========================================
-    
     @PostMapping(
             value="/registrar",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -38,19 +38,23 @@ public class SolicitudRrhhController {
             @RequestPart(
                     value="sustento",
                     required=false)
-            MultipartFile sustento) {
+            MultipartFile sustento,
+
+            @RequestPart(
+                    value="documentos",
+                    required=false)
+            List<MultipartFile> documentos) {
 
         service.registrar(
                 dto,
-                sustento);
+                sustento,
+                documentos);
 
         return new ApiResponse<>(
                 "OK",
                 "Solicitud registrada",
                 null);
     }
-   
-  
 
     // ==========================================
     // LISTAR EMPLEADO

@@ -49,4 +49,14 @@ public class SolicitudRrhhDoc {
 
     @Column(name = "TAMANIO_BYTES")
     private Long tamanioBytes;
+    
+    @Column(name = "DOCUMENTO_REQUERIDO_ID")
+    private Long documentoRequeridoId;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "DOCUMENTO_REQUERIDO_ID",
+            insertable = false,
+            updatable = false)
+    private DocumentoRequerido documentoRequerido;
 }
