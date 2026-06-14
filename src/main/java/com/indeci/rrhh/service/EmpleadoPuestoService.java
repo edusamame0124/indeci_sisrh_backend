@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
@@ -152,6 +153,7 @@ public class EmpleadoPuestoService {
     // ============================
     // LISTAR HISTORIAL
     // ============================
+    @Transactional(readOnly = true)
     public List<EmpleadoPuestoResponseDto> listar(Long empleadoId) {
 
         return repository.findByEmpleadoIdOrderByFechaInicioDesc(empleadoId)
