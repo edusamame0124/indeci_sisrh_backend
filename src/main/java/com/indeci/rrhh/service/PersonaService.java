@@ -31,6 +31,7 @@ import com.indeci.rrhh.repository.TipoPersonalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -52,7 +53,53 @@ public class PersonaService {
     // FASE1 — régimen laboral para discriminar CAS en pantallas tributarias.
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final RegimenLaboralRepository regimenLaboralRepository;
+    private final FtpService ftpService;
 
+    
+    
+    @Transactional(readOnly = true)
+    public byte[] obtenerFoto(Long personaId) {
+
+        Persona persona =
+                personaRepository
+                        .findById(personaId)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Persona no encontrada"));
+
+        if(persona.getFotoPerfil() == null
+                || persona.getFotoPerfil().isBlank()) {
+
+            throw new NegocioException(
+                    "La persona no tiene foto");
+        }
+
+        return ftpService.descargarArchivo(
+                persona.getFotoPerfil());
+    }
+    
+    @Transactional
+    public void actualizarFoto(
+            Long personaId,
+            MultipartFile file) {
+
+        Persona persona =
+                personaRepository.findById(personaId)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Persona no encontrada"));
+
+        String ruta =
+                ftpService.subirArchivo(
+                        file,
+                        "fotos-perfil",
+                        file.getOriginalFilename());
+
+        persona.setFotoPerfil(ruta);
+
+        personaRepository.save(persona);
+    }
+    
     @Auditable(accion = "CREAR_PERSONA_EMPLEADO")
     public void guardar(PersonaEmpleadoDto dto) {
 

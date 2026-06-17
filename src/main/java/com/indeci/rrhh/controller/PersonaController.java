@@ -15,6 +15,10 @@ import lombok.RequiredArgsConstructor;
 import java.util.List;
 
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/rrhh")
@@ -23,6 +27,42 @@ import org.springframework.web.bind.annotation.*;
 public class PersonaController {
 
     private final PersonaService personaService;
+    
+    
+    @GetMapping(
+            value="/persona/{id}/foto",
+            produces = MediaType.IMAGE_JPEG_VALUE)
+    public ResponseEntity<byte[]> foto(
+            @PathVariable Long id) {
+
+        byte[] archivo =
+                personaService.obtenerFoto(id);
+
+        return ResponseEntity
+                .ok()
+                .body(archivo);
+    }
+    
+    @PostMapping(
+            value="/persona/{id}/foto",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> subirFoto(
+
+            @PathVariable Long id,
+
+            @RequestPart("file")
+            MultipartFile file) {
+
+        personaService.actualizarFoto(
+                id,
+                file);
+
+        return new ApiResponse<>(
+                "OK",
+                "Foto actualizada",
+                null);
+    }
 
     // CREAR
     @PostMapping("/persona")
