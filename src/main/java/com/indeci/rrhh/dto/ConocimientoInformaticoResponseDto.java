@@ -16,4 +16,13 @@ public class ConocimientoInformaticoResponseDto {
     private Integer certificado;
 
     private Long legajoDocumentoId;
+    
+    public String getCertificadoTexto() {
+
+        return certificado != null
+                && certificado == 1
+                ? "SI"
+                : "NO";
+    }
 }
+

@@ -15,7 +15,7 @@ public class CapacitacionResponseDto {
 
     private String institucion;
 
-    private Integer horas;
+    private String horas;
 
     private LocalDate fechaInicio;
 
@@ -24,4 +24,12 @@ public class CapacitacionResponseDto {
     private Integer certificado;
 
     private Long legajoDocumentoId;
+    
+    public String getCertificadoTexto() {
+
+        return certificado != null
+                && certificado == 1
+                ? "SI"
+                : "NO";
+    }
 }

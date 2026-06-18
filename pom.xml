@@ -49,6 +49,11 @@
             <artifactId>hibernate-community-dialects</artifactId>
             <version>6.5.3.Final</version>
         </dependency>
+        <dependency>
+    <groupId>org.apache.poi</groupId>
+    <artifactId>poi-ooxml</artifactId>
+    <version>5.2.5</version>
+</dependency>
 
         <!-- 🔐 Seguridad -->
         <dependency>

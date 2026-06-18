@@ -117,6 +117,7 @@ public class ConocimientoInformaticoService {
         dto.setNivel(entity.getNivel());
         dto.setCertificado(entity.getCertificado());
         dto.setLegajoDocumentoId(entity.getLegajoDocumentoId());
+        
 
         return dto;
     }

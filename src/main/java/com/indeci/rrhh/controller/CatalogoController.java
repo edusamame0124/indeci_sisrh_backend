@@ -37,6 +37,9 @@ import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoPersona;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.entity.TipoVacacion;
+import com.indeci.rrhh.entity.TtConformidad;
+import com.indeci.rrhh.entity.TtEstadoCumplimiento;
+import com.indeci.rrhh.entity.TtModalidad;
 import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
@@ -365,6 +368,44 @@ public class CatalogoController {
                 catalogoService.listarTiposVacacion());
     }
     
+    @GetMapping(
+            "/teletrabajo/modalidades")
+    public ApiResponse<
+            List<TtModalidad>>
+    listarModalidades() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Modalidades teletrabajo",
+                catalogoService
+                        .listarModalidadesTeletrabajo());
+    }
+    
+    @GetMapping(
+            "/teletrabajo/estados-cumplimiento")
+    public ApiResponse<
+            List<TtEstadoCumplimiento>>
+    listarEstadosCumplimiento() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Estados cumplimiento",
+                catalogoService
+                        .listarEstadosCumplimiento());
+    }
+    
+    @GetMapping(
+            "/teletrabajo/conformidades")
+    public ApiResponse<
+            List<TtConformidad>>
+    listarConformidades() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Conformidades",
+                catalogoService
+                        .listarConformidades());
+    }
     
     
 }

@@ -1,5 +1,8 @@
 package com.indeci.rrhh.dto;
 
+import java.time.LocalDate;
+import java.util.Date;
+
 import lombok.Data;
 
 @Data
@@ -84,6 +87,8 @@ public class PersonaEmpleadoResponseDto {
 
     private String conadisCodigo;
     private String registroAirhsp;
+    
+    private Date fechaNacimiento;
 
 
 

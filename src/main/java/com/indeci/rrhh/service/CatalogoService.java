@@ -77,7 +77,11 @@ private final TipoDescansoMedicoRepository tipoDescansoMedicoRepository;
 private final TipoDescansoDocRepository tipoDescansoDocRepository;
 private final TipoLicenciaRepository tipoLicenciaRepository;
 private final TipoVacacionRepository tipoVacacionRepository;
+private final TtModalidadRepository ttModalidadRepository;
 
+private final TtEstadoCumplimientoRepository ttEstadoCumplimientoRepository;
+
+private final TtConformidadRepository ttConformidadRepository;
 
     private final CargoRepository cargoRepository;
 
@@ -331,6 +335,27 @@ private final TipoVacacionRepository tipoVacacionRepository;
         return tipoVacacionRepository
                 .findByActivoOrderByNombreAsc(
                         1);
+    }
+    
+    public List<TtModalidad>
+    listarModalidadesTeletrabajo() {
+
+        return ttModalidadRepository
+                .findByActivoOrderByNombreAsc(1);
+    }
+    
+    public List<TtEstadoCumplimiento>
+    listarEstadosCumplimiento() {
+
+        return ttEstadoCumplimientoRepository
+                .findByActivoOrderByNombreAsc(1);
+    }
+    
+    public List<TtConformidad>
+    listarConformidades() {
+
+        return ttConformidadRepository
+                .findByActivoOrderByNombreAsc(1);
     }
     
 }

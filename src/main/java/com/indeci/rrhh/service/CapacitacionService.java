@@ -133,7 +133,7 @@ public class CapacitacionService {
                 entity.getInstitucion());
 
         dto.setHoras(
-                entity.getHoras());
+                entity.getHoras().toString());
 
         dto.setFechaInicio(
                 entity.getFechaInicio());
@@ -143,6 +143,8 @@ public class CapacitacionService {
 
         dto.setCertificado(
                 entity.getCertificado());
+        
+        
 
         dto.setLegajoDocumentoId(
                 entity.getLegajoDocumentoId());

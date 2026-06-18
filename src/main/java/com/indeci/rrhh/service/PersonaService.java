@@ -312,6 +312,8 @@ public class PersonaService {
         dto.setRuc(p.getRuc());
         dto.setCorreoInstitucional(p.getCorreoInstitucional());
         dto.setFotoPerfil(p.getFotoPerfil());
+        dto.setFechaNacimiento(
+                p.getFechaNacimiento());
         if (emp != null) {
             dto.setRegistroAirhsp(emp.getRegistroAirhsp());
         }
@@ -380,7 +382,7 @@ public class PersonaService {
                     .map(EmpleadoPlanilla::getRegimenLaboralId)
                     .filter(java.util.Objects::nonNull)
                     .flatMap(regimenLaboralRepository::findById)
-                    .ifPresent(rl -> dto.setRegimenLaboral(rl.getCodigo()));
+                    .ifPresent(rl -> dto.setRegimenLaboral(rl.getNombre()));
         }
 
         return dto;

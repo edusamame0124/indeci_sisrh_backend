@@ -18,6 +18,8 @@ public class FamiliarResponseDto {
     private LocalDate fechaNacimiento;
 
     private Long tipoDocumentoId;
+    
+    private String TipoDocumento;
 
     private String nroDocumento;
 

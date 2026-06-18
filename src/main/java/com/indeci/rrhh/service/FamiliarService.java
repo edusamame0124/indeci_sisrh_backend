@@ -6,6 +6,7 @@ import com.indeci.rrhh.dto.FamiliarDto;
 import com.indeci.rrhh.dto.FamiliarResponseDto;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.Familiar;
+
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.FamiliarRepository;
 
@@ -24,6 +25,7 @@ public class FamiliarService {
     private final FamiliarRepository repository;
 
     private final EmpleadoRepository empleadoRepository;
+ 
 
     @Transactional
     public void registrar(
@@ -120,6 +122,7 @@ public class FamiliarService {
 
         dto.setTipoDocumentoId(
                 entity.getTipoDocumentoId());
+        dto.setTipoDocumento("DNI");
 
         dto.setNroDocumento(
                 entity.getNroDocumento());
