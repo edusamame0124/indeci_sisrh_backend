@@ -22,7 +22,6 @@ import com.indeci.rrhh.dto.EventoDistribucionMesDto;
 import com.indeci.rrhh.dto.EventoPeriodoDto;
 import com.indeci.rrhh.dto.EventoPeriodoPageDto;
 import com.indeci.rrhh.dto.EventoPeriodoResponseDto;
-import com.indeci.rrhh.dto.MaternidadPreviewDto;
 import com.indeci.rrhh.entity.EmpleadoEvento;
 import com.indeci.rrhh.entity.EventoDistribucionMes;
 import com.indeci.rrhh.entity.TipoEvento;
@@ -30,14 +29,12 @@ import com.indeci.rrhh.repository.EmpleadoEventoRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EventoDistribucionMesRepository;
 import com.indeci.rrhh.repository.TipoEventoRepository;
-import com.indeci.rrhh.service.support.DistribucionMensualCalculator;
-import com.indeci.rrhh.validation.MaternidadEventoValidator;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * F2.5 — CRUD de {@code INDECI_EMPLEADO_EVENTO} con validaciones.
- * P0 maternidad: campos normativos + desglose mensual persistido.
+ * P0-F0: subsidios retirados a modulo /asistencia/subsidios; lectura legacy intacta.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,8 +42,9 @@ public class EventoPeriodoService {
 
     private static final Set<String> ESTADOS_VALIDOS =
             Set.of("REGISTRADO", "VALIDADO", "RECHAZADO");
-    private static final String CODIGO_MATERNIDAD = "MATERNIDAD";
-    private static final String PLAME_MATERNIDAD = "0915";
+    private static final String MSG_SUBSIDIO_RETIRADO =
+            "Los subsidios por enfermedad y maternidad ya no se registran como eventos. "
+                    + "Use el módulo Asistencia → Subsidios (/asistencia/subsidios).";
 
     private final EmpleadoEventoRepository repository;
     private final EmpleadoRepository empleadoRepository;
@@ -113,7 +111,6 @@ public class EventoPeriodoService {
         entity.setCreatedAt(LocalDateTime.now());
 
         EmpleadoEvento guardada = repository.save(entity);
-        persistirDistribucion(guardada.getId(), dto, esMaternidad(tipo));
 
         auditoriaContext.setDetalle(detalleAuditoria(tipo, dto));
         return toResponse(guardada);
@@ -128,38 +125,10 @@ public class EventoPeriodoService {
         mapearEntidad(entity, dto, tipo);
         EmpleadoEvento guardada = repository.save(entity);
 
-        distribucionRepository.deleteByEmpleadoEventoId(id);
-        persistirDistribucion(id, dto, esMaternidad(tipo));
-
         auditoriaContext.setDetalle("Evento actualizado ID: " + id);
         return toResponse(guardada);
     }
 
-    public MaternidadPreviewDto previewMaternidad(EventoPeriodoDto dto) {
-        if (dto.getFechaInicio() == null || dto.getDuracionLegal() == null) {
-            throw new NegocioException(
-                    "Indique fecha de inicio y duración legal para previsualizar.");
-        }
-        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(
-                dto.getFechaInicio(), dto.getDuracionLegal());
-        List<EventoDistribucionMesDto> tramos =
-                DistribucionMensualCalculator.calcular(dto.getFechaInicio(), fin);
-
-        MaternidadPreviewDto preview = new MaternidadPreviewDto();
-        preview.setDistribucionMensual(tramos);
-        preview.setCantidadPeriodos(tramos.size());
-        preview.setCruzaMeses(tramos.size() > 1);
-        preview.setCodigoPlameSunat(PLAME_MATERNIDAD);
-        preview.setAfectaDiasLaborados(true);
-        preview.setGeneraSubsidio(true);
-        preview.setSumaAlNeto(tramos.size() == 1);
-        preview.setMensajeGuardrail(tramos.size() > 1
-                ? "Este descanso cruza varios meses. El sistema lo distribuirá "
-                        + "automáticamente por periodo. La imputación del subsidio al neto "
-                        + "se aplicará periodo a periodo en una versión posterior."
-                : "El descanso queda dentro de un solo periodo de planilla.");
-        return preview;
-    }
 
     @Auditable(accion = "CAMBIAR_ESTADO_EVENTO")
     public EventoPeriodoResponseDto cambiarEstado(Long id, String nuevoEstado) {
@@ -201,27 +170,19 @@ public class EventoPeriodoService {
                     "Tipo de evento inactivo: " + tipo.getCodigo());
         }
 
-        if (esMaternidad(tipo)) {
-            if (dto.getFechaInicio() == null) {
-                throw new NegocioException(
-                        "El evento requiere fecha de inicio y fin");
-            }
-            MaternidadEventoValidator.validar(dto);
-            normalizarMaternidad(dto);
-            
-        } else {
-            if (dto.getFechaInicio() == null || dto.getFechaFin() == null) {
-                throw new NegocioException(
-                        "El evento requiere fecha de inicio y fin");
-            }
-            if (dto.getFechaFin().isBefore(dto.getFechaInicio())) {
-                throw new NegocioException(
-                        "La fecha fin no puede ser anterior a la fecha inicio");
-            }
-            if (dto.getDiasAfectos() != null && dto.getDiasAfectos() < 0) {
-                throw new NegocioException(
-                        "Los días afectos no pueden ser negativos");
-            }
+        validarTipoOperativo(tipo);
+
+        if (dto.getFechaInicio() == null || dto.getFechaFin() == null) {
+            throw new NegocioException(
+                    "El evento requiere fecha de inicio y fin");
+        }
+        if (dto.getFechaFin().isBefore(dto.getFechaInicio())) {
+            throw new NegocioException(
+                    "La fecha fin no puede ser anterior a la fecha inicio");
+        }
+        if (dto.getDiasAfectos() != null && dto.getDiasAfectos() < 0) {
+            throw new NegocioException(
+                    "Los días afectos no pueden ser negativos");
         }
 
         if ("S".equalsIgnoreCase(tipo.getRequiereAdjunto())
@@ -236,16 +197,6 @@ public class EventoPeriodoService {
         return tipo;
     }
 
-    private void normalizarMaternidad(EventoPeriodoDto dto) {
-        LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(
-                dto.getFechaInicio(), dto.getDuracionLegal());
-        dto.setFechaFin(fin);
-        dto.setDiasAfectos(dto.getDuracionLegal());
-        if (dto.getDistribucionMensual() == null || dto.getDistribucionMensual().isEmpty()) {
-            dto.setDistribucionMensual(
-                    DistribucionMensualCalculator.calcular(dto.getFechaInicio(), fin));
-        }
-    }
 
     private void validarSinSolape(EventoPeriodoDto dto, Long idActual, TipoEvento tipo) {
         List<EmpleadoEvento> solapados = repository.findSolapados(
@@ -275,50 +226,16 @@ public class EventoPeriodoService {
         entity.setDiasAfectos(resolverDiasAfectos(dto, tipo));
         entity.setSustentoLegajoDocId(dto.getSustentoLegajoDocId());
         entity.setObservacion(dto.getObservacion());
-        if (esMaternidad(tipo)) {
-            entity.setDuracionLegal(dto.getDuracionLegal());
-            entity.setMotivoExtension(dto.getMotivoExtension());
-            entity.setFechaProbableParto(dto.getFechaProbableParto());
-            entity.setDifierePrenatalPostnatal(dto.getDifierePrenatalPostnatal());
-            entity.setTipoDocumento(dto.getTipoDocumento());
-            entity.setNroCitt(dto.getNroCitt());
-            entity.setFechaEmisionDoc(dto.getFechaEmisionDoc());
-        } else {
-            entity.setDuracionLegal(null);
-            entity.setMotivoExtension(null);
-            entity.setFechaProbableParto(null);
-            entity.setDifierePrenatalPostnatal(null);
-            entity.setTipoDocumento(null);
-            entity.setNroCitt(null);
-            entity.setFechaEmisionDoc(null);
-        }
+        entity.setDuracionLegal(null);
+        entity.setMotivoExtension(null);
+        entity.setFechaProbableParto(null);
+        entity.setDifierePrenatalPostnatal(null);
+        entity.setTipoDocumento(null);
+        entity.setNroCitt(null);
+        entity.setFechaEmisionDoc(null);
         return entity;
     }
 
-    private void persistirDistribucion(
-            Long eventoId,
-            EventoPeriodoDto dto,
-            boolean maternidad) {
-        if (!maternidad || dto.getDistribucionMensual() == null) {
-            return;
-        }
-        for (EventoDistribucionMesDto tramo : dto.getDistribucionMensual()) {
-            EventoDistribucionMes row = new EventoDistribucionMes();
-            row.setEmpleadoEventoId(eventoId);
-            row.setPeriodo(tramo.getPeriodo());
-            row.setFechaDesde(tramo.getFechaDesde());
-            row.setFechaHasta(tramo.getFechaHasta());
-            row.setDiasSubsidio(tramo.getDiasSubsidio());
-            row.setAfectaDiasLaborados(
-                    tramo.getAfectaDiasLaborados() != null
-                            ? tramo.getAfectaDiasLaborados() : "S");
-            row.setEstadoTramo(
-                    tramo.getEstadoTramo() != null
-                            ? tramo.getEstadoTramo() : "PENDIENTE_IMPUTACION");
-            row.setCreatedAt(LocalDateTime.now());
-            distribucionRepository.save(row);
-        }
-    }
 
     private EmpleadoEvento buscar(Long id) {
         if (id == null) {
@@ -338,9 +255,6 @@ public class EventoPeriodoService {
     }
 
     private Integer resolverDiasAfectos(EventoPeriodoDto dto, TipoEvento tipo) {
-        if (esMaternidad(tipo)) {
-            return dto.getDuracionLegal();
-        }
         if (dto.getDiasAfectos() != null) {
             return dto.getDiasAfectos();
         }
@@ -406,8 +320,10 @@ public class EventoPeriodoService {
         return dto;
     }
 
-    private boolean esMaternidad(TipoEvento tipo) {
-        return tipo != null && CODIGO_MATERNIDAD.equalsIgnoreCase(tipo.getCodigo());
+    private void validarTipoOperativo(TipoEvento tipo) {
+        if (tipo != null && "S".equalsIgnoreCase(tipo.getGeneraSubsidio())) {
+            throw new NegocioException(MSG_SUBSIDIO_RETIRADO);
+        }
     }
 
     private void enriquecerPersona(
@@ -467,10 +383,6 @@ public class EventoPeriodoService {
         String base = "Evento creado — empleado " + dto.getEmpleadoId()
                 + ", tipo " + tipo.getCodigo()
                 + ", " + dto.getFechaInicio() + " → " + dto.getFechaFin();
-        if (esMaternidad(tipo) && dto.getDistribucionMensual() != null) {
-            return base + ", duración " + dto.getDuracionLegal()
-                    + ", periodos " + dto.getDistribucionMensual().size();
-        }
         return base;
     }
 }

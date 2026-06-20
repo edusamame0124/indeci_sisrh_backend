@@ -2,6 +2,8 @@ package com.indeci.rrhh.dto;
 
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 public class EmpleadoPensionResponseDto {
 
@@ -22,8 +24,16 @@ public class EmpleadoPensionResponseDto {
     private String tipoRegimen;
 
     private Integer activo;
-    
+
     private String regimenPensionario;
 
     private String tipoComisionAfp;
+
+    private String condicionEspecialAfp;
+
+    private LocalDate fechaCondicionAfp;
+
+    private Long documentoSustentoId;
+
+    private String observacionCondicionAfp;
 }

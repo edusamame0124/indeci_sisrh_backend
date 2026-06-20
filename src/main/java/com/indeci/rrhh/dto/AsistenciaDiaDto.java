@@ -23,6 +23,8 @@ public class AsistenciaDiaDto {
     private String diaSemana;
     private String marcaEntrada;
     private String marcaSalida;
+    private String marca3;
+    private String marca4;
     private String horaEntradaEsperada;
     private Integer minutosSalidaAnticipada;
     private Integer horasTrabajadasMin;
@@ -31,4 +33,6 @@ public class AsistenciaDiaDto {
     private Integer horasExtra100Min;
     private Integer horasExtraTotalMin;
     private String origen;
+    /** 1=papeleta autorizada (Presente), 0=no autorizada (Observado descontable), null=sin decisión. */
+    private Integer papeletaAutorizada;
 }

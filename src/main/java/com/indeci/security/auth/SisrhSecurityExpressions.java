@@ -28,4 +28,15 @@ public final class SisrhSecurityExpressions {
     public static final String RPT_READ    = SA + " or hasAuthority('" + SisrhPermission.RPT_READ    + "')";
     public static final String RPT_WRITE   = SA + " or hasAuthority('" + SisrhPermission.RPT_WRITE   + "')";
 
+    public static final String SUB_READ           = SA + " or hasAuthority('" + SisrhPermission.SUB_READ           + "')";
+    public static final String SUB_WRITE          = SA + " or hasAuthority('" + SisrhPermission.SUB_WRITE          + "')";
+    public static final String SUB_VALIDATE       = SA + " or hasAuthority('" + SisrhPermission.SUB_VALIDATE       + "')";
+    public static final String SUB_CALCULATE      = SA + " or hasAuthority('" + SisrhPermission.SUB_CALCULATE      + "')";
+    public static final String SUB_APPLY_PLANILLA = SA + " or hasAuthority('" + SisrhPermission.SUB_APPLY_PLANILLA + "')";
+    public static final String SUB_ESSALUD        = SA + " or hasAuthority('" + SisrhPermission.SUB_ESSALUD        + "')";
+    public static final String SUB_ADJUST         = SA + " or hasAuthority('" + SisrhPermission.SUB_ADJUST         + "')";
+    public static final String SUB_ADMIN_CONFIG   = SA + " or hasAuthority('" + SisrhPermission.SUB_ADMIN_CONFIG   + "')";
+    public static final String SUB_SIMULATE       = SA + " or hasAuthority('" + SisrhPermission.SUB_SIMULATE       + "')";
+    public static final String SUB_EXPORT         = SA + " or hasAuthority('" + SisrhPermission.SUB_EXPORT         + "')";
+
 }

@@ -29,7 +29,7 @@ public final class AsistenciaResumenCalculator {
             if (tipo != null && TIPOS_LABORADOS.contains(tipo)) {
                 diasLaborados++;
             }
-            if ("FALTA".equals(tipo)) {
+            if ("FALTA".equals(tipo) || esObservadoNoAutorizado(d)) {
                 diasFalta++;
             }
             if ("TARDANZA".equals(tipo) && d.getMinutosTardanza() != null) {
@@ -76,6 +76,13 @@ public final class AsistenciaResumenCalculator {
                 .multiply(BigDecimal.valueOf(diasFalta))
                 .divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP)
                 .doubleValue();
+    }
+
+    /** Observado por papeleta no autorizada: descuenta como falta (base/30). */
+    private static boolean esObservadoNoAutorizado(AsistenciaDiaDto d) {
+        return "OBSERVADO".equals(d.getTipoDia())
+                && d.getPapeletaAutorizada() != null
+                && d.getPapeletaAutorizada() == 0;
     }
 
     private static boolean contieneMarcaIncompleta(String observacion) {

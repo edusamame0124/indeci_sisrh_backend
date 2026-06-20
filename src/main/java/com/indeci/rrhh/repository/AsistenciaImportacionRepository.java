@@ -13,4 +13,7 @@ public interface AsistenciaImportacionRepository
             Pageable pageable);
 
     Page<AsistenciaImportacion> findAllByOrderByFechaImportacionDesc(Pageable pageable);
+
+    /** F2/F4 — detección de archivo duplicado por hash SHA-256 (req 20). */
+    boolean existsByHashSha256AndIdNot(String hashSha256, Long id);
 }

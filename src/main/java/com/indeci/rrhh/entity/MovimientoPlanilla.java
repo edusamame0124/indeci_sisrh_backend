@@ -52,4 +52,13 @@ public class MovimientoPlanilla {
     /** 'BIEN' | 'NETO_NO_VA'. Eje independiente del campo ESTADO (flujo). */
     @Column(name = "ESTADO_NETO")
     private String estadoNeto;
+
+    // B2 — Trazabilidad: vigencias AFP/ONP activas al momento del cálculo.
+    // Nullable: movimientos previos a V010_71 quedan sin valor.
+
+    @Column(name = "AFP_PARAM_VIGENCIA_ID")
+    private Long afpParamVigenciaId;
+
+    @Column(name = "ONP_PARAM_VIGENCIA_ID")
+    private Long onpParamVigenciaId;
 }

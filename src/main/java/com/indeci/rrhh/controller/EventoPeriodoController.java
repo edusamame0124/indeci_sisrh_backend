@@ -2,6 +2,8 @@ package com.indeci.rrhh.controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +19,6 @@ import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.EventoPeriodoDto;
 import com.indeci.rrhh.dto.EventoPeriodoPageDto;
 import com.indeci.rrhh.dto.EventoPeriodoResponseDto;
-import com.indeci.rrhh.dto.MaternidadPreviewDto;
 import com.indeci.rrhh.entity.TipoEvento;
 import com.indeci.rrhh.repository.TipoEventoRepository;
 import com.indeci.rrhh.service.EventoPeriodoService;
@@ -57,8 +58,8 @@ public class EventoPeriodoController {
     public ApiResponse<List<TipoEvento>> catalogo() {
         return new ApiResponse<>(
                 "OK",
-                "Catálogo de tipos de evento",
-                tipoRepository.findByActivoOrderByOrdenVisualAsc(1));
+                "Catálogo de tipos de evento (sin subsidios — use /asistencia/subsidios)",
+                tipoRepository.findByActivoAndGeneraSubsidioNotOrderByOrdenVisualAsc(1, "S"));
     }
 
     @GetMapping("/empleado/{empleadoId}")
@@ -96,12 +97,18 @@ public class EventoPeriodoController {
                 "OK", "Evento registrado", service.crear(dto));
     }
 
+    /**
+     * @deprecated P0-F0 — retirado. Los subsidios se gestionan en {@code /asistencia/subsidios}.
+     */
+    @Deprecated(forRemoval = true)
     @PostMapping("/preview-maternidad")
     @PreAuthorize(SisrhSecurityExpressions.EMP_READ)
-    public ApiResponse<MaternidadPreviewDto> previewMaternidad(
-            @RequestBody EventoPeriodoDto dto) {
-        return new ApiResponse<>(
-                "OK", "Preview de impacto maternidad", service.previewMaternidad(dto));
+    public ResponseEntity<ApiResponse<Void>> previewMaternidadRetirado() {
+        return ResponseEntity.status(HttpStatus.GONE).body(new ApiResponse<>(
+                "GONE",
+                "Endpoint retirado. Registre subsidios en Asistencia → Subsidios "
+                        + "(/asistencia/subsidios).",
+                null));
     }
 
     @PutMapping("/{id}")

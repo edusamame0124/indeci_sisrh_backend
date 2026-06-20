@@ -77,4 +77,15 @@ public class AfpParametroVigencia {
 
     @Column(name = "MODIFICADO_EN")
     private LocalDateTime modificadoEn;
+
+    // V010_72 — Anulación lógica (Eliminar en UI = ANULADO en BD)
+
+    @Column(name = "MOTIVO_ANULACION", length = 1000)
+    private String motivoAnulacion;
+
+    @Column(name = "ANULADO_POR", length = 100)
+    private String anuladoPor;
+
+    @Column(name = "ANULADO_EN")
+    private LocalDateTime anuladoEn;
 }

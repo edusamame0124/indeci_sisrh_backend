@@ -17,6 +17,18 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
 
     Optional<Persona> findByDni(String dni);
 
+    /**
+     * Busca persona por DNI comparando forma normalizada (8 dígitos con cero inicial).
+     * Tolera DNIs legacy en BD sin LPAD (ej. {@code 8274536} coincide con {@code 08274536}).
+     * Usar en importación CSV; mantener {@link #findByDni(String)} para igualdad exacta en otros módulos.
+     */
+    @Query(value = """
+            SELECT *
+              FROM GESTIONRRHH.INDECI_PERSONA p
+             WHERE LPAD(REGEXP_REPLACE(TRIM(p.DNI), '[^0-9]', ''), 8, '0') = :dni
+            """, nativeQuery = true)
+    Optional<Persona> findByDniNormalizado(@Param("dni") String dni);
+
     Optional<Persona> findByUserId(Long userId);
 
     /**

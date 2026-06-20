@@ -288,6 +288,12 @@ public class ValidacionPreflightService {
                         ev.getId()));
             }
 
+            // P0-F0: tipos GENERA_SUBSIDIO retirados del flujo operativo (V010_90).
+            // V18/V19 solo aplicaban al motor legacy por eventos; se omiten para legacy.
+            if ("S".equalsIgnoreCase(tipo.getGeneraSubsidio())) {
+                continue;
+            }
+
             // V19 — Maternidad que cruza meses: imputación al neto diferida (P1).
             if ("MATERNIDAD".equalsIgnoreCase(tipo.getCodigo())
                     && eventoDistribucionMesRepository

@@ -4,15 +4,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.rrhh.dto.AsistenciaValidacionBatchDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
+import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.entity.AsistenciaImportacion;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
+import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvParser;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvValidator;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresCsvWriter;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +46,9 @@ class AsistenciaImportServiceValidarCabecerasTest {
     @Mock private AsistenciaService asistenciaService;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private AsistenciaImportErroresCsvWriter erroresCsvWriter;
+    @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private AsistenciaDetalleRepository detalleRepository;
     @Mock private ObjectMapper objectMapper;
 
     @InjectMocks private AsistenciaImportService service;
@@ -69,6 +79,77 @@ class AsistenciaImportServiceValidarCabecerasTest {
         assertThat(result.getObservadas()).isEqualTo(1);
         assertThat(result.getYaValidadas()).isEqualTo(1);
         verify(cabeceraRepository).saveAll(List.of(prevalidada, lista, observada, validada));
+    }
+
+    @Test
+    void validarCabeceras_refrescaDescuentosConBaseVigente() {
+        AsistenciaImportacion importacion = new AsistenciaImportacion();
+        importacion.setId(77L);
+        importacion.setPeriodo("2026-06");
+
+        AsistenciaCabecera cab = cabecera("PREVALIDADA");
+        cab.setEmpleadoId(42L);
+        cab.setTotalMinTardanza(45);
+        cab.setDiasFalta(1);
+        cab.setDescuentoTardanza(0.0); // estaba en 0 porque la base era 0 al importar
+        cab.setDescuentoFalta(0.0);
+
+        when(importacionRepository.findById(77L)).thenReturn(Optional.of(importacion));
+        when(cabeceraRepository.findByImportacionIdAndActivo(77L, 1)).thenReturn(List.of(cab));
+        BaseAsistenciaResult base = new BaseAsistenciaResult();
+        base.setRemuneracionBase(3000.0);
+        when(baseResolver.resolver(42L)).thenReturn(base);
+
+        service.validarCabeceras(77L);
+
+        // Misma fórmula que el preview y que consumirá el motor M05.
+        assertThat(cab.getEstado()).isEqualTo("VALIDADA");
+        assertThat(cab.getRemuneracionBase()).isEqualTo(3000.0);
+        assertThat(cab.getDescuentoTardanza()).isEqualTo(9.38);  // ROUND((3000*45)/14400,2)
+        assertThat(cab.getDescuentoFalta()).isEqualTo(100.0);    // ROUND(3000/30,2)
+    }
+
+    @Test
+    void validarCabeceras_recalculaTardanzaDesdeMarcasYJornada() {
+        AsistenciaImportacion importacion = new AsistenciaImportacion();
+        importacion.setId(77L);
+        importacion.setPeriodo("2026-06");
+
+        AsistenciaCabecera cab = cabecera("PREVALIDADA");
+        cab.setId(500L);
+        cab.setEmpleadoId(42L);
+        cab.setTotalMinTardanza(0); // venía en 0 (importado antes de configurar la jornada)
+
+        when(importacionRepository.findById(77L)).thenReturn(Optional.of(importacion));
+        when(cabeceraRepository.findByImportacionIdAndActivo(77L, 1)).thenReturn(List.of(cab));
+
+        // Régimen del empleado → jornada CAS: ingreso 08:30, tolerancia 10.
+        EmpleadoPlanilla ep = new EmpleadoPlanilla();
+        ep.setRegimenLaboralId(7L);
+        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(42L, 1))
+                .thenReturn(Optional.of(ep));
+        JornadaRegimen jornada = new JornadaRegimen();
+        jornada.setHoraIngreso("08:30");
+        jornada.setToleranciaIngresoMin(10);
+        when(jornadaRegimenRepository.findByRegimenLaboralId(7L)).thenReturn(Optional.of(jornada));
+
+        // Día LABORAL con Marca1 = 08:50 → 08:50 − 08:30 − 10 = 10 min.
+        AsistenciaDetalle d = new AsistenciaDetalle();
+        d.setTipoDia("LABORAL");
+        d.setMarcaEntrada("08:50");
+        when(detalleRepository.findByCabeceraIdOrderByDia(500L)).thenReturn(List.of(d));
+
+        BaseAsistenciaResult base = new BaseAsistenciaResult();
+        base.setRemuneracionBase(3000.0);
+        when(baseResolver.resolver(42L)).thenReturn(base);
+
+        service.validarCabeceras(77L);
+
+        assertThat(d.getMinutosTardanza()).isEqualTo(10);
+        assertThat(d.getTipoDia()).isEqualTo("TARDANZA");
+        assertThat(cab.getTotalMinTardanza()).isEqualTo(10);
+        // ROUND((3000*10)/(30*8*60), 2) = 2.08
+        assertThat(cab.getDescuentoTardanza()).isEqualTo(2.08);
     }
 
     private AsistenciaCabecera cabecera(String estado) {

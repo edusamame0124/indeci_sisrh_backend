@@ -2,9 +2,13 @@ package com.indeci.rrhh.controller;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.AsistenciaAceptarObservadasRequest;
+import com.indeci.rrhh.dto.AsistenciaAnularRequest;
 import com.indeci.rrhh.dto.AsistenciaImportConfirmRequest;
+import com.indeci.rrhh.dto.AsistenciaImportFilaDetalleDto;
 import com.indeci.rrhh.dto.AsistenciaImportHistorialDto;
 import com.indeci.rrhh.dto.AsistenciaImportPreviewDto;
+import com.indeci.rrhh.dto.AsistenciaImportResumenDto;
 import com.indeci.rrhh.dto.AsistenciaValidacionBatchDto;
 import com.indeci.rrhh.service.AsistenciaImportService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
@@ -80,6 +84,29 @@ public class AsistenciaImportController {
                 importService.detalle(importacionId));
     }
 
+    @GetMapping("/{importacionId}/detalles")
+    public ApiResponse<Page<AsistenciaImportFilaDetalleDto>> detalles(
+            @PathVariable Long importacionId,
+            @RequestParam(required = false) String dni,
+            @RequestParam(required = false) String nombre,
+            @RequestParam(required = false) String estado,
+            @RequestParam(defaultValue = "false") boolean soloErrores,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        return new ApiResponse<>("OK",
+                "Detalle paginado de importación",
+                importService.detalles(importacionId, dni, nombre, estado, soloErrores,
+                        PageRequest.of(Math.max(page, 0), safeSize)));
+    }
+
+    @GetMapping("/{importacionId}/resumen")
+    public ApiResponse<AsistenciaImportResumenDto> resumen(@PathVariable Long importacionId) {
+        return new ApiResponse<>("OK",
+                "Resumen de importación",
+                importService.resumen(importacionId));
+    }
+
     @GetMapping(value = "/{importacionId}/errores.csv", produces = "text/csv")
     public ResponseEntity<byte[]> erroresCsv(@PathVariable Long importacionId) {
         byte[] csv = importService.erroresCsv(importacionId);
@@ -91,11 +118,44 @@ public class AsistenciaImportController {
         return ResponseEntity.ok().headers(headers).body(csv);
     }
 
+    @GetMapping(value = "/{importacionId}/errores.xlsx",
+            produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> erroresXlsx(@PathVariable Long importacionId) {
+        byte[] xlsx = importService.erroresXlsx(importacionId);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename("asistencia-importacion-" + importacionId + "-errores.xlsx")
+                .build());
+        return ResponseEntity.ok().headers(headers).body(xlsx);
+    }
+
     @PostMapping("/{importacionId}/validar-cabeceras")
     public ApiResponse<AsistenciaValidacionBatchDto> validarCabeceras(
             @PathVariable Long importacionId) {
         return new ApiResponse<>("OK",
                 "Cabeceras de asistencia validadas",
                 importService.validarCabeceras(importacionId));
+    }
+
+    @PostMapping("/{importacionId}/aceptar-observadas")
+    public ApiResponse<Integer> aceptarObservadas(
+            @PathVariable Long importacionId,
+            @RequestBody AsistenciaAceptarObservadasRequest request) {
+        int aceptadas = importService.aceptarObservadas(
+                importacionId,
+                request != null ? request.getIdsFilas() : null,
+                request != null ? request.getMotivo() : null);
+        return new ApiResponse<>("OK", "Filas observadas aceptadas", aceptadas);
+    }
+
+    @PostMapping("/{importacionId}/anular")
+    public ApiResponse<AsistenciaImportPreviewDto> anular(
+            @PathVariable Long importacionId,
+            @RequestBody AsistenciaAnularRequest request) {
+        return new ApiResponse<>("OK",
+                "Importación anulada",
+                importService.anular(importacionId, request != null ? request.getMotivo() : null));
     }
 }

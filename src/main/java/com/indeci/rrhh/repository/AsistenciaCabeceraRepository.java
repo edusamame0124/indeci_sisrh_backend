@@ -2,6 +2,8 @@ package com.indeci.rrhh.repository;
 
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,4 +26,18 @@ public interface AsistenciaCabeceraRepository
     findByImportacionIdAndActivo(
             Long importacionId,
             Integer activo);
+
+    /** F5 — todas las versiones (activas e inactivas) de un empleado+periodo, recientes primero. */
+    List<AsistenciaCabecera>
+    findByEmpleadoIdAndPeriodoOrderByVersionDesc(Long empleadoId, String periodo);
+
+    /** F5 — versión máxima existente para el empleado+periodo (NULL si no hay). */
+    @Query("SELECT MAX(c.version) FROM AsistenciaCabecera c "
+            + "WHERE c.empleadoId = :empleadoId AND c.periodo = :periodo")
+    Integer maxVersion(@Param("empleadoId") Long empleadoId, @Param("periodo") String periodo);
+
+    /** Historial — cabeceras activas de la importación que aún NO están en el estado dado. */
+    long countByImportacionIdAndActivoAndEstadoNot(Long importacionId, Integer activo, String estado);
+
+    long countByImportacionIdAndActivo(Long importacionId, Integer activo);
 }

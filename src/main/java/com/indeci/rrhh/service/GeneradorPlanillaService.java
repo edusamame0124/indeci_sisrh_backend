@@ -11,6 +11,7 @@ import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.entity.*;
 import com.indeci.rrhh.repository.*;
 import com.indeci.rrhh.service.support.RegimenAplicableHelper;
+import com.indeci.rrhh.entity.Ir4taConfigAnual;
 
 import java.time.LocalDate;
 
@@ -195,12 +196,20 @@ public class GeneradorPlanillaService {
     /** FASE 1 — Vigencia de suspensión de retención de 4ta (motor PASO 8c). */
     private final Suspension4taService suspension4taService;
 
+    /** V010_76 — Configuración anual IR4ta: UIT, tasa y base inafecta por año fiscal. */
+    private final Ir4taConfigService ir4taConfigService;
+
     /** Mejora 2026-06-03 — subgrupo SERVIR para resolver la compensación base. */
     private final TipoPersonalRepository tipoPersonalRepository;
 
     /** FASE 2 — Snapshot de trazabilidad (solo añadido; no afecta el cálculo). */
     private final CalculoSnapshotService calculoSnapshotService;
     private final SubsidioCalculadorService subsidioCalculadorService;
+    private final com.indeci.rrhh.service.subsidio.SubsidioPlanillaIntegracionService subsidioPlanillaIntegracionService;
+
+    /** B2 — Vigencias previsionales para trazabilidad en INDECI_MOVIMIENTO_PLANILLA. */
+    private final AfpParametroVigenciaRepository afpVigenciaRepository;
+    private final OnpParametroVigenciaRepository onpVigenciaRepository;
 
     /**
      * Self-reference para que {@link #generarTodoPeriodo(String)} invoque
@@ -245,61 +254,28 @@ public class GeneradorPlanillaService {
      * @return ingreso de subsidio a sumar a {@code totalIngresos} (NO a las
      *         bases imponibles: es no remunerativo, no afecta IR/EsSalud/AFP).
      */
+    /**
+     * P0-F0: flujo por eventos retirado. Los subsidios se imputan vía liquidaciones
+     * del módulo dedicado ({@code INDECI_SUBSIDIO_LIQUIDACION}, F2).
+     */
     private BigDecimal registrarSubsidiosEventos(
             Long empleadoId,
             String periodo,
             MovimientoPlanilla movimiento,
             EmpleadoPlanilla planilla) {
+        return registrarSubsidiosDesdeLiquidacion(empleadoId, periodo, movimiento, planilla);
+    }
 
-        BigDecimal remuneracionBase = toBigDecimal(planilla.getSueldoBasico());
-        if (remuneracionBase.signum() <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
-        LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
-        List<EmpleadoEvento> eventos = empleadoEventoRepository
-                .findSubsidiosParaMotor(empleadoId, periodo, inicio, fin);
-        if (eventos == null || eventos.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-
-        BigDecimal ingresoSubsidio = BigDecimal.ZERO;
-        for (EmpleadoEvento evento : eventos) {
-            // calcularYRegistrar ya graba trazabilidad (INDECI_SUBSIDIO_EVENTO_CALCULO)
-            // + snapshot REGLA_SUBSIDIO. Aquí solo decidimos el impacto en el neto.
-            SubsidioCalculadoDto calculo = subsidioCalculadorService.calcularYRegistrar(
-                    evento, remuneracionBase, movimiento.getId(), periodo, "SISTEMA");
-            if (!calculo.aplica()) {
-                continue;
-            }
-
-            // Guard anti-doble-pago: solo entra al neto si el evento redujo días
-            // laborados (el sueldo ya se prorrateó). Si no, queda solo en
-            // trazabilidad y el preflight V18 lo señala a RR. HH.
-            TipoEvento tipo = evento.getTipoEvento();
-            boolean reduceDias = tipo != null
-                    && "S".equalsIgnoreCase(tipo.getAfectaDiasLaborados());
-            if (!reduceDias) {
-                continue;
-            }
-
-            // P0 guardrail: no imputar subsidio al neto si el descanso cruza meses.
-            if (eventoCruzaMeses(evento.getId())) {
-                continue;
-            }
-
-            ConceptoPlanilla concepto = conceptoSubsidio(calculo.tipoSubsidio());
-            BigDecimal monto = calculo.subtotalRemunerativo();
-            grabarDetalle(movimiento.getId(), concepto, monto, String.format(
-                    "Subsidio %s | PLAME %s | días=%d | reembolsoEsSalud=%s | "
-                            + "diferencialEntidad(2073)=%s | NO remunerativo",
-                    calculo.tipoSubsidio(), calculo.codigoPlameSubsidio(),
-                    calculo.diasDescanso(), escala(calculo.subsidioEssalud()),
-                    escala(calculo.diferenciaAsumidaIndeci())));
-            ingresoSubsidio = ingresoSubsidio.add(monto);
-        }
-        return ingresoSubsidio;
+    /**
+     * Stub F2 — consultará liquidaciones vigentes por tramo/período.
+     * Legacy {@code INDECI_SUBSIDIO_EVENTO_CALCULO} queda read-only.
+     */
+    private BigDecimal registrarSubsidiosDesdeLiquidacion(
+            Long empleadoId,
+            String periodo,
+            MovimientoPlanilla movimiento,
+            EmpleadoPlanilla planilla) {
+        return subsidioPlanillaIntegracionService.ingresoSubsidioMotor(empleadoId, periodo);
     }
 
     /** Resuelve el concepto de subsidio por CODIGO interno (PLAME, no MEF). */
@@ -411,11 +387,8 @@ public class GeneradorPlanillaService {
             }
         }
 
-        // 7c. FASE 4 — Subsidios (maternidad/enfermedad): el subsidio_total_100
-        //     rellena el sueldo que ya se prorrateó por los días de descanso.
-        //     Entra como INGRESO no remunerativo → suma al neto pero NO a las
-        //     bases imponibles (no afecta IR/EsSalud/AFP). El diferencial 2073
-        //     queda en trazabilidad/snapshot (costo de entidad, no neto).
+        // 7c. P0-F0 — Subsidios vía liquidaciones del módulo dedicado (F2).
+        //     El flujo legacy por INDECI_EMPLEADO_EVENTO + generaSubsidio quedó retirado.
         BigDecimal ingresoSubsidio =
                 registrarSubsidiosEventos(empleadoId, periodo, movimiento, planilla);
         totalIngresos = totalIngresos.add(ingresoSubsidio);
@@ -926,6 +899,10 @@ public class GeneradorPlanillaService {
         BigDecimal totalAporte = BigDecimal.ZERO;
 
         if (REG_PENS_ONP.equalsIgnoreCase(tipoRegimen)) {
+            // B2 — registrar la vigencia ONP usada para trazabilidad
+            onpVigenciaRepository.findVigenteByPeriodo(movimiento.getPeriodo())
+                    .ifPresent(v -> movimiento.setOnpParamVigenciaId(v.getId()));
+
             BigDecimal tasa = primeraTasaNoNula(
                     pension.getPorcentajeAporte(),
                     () -> parametroService.obtenerValor("TASA_ONP", anioFiscal, null));
@@ -935,6 +912,18 @@ public class GeneradorPlanillaService {
             totalAporte = totalAporte.add(monto);
 
         } else if (REG_PENS_AFP.equalsIgnoreCase(tipoRegimen)) {
+            // Condición especial: RETIRO_955 / PENSIONISTA_SPP → el trabajador
+            // ya retiró su fondo o es pensionista SPP; no corresponde descuento AFP.
+            String condicionAfp = pension.getCondicionEspecialAfp();
+            if ("RETIRO_955".equals(condicionAfp) || "PENSIONISTA_SPP".equals(condicionAfp)) {
+                return BigDecimal.ZERO;
+            }
+
+            // B2 — registrar la vigencia AFP usada para trazabilidad
+            afpVigenciaRepository.findVigenteByAfpAndPeriodo(
+                    pension.getRegimenPensionarioId(), movimiento.getPeriodo())
+                    .ifPresent(v -> movimiento.setAfpParamVigenciaId(v.getId()));
+
             BigDecimal tasa = primeraTasaNoNula(
                     pension.getPorcentajeAporte(),
                     () -> parametroService.obtenerValor("TASA_AFP_APORTE", anioFiscal, null));
@@ -1961,24 +1950,36 @@ public class GeneradorPlanillaService {
             return BigDecimal.ZERO;
         }
 
+        // V010_76: preferir config anual dedicada; fallback a TBL_PARAMETRO_REMUNERATIVO.
+        // La config anual almacena tasa como porcentaje (ej. 8.00).
+        // El parametroService histórico almacena tasa como fracción (ej. 0.08).
+        java.util.Optional<Ir4taConfigAnual> configOpt =
+                ir4taConfigService.resolverPorAnio(anioFiscal,
+                        LocalDate.of(anioFiscal, 6, 15));
+
+        if (configOpt.isPresent()) {
+            Ir4taConfigAnual cfg = configOpt.get();
+            BigDecimal baseInafecta = cfg.getBaseInafectaIr4ta();
+            BigDecimal tasaPct      = cfg.getTasaIr4ta();
+            if (baseInafecta == null || tasaPct == null) return BigDecimal.ZERO;
+            if (baseImponible.compareTo(baseInafecta) <= 0) return BigDecimal.ZERO;
+            return baseImponible.multiply(tasaPct)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+
+        // Fallback: TBL_PARAMETRO_REMUNERATIVO (tasa almacenada como fracción).
         BigDecimal baseInafecta = parametroService
                 .obtenerValorOpcional("BASE_INAFECTA_IR4TA", anioFiscal, null)
                 .orElse(null);
-        if (baseInafecta == null) {
-            return BigDecimal.ZERO; // Defensa: parámetro pendiente de cargar.
-        }
-        if (baseImponible.compareTo(baseInafecta) <= 0) {
-            return BigDecimal.ZERO; // INAFECTO.
-        }
+        if (baseInafecta == null) return BigDecimal.ZERO;
+        if (baseImponible.compareTo(baseInafecta) <= 0) return BigDecimal.ZERO;
 
-        BigDecimal tasa = parametroService
+        BigDecimal tasaFrac = parametroService
                 .obtenerValorOpcional("TASA_IR4TA", anioFiscal, null)
                 .orElse(null);
-        if (tasa == null) {
-            return BigDecimal.ZERO; // Defensa: parámetro pendiente de cargar.
-        }
+        if (tasaFrac == null) return BigDecimal.ZERO;
 
-        return baseImponible.multiply(tasa).setScale(2, RoundingMode.HALF_UP);
+        return baseImponible.multiply(tasaFrac).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

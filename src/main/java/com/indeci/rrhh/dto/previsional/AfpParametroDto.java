@@ -17,7 +17,7 @@ public class AfpParametroDto {
     private BigDecimal   comisionFlujoPct;
     private BigDecimal   comisionSaldoAnualPct;
     private BigDecimal   primaSeguroPct;
-    private BigDecimal   remuneracionMaximaAseg;
+    private BigDecimal   remuneracionMaximaAsegurable;
     private String       fuenteOficial;
     private String       urlFuenteOficial;
     private LocalDate    fechaPublicacion;
