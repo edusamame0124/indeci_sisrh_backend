@@ -127,4 +127,46 @@ public class ExperienciaLaboralService {
 
         return dto;
     }
+    @Transactional
+    public void actualizar(
+            Long id,
+            ExperienciaLaboralDto dto) {
+
+        ExperienciaLaboral entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Experiencia laboral no encontrada"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setEmpresa(
+                dto.getEmpresa());
+
+        entity.setCargo(
+                dto.getCargo());
+
+        entity.setFechaInicio(
+                dto.getFechaInicio());
+
+        entity.setFechaFin(
+                dto.getFechaFin());
+
+        entity.setFunciones(
+                dto.getFunciones());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
+    
 }

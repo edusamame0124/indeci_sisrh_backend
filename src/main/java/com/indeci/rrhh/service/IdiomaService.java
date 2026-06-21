@@ -142,4 +142,46 @@ public class IdiomaService {
 
         return dto;
     }
+    
+    @Transactional
+    public void actualizar(
+            Long id,
+            IdiomaDto dto) {
+
+        Idioma entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Idioma no encontrado"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setIdioma(
+                dto.getIdioma());
+
+        entity.setNivelLectura(
+                dto.getNivelLectura());
+
+        entity.setNivelEscritura(
+                dto.getNivelEscritura());
+
+        entity.setNivelHabla(
+                dto.getNivelHabla());
+
+        entity.setCertificado(
+                dto.getCertificado());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
 }

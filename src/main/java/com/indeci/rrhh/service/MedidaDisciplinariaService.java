@@ -136,4 +136,43 @@ public class MedidaDisciplinariaService {
 
         return dto;
     }
+    @Transactional
+    public void actualizar(
+            Long id,
+            MedidaDisciplinariaDto dto) {
+
+        MedidaDisciplinaria entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Medida disciplinaria no encontrada"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setTipoMedida(
+                dto.getTipoMedida());
+
+        entity.setDescripcion(
+                dto.getDescripcion());
+
+        entity.setFechaInicio(
+                dto.getFechaInicio());
+
+        entity.setFechaFin(
+                dto.getFechaFin());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
+    
 }

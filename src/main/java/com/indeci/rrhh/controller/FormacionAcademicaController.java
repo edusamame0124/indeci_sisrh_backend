@@ -59,4 +59,22 @@ public class FormacionAcademicaController {
                 "Registro eliminado",
                 null);
     }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize(
+            SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody
+            FormacionAcademicaDto dto) {
+
+        service.actualizar(
+                id,
+                dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Registro actualizado",
+                null);
+    }
 }

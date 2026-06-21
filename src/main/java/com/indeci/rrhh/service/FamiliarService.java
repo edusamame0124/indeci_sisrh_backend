@@ -132,4 +132,36 @@ public class FamiliarService {
 
         return dto;
     }
+    
+    @Transactional
+    public void actualizar(
+            Long id,
+            FamiliarDto dto) {
+
+        Familiar entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Familiar no encontrado"));
+
+        entity.setNombreCompleto(
+                dto.getNombreCompleto());
+
+        entity.setParentesco(
+                dto.getParentesco());
+
+        entity.setFechaNacimiento(
+                dto.getFechaNacimiento());
+
+        entity.setTipoDocumentoId(
+                dto.getTipoDocumentoId());
+
+        entity.setNroDocumento(
+                dto.getNroDocumento());
+
+        entity.setTelefono(
+                dto.getTelefono());
+
+        repository.save(entity);
+    }
 }

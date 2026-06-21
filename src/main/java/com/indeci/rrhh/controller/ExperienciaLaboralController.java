@@ -60,4 +60,20 @@ public class ExperienciaLaboralController {
                 "Experiencia laboral eliminada",
                 null);
     }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody ExperienciaLaboralDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Experiencia laboral actualizada",
+                null);
+    }
+    
+    
 }

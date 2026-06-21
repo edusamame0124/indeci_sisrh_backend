@@ -182,4 +182,73 @@ gradoAcademicoRepository
 
         return dto;
     }
+    @Transactional
+    public void actualizar(
+            Long id,
+            FormacionAcademicaDto dto) {
+
+        FormacionAcademica entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Registro no encontrado"));
+
+        nivelInstruccionRepository
+                .findById(dto.getNivelInstruccionId())
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Nivel de instrucción no existe"));
+
+        gradoAcademicoRepository
+                .findById(dto.getGradoAcademicoId())
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Grado académico no existe"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setNivelInstruccionId(
+                dto.getNivelInstruccionId());
+
+        entity.setGradoAcademicoId(
+                dto.getGradoAcademicoId());
+
+        entity.setInstitucion(
+                dto.getInstitucion());
+
+        entity.setCarrera(
+                dto.getCarrera());
+
+        entity.setFechaInicio(
+                dto.getFechaInicio());
+
+        entity.setFechaFin(
+                dto.getFechaFin());
+
+        entity.setEgresado(
+                dto.getEgresado());
+
+        entity.setBachiller(
+                dto.getBachiller());
+
+        entity.setTitulado(
+                dto.getTitulado());
+
+        entity.setNroTitulo(
+                dto.getNroTitulo());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
+    
 }

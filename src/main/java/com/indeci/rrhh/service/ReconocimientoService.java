@@ -130,4 +130,40 @@ public class ReconocimientoService {
 
         return dto;
     }
+    @Transactional
+    public void actualizar(
+            Long id,
+            ReconocimientoDto dto) {
+
+        Reconocimiento entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Reconocimiento no encontrado"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setTipoReconocimiento(
+                dto.getTipoReconocimiento());
+
+        entity.setDescripcion(
+                dto.getDescripcion());
+
+        entity.setFechaReconocimiento(
+                dto.getFechaReconocimiento());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
+    
 }

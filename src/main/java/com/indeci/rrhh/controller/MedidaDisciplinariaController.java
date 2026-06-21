@@ -60,4 +60,18 @@ public class MedidaDisciplinariaController {
                 "Medida disciplinaria eliminada",
                 null);
     }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody MedidaDisciplinariaDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Medida disciplinaria actualizada",
+                null);
+    }
 }

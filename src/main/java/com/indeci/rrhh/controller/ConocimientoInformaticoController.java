@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -65,6 +66,20 @@ public class ConocimientoInformaticoController {
         return new ApiResponse<>(
                 "OK",
                 "Conocimiento informático eliminado",
+                null);
+    }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody ConocimientoInformaticoDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Conocimiento informático actualizado",
                 null);
     }
 }

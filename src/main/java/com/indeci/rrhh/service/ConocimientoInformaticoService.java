@@ -121,4 +121,40 @@ public class ConocimientoInformaticoService {
 
         return dto;
     }
+    
+    @Transactional
+    public void actualizar(
+            Long id,
+            ConocimientoInformaticoDto dto) {
+
+        ConocimientoInformatico entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Conocimiento informático no encontrado"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setHerramienta(
+                dto.getHerramienta());
+
+        entity.setNivel(
+                dto.getNivel());
+
+        entity.setCertificado(
+                dto.getCertificado());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
 }

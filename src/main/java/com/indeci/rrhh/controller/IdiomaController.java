@@ -60,4 +60,18 @@ public class IdiomaController {
                 "Idioma eliminado",
                 null);
     }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody IdiomaDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Idioma actualizado",
+                null);
+    }
 }

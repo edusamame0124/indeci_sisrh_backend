@@ -60,4 +60,18 @@ public class ReconocimientoController {
                 "Reconocimiento eliminado",
                 null);
     }
+    @PutMapping("/{id}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> actualizar(
+            @PathVariable Long id,
+            @RequestBody ReconocimientoDto dto) {
+
+        service.actualizar(id, dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Reconocimiento actualizado",
+                null);
+    }
+    
 }

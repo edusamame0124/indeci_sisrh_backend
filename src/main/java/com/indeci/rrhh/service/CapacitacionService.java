@@ -84,6 +84,52 @@ public class CapacitacionService {
         repository.save(entity);
     }
 
+    
+    @Transactional
+    public void actualizar(
+            Long id,
+            CapacitacionDto dto) {
+
+        Capacitacion entity =
+                repository.findById(id)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Capacitación no encontrada"));
+
+        if(dto.getLegajoDocumentoId() != null) {
+
+            legajoDocumentoRepository
+                    .findById(
+                            dto.getLegajoDocumentoId())
+                    .orElseThrow(() ->
+                            new NegocioException(
+                                    "Documento de legajo no existe"));
+        }
+
+        entity.setNombreCurso(
+                dto.getNombreCurso());
+
+        entity.setInstitucion(
+                dto.getInstitucion());
+
+        entity.setHoras(
+                dto.getHoras());
+
+        entity.setFechaInicio(
+                dto.getFechaInicio());
+
+        entity.setFechaFin(
+                dto.getFechaFin());
+
+        entity.setCertificado(
+                dto.getCertificado());
+
+        entity.setLegajoDocumentoId(
+                dto.getLegajoDocumentoId());
+
+        repository.save(entity);
+    }
+    
     @Transactional(readOnly = true)
     public List<CapacitacionResponseDto>
     listarPorEmpleado(

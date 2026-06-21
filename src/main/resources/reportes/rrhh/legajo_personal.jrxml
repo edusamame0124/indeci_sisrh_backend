@@ -1,0 +1,1028 @@
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="legajo_personal" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="18" bottomMargin="18" uuid="2a62bc45-6325-45bd-afe1-1533dfc5052a">
+	<style name="title" hTextAlign="Center" fontName="Arial" fontSize="18.0" bold="true" underline="true"/>
+	<style name="sectionTitle" fontName="Arial" fontSize="11.0" bold="true"/>
+	<style name="sectionHeader" fontName="Arial" fontSize="10.0" bold="true"/>
+	<style name="normal" fontName="Arial" fontSize="9.0"/>
+	<style name="small" fontName="Arial" fontSize="7.0"/>
+	<style name="tableHeader" hTextAlign="Center" vTextAlign="Middle" fontName="Arial" fontSize="7.0" bold="true"/>
+	<style name="tableCell" hTextAlign="Center" vTextAlign="Middle" fontName="Arial" fontSize="7.0"/>
+	<style name="noData" hTextAlign="Center" fontName="Arial" fontSize="8.0" italic="true"/>
+	<dataset name="FormacionDataset" uuid="4ea30ac5-cdba-4546-99f9-a4ec925147ca">
+		<field name="institucion" class="java.lang.String"/>
+		<field name="carrera" class="java.lang.String"/>
+		<field name="fechaInicio" class="java.time.LocalDate"/>
+		<field name="fechaFin" class="java.time.LocalDate"/>
+		<field name="gradoAcademico" class="java.lang.String"/>
+		<field name="nroTitulo" class="java.lang.String"/>
+		<field name="nivelInstruccion" class="java.lang.String"/>
+	</dataset>
+	<dataset name="CapacitacionesDataset" uuid="f0eb3714-386c-43f6-9bb7-86869af45895">
+		<field name="nombreCurso" class="java.lang.String"/>
+		<field name="institucion" class="java.lang.String"/>
+		<field name="horas" class="java.lang.String"/>
+		<field name="fechaInicio" class="java.time.LocalDate"/>
+		<field name="fechaFin" class="java.time.LocalDate"/>
+		<field name="certificadoTexto" class="java.lang.String"/>
+	</dataset>
+	<dataset name="ConocimientosDataset" uuid="730c2cb9-ba59-4dfd-b2b0-54a6bae552fd">
+		<field name="herramienta" class="java.lang.String"/>
+		<field name="nivel" class="java.lang.String"/>
+		<field name="certificadoTexto" class="java.lang.String"/>
+	</dataset>
+	<dataset name="FamiliaresDataset" uuid="ded4e529-3608-457a-9372-cca93918f16a">
+		<field name="nombreCompleto" class="java.lang.String"/>
+		<field name="parentesco" class="java.lang.String"/>
+		<field name="fechaNacimiento" class="java.time.LocalDate"/>
+		<field name="tipoDocumento" class="java.lang.String"/>
+		<field name="nroDocumento" class="java.lang.String"/>
+		<field name="telefono" class="java.lang.String"/>
+	</dataset>
+	<dataset name="ExperienciaDataset" uuid="a341a7a9-0185-4c47-afcd-ffd3023d341c">
+		<field name="empresa" class="java.lang.String"/>
+		<field name="cargo" class="java.lang.String"/>
+		<field name="fechaInicio" class="java.time.LocalDate"/>
+		<field name="fechaFin" class="java.time.LocalDate"/>
+		<field name="funciones" class="java.lang.String"/>
+	</dataset>
+	<dataset name="ReconocimientosDataset" uuid="5d983e3d-ad4f-42c4-9dcf-f255c3c34583">
+		<field name="tipoReconocimiento" class="java.lang.String"/>
+		<field name="descripcion" class="java.lang.String"/>
+		<field name="fechaReconocimiento" class="java.time.LocalDate"/>
+	</dataset>
+	<dataset name="MedidasDataset" uuid="5b2aacfc-3cfc-4517-bfec-50b494b70965">
+		<field name="tipoMedida" class="java.lang.String"/>
+		<field name="descripcion" class="java.lang.String"/>
+		<field name="fechaInicio" class="java.time.LocalDate"/>
+		<field name="fechaFin" class="java.time.LocalDate"/>
+	</dataset>
+	<parameter name="P_LOGO_PERU" class="java.io.InputStream"/>
+	<parameter name="P_FOTO" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRE_COMPLETO" class="java.lang.String"/>
+	<parameter name="P_TIPO_DOCUMENTO" class="java.lang.String"/>
+	<parameter name="P_DNI" class="java.lang.String"/>
+	<parameter name="P_FECHA_NACIMIENTO" class="java.time.LocalDate"/>
+	<parameter name="P_EMAIL" class="java.lang.String"/>
+	<parameter name="P_TELEFONO" class="java.lang.String"/>
+	<parameter name="P_TELEFONO_FIJO" class="java.lang.String"/>
+	<parameter name="P_DISTRITO" class="java.lang.String"/>
+	<parameter name="P_DIRECCION" class="java.lang.String"/>
+	<parameter name="P_NACIONALIDAD" class="java.lang.String"/>
+	<parameter name="P_RUC" class="java.lang.String"/>
+	<parameter name="P_CORREO_INSTITUCIONAL" class="java.lang.String"/>
+	<parameter name="P_SEXO" class="java.lang.String"/>
+	<parameter name="P_ESTADO_CIVIL" class="java.lang.String"/>
+	<parameter name="P_PROFESION" class="java.lang.String"/>
+	<parameter name="P_GRADO_ACADEMICO" class="java.lang.String"/>
+	<parameter name="P_EMERG_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_EMERG_PARENTESCO" class="java.lang.String"/>
+	<parameter name="P_EMERG_TELEFONO" class="java.lang.String"/>
+	<parameter name="DS_FORMACION" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_FORMACION_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_CAPACITACIONES" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_CAPACITACIONES_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_CONOCIMIENTOS" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_CONOCIMIENTOS_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_FAMILIARES" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_FAMILIARES_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_EXPERIENCIA" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_EXPERIENCIA_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_RECONOCIMIENTOS" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_RECONOCIMIENTOS_COUNT" class="java.lang.Integer"/>
+	<parameter name="DS_MEDIDAS" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="P_MEDIDAS_COUNT" class="java.lang.Integer"/>
+	<title height="430">
+		<element kind="image" uuid="adf982ac-704f-48d1-bfbe-ff7cf4fd252e" x="20" y="0" width="360" height="45" onErrorType="Blank">
+			<expression><![CDATA[$P{P_LOGO_PERU}]]></expression>
+		</element>
+		<element kind="staticText" uuid="3f8fc7e7-7935-435d-aff5-e742d689a81a" x="0" y="70" width="515" height="30" style="title">
+			<text><![CDATA[RESUMEN DE DATOS PERSONALES Y LABORALES]]></text>
+		</element>
+		<element kind="staticText" uuid="281f127d-5703-425b-98aa-84117cb4e0ff" x="20" y="110" width="200" height="18" style="sectionTitle">
+			<text><![CDATA[DATOS GENERALES:]]></text>
+		</element>
+		<element kind="frame" uuid="9b7c49fd-4cea-4d9d-9086-d31eb927bd64" x="390" y="120" width="105" height="130">
+			<element kind="image" uuid="a88d86b8-fac9-4080-bbec-463a0b866302" x="2" y="2" width="101" height="126" onErrorType="Blank">
+				<expression><![CDATA[$P{P_FOTO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="251e14a5-b178-4df8-88a1-7b928e698ded" x="0" y="55" width="105" height="20" hTextAlign="Center" style="normal">
+				<text><![CDATA[]]></text>
+			</element>
+			<box>
+				<pen lineWidth="1.0"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="48a9441e-e524-4587-9291-b55a284a0271" x="20" y="130" width="120" height="14" style="normal">
+			<text><![CDATA[Nombre completo:]]></text>
+		</element>
+		<element kind="textField" uuid="c02c8f26-1801-46e9-a0c2-855ce0cd9ba2" x="145" y="130" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_NOMBRE_COMPLETO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="bc15d797-c659-43bc-8360-2bd650f350ba" x="20" y="145" width="120" height="14" style="normal">
+			<text><![CDATA[Tipo de documento:]]></text>
+		</element>
+		<element kind="textField" uuid="9295e32d-170f-4130-b1f2-f0d140b551dd" x="145" y="145" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_TIPO_DOCUMENTO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c820c632-f1f2-4a9f-a014-59887f5aefe8" x="20" y="160" width="120" height="14" style="normal">
+			<text><![CDATA[DNI:]]></text>
+		</element>
+		<element kind="textField" uuid="f4076222-96e5-447a-926c-34008612fc85" x="145" y="160" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_DNI}]]></expression>
+		</element>
+		<element kind="staticText" uuid="e71d313d-bd96-488c-a7a0-8c7e13f564ba" x="20" y="175" width="120" height="14" style="normal">
+			<text><![CDATA[Fecha nacimiento:]]></text>
+		</element>
+		<element kind="textField" uuid="15d6421e-b035-4d8b-9fcb-44a14ed57857" x="145" y="175" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_FECHA_NACIMIENTO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="d16f5057-9ac9-4c24-b63d-0f05ad3b6cc7" x="20" y="190" width="120" height="14" style="normal">
+			<text><![CDATA[Email:]]></text>
+		</element>
+		<element kind="textField" uuid="d1758995-f28f-45c9-928c-ff5625616709" x="145" y="190" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_EMAIL}]]></expression>
+		</element>
+		<element kind="staticText" uuid="62131f24-0ab9-4d43-8013-15afd6c24351" x="20" y="205" width="120" height="14" style="normal">
+			<text><![CDATA[Teléfono:]]></text>
+		</element>
+		<element kind="textField" uuid="6f2511e5-41c4-4a45-8f61-948a2acf7543" x="145" y="205" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_TELEFONO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="ad49eefe-4761-4109-b9a5-0574feeecd37" x="20" y="220" width="120" height="14" style="normal">
+			<text><![CDATA[Teléfono fijo:]]></text>
+		</element>
+		<element kind="textField" uuid="e4157e9e-d3de-4602-aa17-ad3dc8d6cb94" x="145" y="220" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_TELEFONO_FIJO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="86d73ffc-c917-407d-bc33-953c51482331" x="20" y="235" width="120" height="14" style="normal">
+			<text><![CDATA[Distrito:]]></text>
+		</element>
+		<element kind="textField" uuid="6bf59cff-0df4-470a-8f97-84935b53db6d" x="145" y="235" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_DISTRITO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="669be55b-b680-4d06-8d6f-838e0d8bc58a" x="20" y="250" width="120" height="14" style="normal">
+			<text><![CDATA[Dirección:]]></text>
+		</element>
+		<element kind="textField" uuid="3592cd61-2c35-43bf-af1f-03fa5157acec" x="145" y="250" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_DIRECCION}]]></expression>
+		</element>
+		<element kind="staticText" uuid="4410f9e4-3f1e-494c-a62a-7a4b5556fac1" x="20" y="265" width="120" height="14" style="normal">
+			<text><![CDATA[Nacionalidad:]]></text>
+		</element>
+		<element kind="textField" uuid="439f1c6a-c43c-46d4-99b2-8ba002214120" x="145" y="265" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_NACIONALIDAD}]]></expression>
+		</element>
+		<element kind="staticText" uuid="a6c32826-3545-43bf-9880-f5e4a2031e6b" x="20" y="280" width="120" height="14" style="normal">
+			<text><![CDATA[Ruc:]]></text>
+		</element>
+		<element kind="textField" uuid="d35f2c3c-1686-45da-ab4b-ea261a096db6" x="145" y="280" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_RUC}]]></expression>
+		</element>
+		<element kind="staticText" uuid="a3b1a34d-0517-4dd6-8b40-7aac0f0335f5" x="20" y="295" width="120" height="14" style="normal">
+			<text><![CDATA[Correo institucional:]]></text>
+		</element>
+		<element kind="textField" uuid="51d9a274-03c6-4b04-b687-446b59bfbccb" x="145" y="295" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_CORREO_INSTITUCIONAL}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c9ecee43-a273-47d8-8349-ad3a62dc764f" x="20" y="310" width="120" height="14" style="normal">
+			<text><![CDATA[Sexo:]]></text>
+		</element>
+		<element kind="textField" uuid="dbd86e9a-9670-45d3-a47e-a247fb1a0838" x="145" y="310" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_SEXO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c4a2e0f7-bd37-44f3-8d7e-deeda03f6272" x="20" y="325" width="120" height="14" style="normal">
+			<text><![CDATA[Estado civil:]]></text>
+		</element>
+		<element kind="textField" uuid="3ff1c35b-b7c8-4718-a2b2-9a171b687381" x="145" y="325" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_ESTADO_CIVIL}]]></expression>
+		</element>
+		<element kind="staticText" uuid="1a97add7-dfbc-4123-bc77-2d82fd36bd6f" x="20" y="340" width="120" height="14" style="normal">
+			<text><![CDATA[Profesión:]]></text>
+		</element>
+		<element kind="textField" uuid="7638b52c-41a1-4f0b-8a30-cc53474292b1" x="145" y="340" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_PROFESION}]]></expression>
+		</element>
+		<element kind="staticText" uuid="4967d984-dbcb-4338-b358-be17988f698e" x="20" y="355" width="120" height="14" style="normal">
+			<text><![CDATA[Grado académico:]]></text>
+		</element>
+		<element kind="textField" uuid="e5eaded7-2171-45e1-99e3-ec69285d3931" x="145" y="355" width="230" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_GRADO_ACADEMICO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="df031cfe-a385-4888-b6be-4f359db0a09e" x="20" y="375" width="260" height="18" style="sectionTitle">
+			<text><![CDATA[CONTACTO DE EMERGENCIA:]]></text>
+		</element>
+		<element kind="staticText" uuid="47b9f769-0e42-4b49-89ce-0ac80e7d2f14" x="20" y="398" width="70" height="14" style="normal">
+			<text><![CDATA[Nombre:]]></text>
+		</element>
+		<element kind="textField" uuid="d9355377-2faa-4b1f-b2fe-2de389272bc1" x="90" y="398" width="250" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_EMERG_NOMBRE}]]></expression>
+		</element>
+		<element kind="staticText" uuid="38bd5dab-5e9e-4700-bea9-b02ee6bdba59" x="20" y="413" width="70" height="14" style="normal">
+			<text><![CDATA[Parentesco:]]></text>
+		</element>
+		<element kind="textField" uuid="a76b8607-4548-4357-899e-60614584ee35" x="90" y="413" width="250" height="14" blankWhenNull="true" style="normal">
+			<expression><![CDATA[$P{P_EMERG_PARENTESCO}]]></expression>
+		</element>
+	</title>
+	<detail>
+		<band height="150" splitType="Stretch">
+			<element kind="staticText" uuid="80f6657c-c18e-478d-8e65-449393785640" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[FORMACIÓN ACADÉMICA]]></text>
+			</element>
+			<element kind="staticText" uuid="b3e18d22-664d-47e1-92e7-c9b68df331c6" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[FORMACIÓN ACADÉMICA]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="9929fc2c-bcb4-4011-b732-3b6ce4de776c" x="0" y="42" width="515" height="90">
+				<printWhenExpression><![CDATA[$P{P_FORMACION_COUNT} != null && $P{P_FORMACION_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="b8357b08-fd1b-4d18-b23b-65cee5aa9419" subDataset="FormacionDataset">
+						<dataSourceExpression><![CDATA[$P{DS_FORMACION}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="d3aa1b5d-4b00-4c85-b32c-515327739adc" width="90">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="9f21fd69-050a-4190-b356-f9a989cbc155" mode="Opaque" x="0" y="0" width="90" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[INSTITUCIÓN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="3ab7a5ac-0851-4e8d-b6ba-317e555263e8" x="0" y="0" width="90" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{institucion}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="b2986cbb-f734-4596-b5f0-c4a7c25f629c" width="85">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="5a599e3c-9e70-45f2-971c-e0c26fa21f8d" mode="Opaque" x="0" y="0" width="85" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[CARRERA]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="83b086e6-38fb-4139-8c7e-3bae82fd9c3b" x="0" y="0" width="85" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{carrera}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="ccf9a5b8-2c04-48fc-98a8-ef315e32f0f7" width="55">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="b8fac412-45ae-4407-8481-36e45521380f" mode="Opaque" x="0" y="0" width="55" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. INICIO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="e5dbf7a5-9e02-446b-a94b-789f1d4c2f2e" x="0" y="0" width="55" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaInicio}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="4d975332-2520-48ef-9809-3f4d0291ab45" width="55">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="13e21d49-e879-47bc-a129-3c05bd4cb4e2" mode="Opaque" x="0" y="0" width="55" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. FIN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="885f3238-6daa-40fe-a0a1-428fce045db8" x="0" y="0" width="55" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaFin}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="40e9515f-a751-46d4-8ccd-3d99b328c25c" width="70">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="b400e838-3e95-4112-915c-e85f1be782f8" mode="Opaque" x="0" y="0" width="70" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[GRADO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="4dd0a00f-73ec-4c4d-b61c-c90a51e6d724" x="0" y="0" width="70" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{gradoAcademico}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="0bdc9ed1-47ca-4537-8159-5ee63f1d040d" width="70">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="400b78b0-1ddc-4843-8617-163af13b3441" mode="Opaque" x="0" y="0" width="70" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NRO. TÍTULO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="636c52de-47a1-45b8-8d34-57b924d52d86" x="0" y="0" width="70" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nroTitulo}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="a3574367-89e7-4363-bd59-5e871a38b3e8" width="90">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="b50ea9a6-3c08-4b96-8dc6-11aef2122be6" mode="Opaque" x="0" y="0" width="90" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NIVEL]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="5a1ef3a0-0bd3-4aed-92b8-55505267611f" x="0" y="0" width="90" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nivelInstruccion}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="42a11600-1492-475b-a804-438199fdf25e" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_FORMACION_COUNT} == null || $P{P_FORMACION_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="150" splitType="Stretch">
+			<element kind="staticText" uuid="66b74581-3b26-4078-8f8a-3b61852a951b" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[CAPACITACIONES]]></text>
+			</element>
+			<element kind="staticText" uuid="3ae5f10d-c0b6-4682-890e-da91cd75c6f5" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[CAPACITACIONES]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="9e4f19b1-0975-45e1-93e0-99ea5da8f52d" x="0" y="42" width="515" height="90">
+				<printWhenExpression><![CDATA[$P{P_CAPACITACIONES_COUNT} != null && $P{P_CAPACITACIONES_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="1e84de84-b3d3-4b16-b21b-ab3036f79799" subDataset="CapacitacionesDataset">
+						<dataSourceExpression><![CDATA[$P{DS_CAPACITACIONES}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="28cebb0a-4536-4b17-946c-bf47fdab60c9" width="140">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="c48a90db-9d9d-4681-b55c-ecddf9b4261e" mode="Opaque" x="0" y="0" width="140" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NOMBRE CURSO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="2b96ebe2-3034-4af2-b642-d38f0542ce26" x="0" y="0" width="140" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nombreCurso}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="dad762a9-6ddb-4357-8a1d-5bcaf4b5413a" width="135">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="bbc47fc6-a4ba-4876-8763-c835876c1bf3" mode="Opaque" x="0" y="0" width="135" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[INSTITUCIÓN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="6c925a7f-1f43-42dd-95cc-5d8c88cb63cf" x="0" y="0" width="135" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{institucion}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="8a812e03-e825-469c-ad5a-258e55e88c1d" width="50">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="1311b750-a7bb-45bd-b057-d1555b775b72" mode="Opaque" x="0" y="0" width="50" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[HORAS]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="2871b669-873f-49b5-b5ef-abd58e6e45f8" x="0" y="0" width="50" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{horas}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="ca19a494-2c79-4370-8365-37bbe1d11228" width="60">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="3a709a62-1dd3-4bbf-a441-8faae0ce7e01" mode="Opaque" x="0" y="0" width="60" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. INICIO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="3c78b1fe-13e8-493e-b25a-feb4457fa122" x="0" y="0" width="60" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaInicio}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="f7fdb9c8-f20d-43e9-8e60-58bdb0ad4546" width="60">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="30f62ead-6918-4bd7-8df2-273cd2c49e04" mode="Opaque" x="0" y="0" width="60" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. FIN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="a7311db9-3303-4e4b-ac9f-0903f7ede2ce" x="0" y="0" width="60" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaFin}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="8eedb116-4cb9-4db3-866a-32feb42bbec8" width="70">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="4aef0c0a-1193-4278-9130-d0b96898addc" mode="Opaque" x="0" y="0" width="70" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[CERTIFICADO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="90b5a7b2-81f2-417d-a871-cfbce13cbddc" x="0" y="0" width="70" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{certificadoTexto}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="14176909-0be0-47f3-93f1-28c6dac23e43" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_CAPACITACIONES_COUNT} == null || $P{P_CAPACITACIONES_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="130" splitType="Stretch">
+			<element kind="staticText" uuid="5119d6c4-82a9-444d-83ff-6b06047253d5" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[CONOCIMIENTOS INFORMÁTICOS]]></text>
+			</element>
+			<element kind="staticText" uuid="8adc5fd1-adce-42e9-b6c5-c94cc4fd5cd3" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[CONOCIMIENTOS INFORMÁTICOS]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="be68ce47-ba23-4ff0-b6b0-4f0968a42749" x="0" y="42" width="515" height="84">
+				<printWhenExpression><![CDATA[$P{P_CONOCIMIENTOS_COUNT} != null && $P{P_CONOCIMIENTOS_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="bd04aeda-3526-41c2-9572-a25fc20eeb31" subDataset="ConocimientosDataset">
+						<dataSourceExpression><![CDATA[$P{DS_CONOCIMIENTOS}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="dd59bdc1-7c7d-46f6-8cac-785ba0da492e" width="172">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="9c963679-d53c-43ee-b1ca-6e16783f5b78" mode="Opaque" x="0" y="0" width="172" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[HERRAMIENTA]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="33e4c858-bfdb-4fc6-bc41-f9db58387514" x="0" y="0" width="172" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{herramienta}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="6e2d1499-7720-47c2-8d47-c1c7d5b03005" width="171">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="bb398ae4-f5b9-42ca-845b-9d827bdd536c" mode="Opaque" x="0" y="0" width="171" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NIVEL]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="461c35a0-9e60-472f-849d-15a5dc56bd6b" x="0" y="0" width="171" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nivel}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="69c07936-b2df-480e-9543-9a73b8b0b0b3" width="172">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="1a8ef2b9-5ea9-4310-ba9a-106ce23739bd" mode="Opaque" x="0" y="0" width="172" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[CERTIFICADO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="a244f661-57c5-452e-80b5-9a9d71cf4fc3" x="0" y="0" width="172" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{certificadoTexto}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="2f1c83e0-3d8f-4ff3-860e-892d13cb7023" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_CONOCIMIENTOS_COUNT} == null || $P{P_CONOCIMIENTOS_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="150" splitType="Stretch">
+			<element kind="staticText" uuid="56e379b8-c6df-4221-9e80-d832c12dbe95" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[FAMILIARES]]></text>
+			</element>
+			<element kind="staticText" uuid="b2ffc01b-585f-4c9b-8051-ff58313a2aa3" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[FAMILIARES]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="14d74a48-81bf-4de7-809e-3e0821cbed77" x="0" y="42" width="515" height="90">
+				<printWhenExpression><![CDATA[$P{P_FAMILIARES_COUNT} != null && $P{P_FAMILIARES_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="5aeaa864-13bf-4d1e-8a51-464ebcb812bd" subDataset="FamiliaresDataset">
+						<dataSourceExpression><![CDATA[$P{DS_FAMILIARES}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="fe1306fc-b0fd-462d-9f6e-982aa0d3abf7" width="110">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="c7e97245-beb5-41c0-a8c1-8da0882ad9ad" mode="Opaque" x="0" y="0" width="110" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NOMBRE COMPLETO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="64a2e7dd-9a42-4425-bbb4-228348a29af7" x="0" y="0" width="110" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nombreCompleto}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="dba3511f-539f-45cc-81e1-8b67a16f10ae" width="80">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="bfe91667-fd9b-4a92-a579-db354fd3a4bb" mode="Opaque" x="0" y="0" width="80" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[PARENTESCO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="bfbf7895-384e-4580-960b-f059fc34de77" x="0" y="0" width="80" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{parentesco}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="f57173d1-6d05-45d1-8cf2-1dcb38958cf8" width="80">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="9e7157d8-574e-4571-b4e7-a46815e24573" mode="Opaque" x="0" y="0" width="80" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. NACIMIENTO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="299caf4c-3657-4167-898f-45b5b480da34" x="0" y="0" width="80" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaNacimiento}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="17ce9b2e-b694-4754-b175-b1108970a4ab" width="80">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="a5794f12-4c90-40df-b6ec-4f2cf0dba19c" mode="Opaque" x="0" y="0" width="80" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[TIPO DOC.]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="e19ace53-6785-4549-8c9b-40f9f80ebe78" x="0" y="0" width="80" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{tipoDocumento}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="1eac5e1a-8a7f-4aaf-9509-cdbf1c832dc3" width="90">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="1ff6eef2-f485-431c-b211-4bac8f73a4c6" mode="Opaque" x="0" y="0" width="90" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[NRO DOC.]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="54dc8210-e52e-4b77-a10f-f4601fa7a78d" x="0" y="0" width="90" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{nroDocumento}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="cdbca74a-4606-43ac-8322-348f19a0f3c6" width="75">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="e61f3eb4-bbbe-40f2-bfc2-212e79568748" mode="Opaque" x="0" y="0" width="75" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[TELÉFONO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="169eba0c-24e3-415f-997b-befc4c72166f" x="0" y="0" width="75" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{telefono}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="0eaa3f13-910c-4709-816d-2a5e69fa7fec" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_FAMILIARES_COUNT} == null || $P{P_FAMILIARES_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="150" splitType="Stretch">
+			<element kind="staticText" uuid="72203378-14e6-4c23-9478-63884377886e" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[EXPERIENCIA LABORAL EXTERNA]]></text>
+			</element>
+			<element kind="staticText" uuid="36e19f5e-f1f2-4f6e-88a7-2ae512c520dd" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[EXPERIENCIA LABORAL EXTERNA]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="9af6d753-c30f-4f9f-8fac-f76771ba6cf3" x="0" y="42" width="515" height="90">
+				<printWhenExpression><![CDATA[$P{P_EXPERIENCIA_COUNT} != null && $P{P_EXPERIENCIA_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="0ae74f5d-e54f-4c83-ae02-7734bc820cc1" subDataset="ExperienciaDataset">
+						<dataSourceExpression><![CDATA[$P{DS_EXPERIENCIA}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="c1e30104-e294-48d0-af18-d767310e136d" width="100">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="27bc5035-0a39-4115-915f-0c423bb2f8c8" mode="Opaque" x="0" y="0" width="100" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[EMPRESA]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="e9420c32-8ed5-4632-977f-86bd3fda595a" x="0" y="0" width="100" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{empresa}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="1196b353-6f7c-447e-b21e-7e9b4169178a" width="100">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="ed17d5e8-711b-4f94-8468-bd7600f1c0cb" mode="Opaque" x="0" y="0" width="100" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[CARGO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="d77f41cd-86de-4a30-aa1b-a52c60b514b4" x="0" y="0" width="100" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{cargo}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="49f43b1d-7015-4920-bb64-d918a91261f5" width="75">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="4a1eb225-b122-44ed-ae7e-e57e554bd46c" mode="Opaque" x="0" y="0" width="75" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. INICIO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="ad7511f0-a793-4928-8526-fa8bdc5e46ee" x="0" y="0" width="75" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaInicio}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="710b5145-83df-410f-858f-ec62ffe3d489" width="75">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="160eebfc-dbfd-4b18-af3c-097ff14798df" mode="Opaque" x="0" y="0" width="75" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. FIN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="02fde87a-7462-4a6f-8195-feab437de09c" x="0" y="0" width="75" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaFin}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="9b4d8f9c-919c-4fef-9994-3fb38bcec108" width="165">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="04094d7d-2bde-410d-8f79-fcaa267ec430" mode="Opaque" x="0" y="0" width="165" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[FUNCIONES]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="d4d5ecbd-b68f-402a-b9bb-9f4537ff3123" x="0" y="0" width="165" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{funciones}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="c469ab5a-0eca-42a8-b9c8-1e170183f4d1" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_EXPERIENCIA_COUNT} == null || $P{P_EXPERIENCIA_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="130" splitType="Stretch">
+			<element kind="staticText" uuid="62d59d5e-6337-41ab-9f03-0e785a6f63de" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[RECONOCIMIENTOS]]></text>
+			</element>
+			<element kind="staticText" uuid="ae20f04e-6187-447b-832e-08ae8361e188" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[RECONOCIMIENTOS]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="d81d8d1a-6c4b-4d7d-a06f-30f976ada1b4" x="0" y="42" width="515" height="86">
+				<printWhenExpression><![CDATA[$P{P_RECONOCIMIENTOS_COUNT} != null && $P{P_RECONOCIMIENTOS_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="7ae15360-3f48-40c8-a90b-11e64104300b" subDataset="ReconocimientosDataset">
+						<dataSourceExpression><![CDATA[$P{DS_RECONOCIMIENTOS}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="228c061d-3660-489a-bb1b-57a2d5bd6514" width="170">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="e292d540-548f-47d9-b0d0-015b8dd18740" mode="Opaque" x="0" y="0" width="170" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[TIPO DE RECONOCIMIENTO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="bb7b5955-b9af-43d1-b0e7-05912ebb6f40" x="0" y="0" width="170" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{tipoReconocimiento}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="5b30df48-6a4f-4a76-8df3-5d5722cb36a6" width="190">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="eb006467-f2e8-4080-9ff5-c24a358fe537" mode="Opaque" x="0" y="0" width="190" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[DESCRIPCIÓN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="22f740df-6fea-4809-a712-7744ff3008b0" x="0" y="0" width="190" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{descripcion}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="e7067ade-f30e-4ea5-ad84-423b3a324266" width="155">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="cadc3a75-2bfa-46df-bf53-ac1d3e4d67fc" mode="Opaque" x="0" y="0" width="155" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[FECHA]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="b8dc7c45-e216-4b97-8eec-582a7b945edf" x="0" y="0" width="155" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaReconocimiento}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="a5fc7384-21f3-40ac-a451-29651f0b0766" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_RECONOCIMIENTOS_COUNT} == null || $P{P_RECONOCIMIENTOS_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+		<band height="130" splitType="Stretch">
+			<element kind="staticText" uuid="cdf08d38-28d6-49f3-8a4b-38fa83e7be67" x="0" y="0" width="515" height="18" style="sectionTitle">
+				<text><![CDATA[MEDIDAS DISCIPLINARIAS]]></text>
+			</element>
+			<element kind="staticText" uuid="5b7e50a7-0416-40a7-9967-bb8664c3caa8" mode="Opaque" x="0" y="22" width="515" height="18" backcolor="#A6A6A6" hTextAlign="Center" vTextAlign="Middle" style="sectionHeader">
+				<text><![CDATA[MEDIDAS DISCIPLINARIAS]]></text>
+				<box style="sectionHeader">
+					<pen lineWidth="0.6"/>
+				</box>
+			</element>
+			<element kind="component" uuid="00086773-58fd-4910-93ef-93bb4f4c0813" x="0" y="42" width="515" height="88">
+				<printWhenExpression><![CDATA[$P{P_MEDIDAS_COUNT} != null && $P{P_MEDIDAS_COUNT}.intValue() > 0]]></printWhenExpression>
+				<component kind="table">
+					<datasetRun uuid="0ca75ef0-42ed-47cd-a7d6-572b05245a10" subDataset="MedidasDataset">
+						<dataSourceExpression><![CDATA[$P{DS_MEDIDAS}]]></dataSourceExpression>
+					</datasetRun>
+					<column kind="single" uuid="9eee1333-2dc1-4c7a-90a0-5c28bf17f139" width="130">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="edf7c29a-28da-434f-b585-6ed1be1fa94b" mode="Opaque" x="0" y="0" width="130" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[TIPO DE MEDIDA]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="e81be050-38be-4bc7-96d8-896dc990f84c" x="0" y="0" width="130" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{tipoMedida}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="b2a4f64c-9fc5-4805-ac4f-a4c463252ab6" width="185">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="f918e19a-b29e-4ecb-9bae-0a69f1cd2250" mode="Opaque" x="0" y="0" width="185" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[DESCRIPCIÓN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="87571543-d8e2-4ab8-b9f3-11fc7f70096d" x="0" y="0" width="185" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{descripcion}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="7279c04d-39f5-49ed-bfbe-7bace7640257" width="100">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="16a1efa3-7713-4160-ae2e-ce53fab72aa5" mode="Opaque" x="0" y="0" width="100" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. INICIO]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="e899f525-c6e2-420b-9346-36dba77b1d60" x="0" y="0" width="100" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaInicio}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+					<column kind="single" uuid="20cf29f2-b10d-4828-be12-8745246444e7" width="100">
+						<columnHeader height="24" rowSpan="1">
+							<element kind="staticText" uuid="024a9748-324a-45a2-9a5e-d81eafb157fa" mode="Opaque" x="0" y="0" width="100" height="24" backcolor="#E6E6E6" style="tableHeader">
+								<text><![CDATA[F. FIN]]></text>
+								<box style="tableHeader">
+									<pen lineWidth="0.6"/>
+								</box>
+							</element>
+						</columnHeader>
+						<detailCell height="22">
+							<element kind="textField" uuid="54f2d1f6-0a2d-4156-ba34-2b0150aa92cc" x="0" y="0" width="100" height="22" blankWhenNull="true" style="tableCell">
+								<expression><![CDATA[$F{fechaFin}]]></expression>
+								<box leftPadding="2" rightPadding="2" style="tableCell">
+									<pen lineWidth="0.5"/>
+								</box>
+							</element>
+						</detailCell>
+					</column>
+				</component>
+			</element>
+			<element kind="staticText" uuid="7119de6b-b39d-4b23-b502-db4ca97b60a2" x="0" y="42" width="515" height="28" hTextAlign="Center" vTextAlign="Middle" style="noData">
+				<printWhenExpression><![CDATA[$P{P_MEDIDAS_COUNT} == null || $P{P_MEDIDAS_COUNT}.intValue() == 0]]></printWhenExpression>
+				<text><![CDATA[No presenta registro]]></text>
+				<box style="noData">
+					<pen lineWidth="0.5"/>
+				</box>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="20">
+		<element kind="textField" uuid="199d29de-1793-425d-a281-46186ee848ff" x="360" y="3" width="155" height="12" hTextAlign="Right" style="small">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+</jasperReport>
