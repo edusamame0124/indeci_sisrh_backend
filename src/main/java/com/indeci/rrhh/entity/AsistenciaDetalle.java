@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Día calendario de la asistencia de un período (M04 / SPEC §12.2 PANTALLA-02).
@@ -40,6 +41,12 @@ public class AsistenciaDetalle {
     @Column(name = "MARCA_SALIDA", length = 16)
     private String marcaSalida;
 
+    @Column(name = "MARCA3", length = 16)
+    private String marca3;
+
+    @Column(name = "MARCA4", length = 16)
+    private String marca4;
+
     @Column(name = "HORA_ENTRADA_ESPERADA", length = 16)
     private String horaEntradaEsperada;
 
@@ -66,4 +73,17 @@ public class AsistenciaDetalle {
 
     @Column(name = "ORIGEN", length = 32)
     private String origen;
+
+    /** Decisión RR. HH. sobre la papeleta del día: 1=autorizada (Presente), 0=no autorizada (Observado descontable), null=sin decisión. */
+    @Column(name = "PAPELETA_AUTORIZADA")
+    private Integer papeletaAutorizada;
+
+    @Column(name = "PAPELETA_MOTIVO_RECHAZO", length = 500)
+    private String papeletaMotivoRechazo;
+
+    @Column(name = "PAPELETA_DECISION_USUARIO", length = 100)
+    private String papeletaDecisionUsuario;
+
+    @Column(name = "PAPELETA_DECISION_FECHA")
+    private LocalDateTime papeletaDecisionFecha;
 }

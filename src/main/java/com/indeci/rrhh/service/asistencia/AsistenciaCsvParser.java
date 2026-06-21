@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -14,8 +15,21 @@ import java.util.Locale;
 @Component
 public class AsistenciaCsvParser {
 
-    private static final DateTimeFormatter FECHA_MARCADOR =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /**
+     * Formatos del biométrico INDECI: día sin cero ({@code 1/06/2026}) y variantes con guiones.
+     */
+    private static final DateTimeFormatter[] FECHA_MARCADOR = {
+            fmt("d/MM/uuuu"),
+            fmt("dd/MM/uuuu"),
+            fmt("d/M/uuuu"),
+            fmt("d-M-uuuu"),
+            fmt("dd-MM-uuuu"),
+    };
+
+    private static DateTimeFormatter fmt(String pattern) {
+        return DateTimeFormatter.ofPattern(pattern, Locale.ROOT)
+                .withResolverStyle(ResolverStyle.SMART);
+    }
 
     public ParseResult parse(byte[] bytes) {
         String texto = decodificar(bytes);
@@ -59,19 +73,25 @@ public class AsistenciaCsvParser {
         row.setFecha(parseFecha(valor(headers, valores, "FECHA")));
         row.setDni(normalizarDni(valor(headers, valores, "DNI")));
         row.setNombre(valor(headers, valores, "NOMBRE"));
-        row.setHoraEntradaEsperada(valor(headers, valores, "ENT.", "ENT"));
+        row.setHoraEntradaEsperada(valor(headers, valores, "ENTRADA", "ENT.", "ENT"));
+        row.setSalidaProgramada(valor(headers, valores, "SALIDA", "SAL."));
         row.setMarca1(valor(headers, valores, "MARCA1"));
         row.setMarca2(valor(headers, valores, "MARCA2"));
+        row.setMarca3(valor(headers, valores, "MARCA3"));
+        row.setMarca4(valor(headers, valores, "MARCA4"));
+        row.setTardanza(valor(headers, valores, "TARD.", "TARD"));
         row.setEmpresa(valor(headers, valores, "EMPRESA"));
         row.setGrupo(valor(headers, valores, "GRUPO"));
-        row.setHorasTrabajadas(valor(headers, valores, "T/H.TRAB", "T/H.Trab"));
+        row.setRefrigerio(valor(headers, valores, "REFRIG.", "REFRIG"));
+        row.setExcesoRefrigerio(valor(headers, valores, "E/REFRIG.", "E/REFRIG"));
+        row.setTiempoRefrigerio(valor(headers, valores, "T/REFRIG", "T/REFRIG."));
+        row.setTiempoAntesSalida(valor(headers, valores, "T/AS", "T/AS."));
+        row.setHorasTrabajadas(valor(headers, valores, "H/TRAB.", "H/TRAB", "T/H.TRAB", "T/H.Trab"));
         row.setHorasExtra25(valor(headers, valores, "H25%"));
         row.setHorasExtra35(valor(headers, valores, "H35%"));
         row.setHorasExtra100(valor(headers, valores, "H100%"));
         row.setHorasExtraTotal(valor(headers, valores, "T/H.EXT", "T/H.Ext"));
-        row.setTardanza(valor(headers, valores, "TARD.", "TARD"));
-        row.setSalidaAnticipada(valor(headers, valores, "S/A.T", "S/A.t"));
-        row.setObservacion(valor(headers, valores, "OBSERVACIÓN", "OBSERVACION"));
+        row.setObservacion(valor(headers, valores, "OBSERVACIONES", "OBSERVACIÓN", "OBSERVACION"));
         return row;
     }
 
@@ -90,11 +110,15 @@ public class AsistenciaCsvParser {
         if (texto == null || texto.isBlank()) {
             return null;
         }
-        try {
-            return LocalDate.parse(texto.trim(), FECHA_MARCADOR);
-        } catch (DateTimeParseException ex) {
-            return null;
+        String limpio = texto.trim();
+        for (DateTimeFormatter formatter : FECHA_MARCADOR) {
+            try {
+                return LocalDate.parse(limpio, formatter);
+            } catch (DateTimeParseException ignored) {
+                // siguiente formato
+            }
         }
+        return null;
     }
 
     private String normalizarDni(String dni) {
@@ -151,15 +175,35 @@ public class AsistenciaCsvParser {
     }
 
     private String decodificar(byte[] bytes) {
-        String utf8 = new String(bytes, StandardCharsets.UTF_8);
+        byte[] sinBom = quitarBomBytes(bytes);
+        String utf8 = stripBom(new String(sinBom, StandardCharsets.UTF_8));
         if (!utf8.contains("\uFFFD")) {
             return utf8;
         }
-        String windows1252 = new String(bytes, Charset.forName("Windows-1252"));
+        String windows1252 = stripBom(new String(sinBom, Charset.forName("Windows-1252")));
         if (!windows1252.contains("\uFFFD")) {
             return windows1252;
         }
-        return new String(bytes, Charset.forName("ISO-8859-1"));
+        return stripBom(new String(sinBom, Charset.forName("ISO-8859-1")));
+    }
+
+    private byte[] quitarBomBytes(byte[] bytes) {
+        if (bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xEF
+                && (bytes[1] & 0xFF) == 0xBB
+                && (bytes[2] & 0xFF) == 0xBF) {
+            byte[] trimmed = new byte[bytes.length - 3];
+            System.arraycopy(bytes, 3, trimmed, 0, trimmed.length);
+            return trimmed;
+        }
+        return bytes;
+    }
+
+    private String stripBom(String texto) {
+        if (texto != null && !texto.isEmpty() && texto.charAt(0) == '\uFEFF') {
+            return texto.substring(1);
+        }
+        return texto;
     }
 
     private String detectarEncoding(byte[] bytes) {

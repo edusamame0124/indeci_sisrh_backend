@@ -1,7 +1,11 @@
 package com.indeci.rrhh.repository;
 
 import com.indeci.rrhh.entity.AsistenciaImportacionFila;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -11,4 +15,28 @@ public interface AsistenciaImportacionFilaRepository
     List<AsistenciaImportacionFila> findByImportacionIdOrderByNumeroFila(Long importacionId);
 
     void deleteByImportacionId(Long importacionId);
+
+    /**
+     * F2 — Detalle paginado server-side con filtros (req 11/12, P8).
+     * Filtros opcionales: dni (contiene), nombre (contiene en CSV o sistema),
+     * estado (estadoFila exacto), soloErrores (ERROR u OBSERVADA).
+     */
+    @Query("""
+            SELECT f FROM AsistenciaImportacionFila f
+             WHERE f.importacionId = :importacionId
+               AND (:dni IS NULL OR f.dni LIKE CONCAT('%', :dni, '%'))
+               AND (:nombre IS NULL
+                    OR UPPER(f.nombreCsv) LIKE UPPER(CONCAT('%', :nombre, '%'))
+                    OR UPPER(f.nombreSistema) LIKE UPPER(CONCAT('%', :nombre, '%')))
+               AND (:estado IS NULL OR f.estadoFila = :estado)
+               AND (:soloErrores = false OR f.estadoFila IN ('ERROR', 'OBSERVADA'))
+             ORDER BY f.numeroFila
+            """)
+    Page<AsistenciaImportacionFila> buscarDetalle(
+            @Param("importacionId") Long importacionId,
+            @Param("dni") String dni,
+            @Param("nombre") String nombre,
+            @Param("estado") String estado,
+            @Param("soloErrores") boolean soloErrores,
+            Pageable pageable);
 }

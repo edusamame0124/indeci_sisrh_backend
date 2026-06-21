@@ -64,15 +64,9 @@ public class EmpleadoPensionService {
         // 🔹 guardar normal
         EmpleadoPension entity = new EmpleadoPension();
         entity.setEmpleadoId(dto.getEmpleadoId());
-        entity.setRegimenPensionarioId(
-                dto.getRegimenPensionarioId());
-
-        entity.setTipoComisionAfpId(
-                dto.getTipoComisionAfpId());
-
-        entity.setTipoRegimen(
-                dto.getTipoRegimen());
-       
+        entity.setRegimenPensionarioId(dto.getRegimenPensionarioId());
+        entity.setTipoComisionAfpId(dto.getTipoComisionAfpId());
+        entity.setTipoRegimen(dto.getTipoRegimen());
         entity.setCuspp(dto.getCuspp());
         entity.setPorcentajeAporte(dto.getPorcentajeAporte());
         entity.setPorcentajeComision(dto.getPorcentajeComision());
@@ -80,6 +74,8 @@ public class EmpleadoPensionService {
         entity.setActivo(1);
         entity.setFechaInicio(LocalDate.now());
         entity.setCreatedAt(LocalDateTime.now());
+
+        aplicarCondicionEspecialAfp(entity, dto);
 
         repository.save(entity);
 
@@ -146,11 +142,12 @@ public class EmpleadoPensionService {
                     
                     
 
-                    dto.setTipoRegimen(
-                            e.getTipoRegimen());
-
-                    dto.setActivo(
-                            e.getActivo());
+                    dto.setTipoRegimen(e.getTipoRegimen());
+                    dto.setActivo(e.getActivo());
+                    dto.setCondicionEspecialAfp(e.getCondicionEspecialAfp());
+                    dto.setFechaCondicionAfp(e.getFechaCondicionAfp());
+                    dto.setDocumentoSustentoId(e.getDocumentoSustentoId());
+                    dto.setObservacionCondicionAfp(e.getObservacionCondicionAfp());
                     return dto;
                 }).toList();
     }
@@ -166,19 +163,15 @@ public class EmpleadoPensionService {
         
    
 
-        entity.setRegimenPensionarioId(
-                dto.getRegimenPensionarioId());
-
-        entity.setTipoComisionAfpId(
-                dto.getTipoComisionAfpId());
-
-        entity.setTipoRegimen(
-                dto.getTipoRegimen());
-     
+        entity.setRegimenPensionarioId(dto.getRegimenPensionarioId());
+        entity.setTipoComisionAfpId(dto.getTipoComisionAfpId());
+        entity.setTipoRegimen(dto.getTipoRegimen());
         entity.setCuspp(dto.getCuspp());
         entity.setPorcentajeAporte(dto.getPorcentajeAporte());
         entity.setPorcentajeComision(dto.getPorcentajeComision());
         entity.setPorcentajeSeguro(dto.getPorcentajeSeguro());
+
+        aplicarCondicionEspecialAfp(entity, dto);
 
         repository.save(entity);
 
@@ -200,6 +193,46 @@ public class EmpleadoPensionService {
         repository.save(entity);
 
         auditoriaContext.setDetalle("Pensión desactivada ID: " + id);
+    }
+
+    // ============================
+    // CONDICIÓN ESPECIAL AFP
+    // ============================
+
+    private static final Set<String> CONDICIONES_SIN_APORTE_AFP = Set.of(
+            "RETIRO_955", "PENSIONISTA_SPP");
+
+    /**
+     * Aplica los campos de condición especial AFP a la entidad.
+     * Para AFP: persiste la condición (default NO_APLICA).
+     * RETIRO_955 y PENSIONISTA_SPP requieren observación de sustento.
+     * Para ONP y otros regímenes: limpia los campos (no aplica).
+     */
+    private void aplicarCondicionEspecialAfp(EmpleadoPension entity, EmpleadoPensionDto dto) {
+        if (!"AFP".equalsIgnoreCase(dto.getTipoRegimen())) {
+            entity.setCondicionEspecialAfp(null);
+            entity.setFechaCondicionAfp(null);
+            entity.setDocumentoSustentoId(null);
+            entity.setObservacionCondicionAfp(null);
+            return;
+        }
+
+        String condicion = dto.getCondicionEspecialAfp() != null
+                ? dto.getCondicionEspecialAfp().trim().toUpperCase()
+                : "NO_APLICA";
+
+        if (CONDICIONES_SIN_APORTE_AFP.contains(condicion)) {
+            if (dto.getObservacionCondicionAfp() == null
+                    || dto.getObservacionCondicionAfp().isBlank()) {
+                throw new NegocioException(
+                        "La condición " + condicion + " requiere observación de sustento documental.");
+            }
+        }
+
+        entity.setCondicionEspecialAfp(condicion);
+        entity.setFechaCondicionAfp(dto.getFechaCondicionAfp());
+        entity.setDocumentoSustentoId(dto.getDocumentoSustentoId());
+        entity.setObservacionCondicionAfp(dto.getObservacionCondicionAfp());
     }
 
     // ============================

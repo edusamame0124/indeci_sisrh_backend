@@ -8,13 +8,16 @@ import com.indeci.rrhh.dto.PeriodoPlanillaDto;
 import com.indeci.rrhh.dto.PeriodoPlanillaResponseDto;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.PeriodoPlanilla;
+import com.indeci.rrhh.repository.AfpParametroVigenciaRepository;
 import com.indeci.rrhh.repository.ConciliacionAirhspRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
+import com.indeci.rrhh.repository.OnpParametroVigenciaRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,10 +40,12 @@ public class PeriodoPlanillaService {
     private static final String APROBADO    = "APROBADO";
     private static final String CERRADO     = "CERRADO";
 
-    private final PeriodoPlanillaRepository repository;
-    private final ConciliacionAirhspRepository conciliacionRepository;
-    private final MovimientoPlanillaRepository movimientoRepository;
-    private final AuditoriaContext auditoriaContext;
+    private final PeriodoPlanillaRepository      repository;
+    private final ConciliacionAirhspRepository   conciliacionRepository;
+    private final MovimientoPlanillaRepository   movimientoRepository;
+    private final AfpParametroVigenciaRepository afpVigenciaRepository;
+    private final OnpParametroVigenciaRepository onpVigenciaRepository;
+    private final AuditoriaContext               auditoriaContext;
 
     // ============================
     // CREAR
@@ -172,6 +177,7 @@ public class PeriodoPlanillaService {
     // ============================
 
     @Auditable(accion = "CERRAR_PERIODO_PLANILLA")
+    @Transactional
     public void cerrar(Long id) {
         PeriodoPlanilla entity = obtener(id);
         if (!APROBADO.equals(entity.getEstado())) {
@@ -182,7 +188,19 @@ public class PeriodoPlanillaService {
         entity.setEstado(CERRADO);
         entity.setFechaCierre(LocalDateTime.now());
         repository.save(entity);
-        auditoriaContext.setDetalle("Periodo cerrado ID: " + id);
+
+        // B1 — Bloquear las vigencias AFP/ONP utilizadas en este período.
+        // Impide edición posterior, preservando la trazabilidad normativa.
+        bloquearVigenciasUsadas(entity.getPeriodo());
+
+        auditoriaContext.setDetalle("Periodo cerrado ID: " + id + " — vigencias previsionales bloqueadas");
+    }
+
+    private void bloquearVigenciasUsadas(String periodo) {
+        List<Long> afpIds = movimientoRepository.findDistinctAfpVigenciaIdsByPeriodo(periodo);
+        List<Long> onpIds = movimientoRepository.findDistinctOnpVigenciaIdsByPeriodo(periodo);
+        if (!afpIds.isEmpty()) afpVigenciaRepository.bloquearByIds(afpIds);
+        if (!onpIds.isEmpty()) onpVigenciaRepository.bloquearByIds(onpIds);
     }
 
     // ============================

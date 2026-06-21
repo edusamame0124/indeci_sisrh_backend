@@ -1,8 +1,13 @@
 package com.indeci.rrhh.repository;
 
 import com.indeci.rrhh.entity.AsistenciaDetalle;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface AsistenciaDetalleRepository
@@ -11,4 +16,35 @@ public interface AsistenciaDetalleRepository
     List<AsistenciaDetalle> findByCabeceraIdOrderByDia(Long cabeceraId);
 
     void deleteByCabeceraId(Long cabeceraId);
+
+    /**
+     * Consulta diaria paginada: detalle del día + cabecera activa + persona.
+     * Retorna Object[] con columnas en orden fijo (ver AsistenciaService#mapearDiariaRow).
+     */
+    @Query("""
+            SELECT det.id, cab.id, cab.empleadoId, p.dni, p.nombreCompleto, det.dia,
+                   det.marcaEntrada, det.marcaSalida, det.tipoDia,
+                   det.horasTrabajadasMin, det.minutosSalidaAnticipada, cab.periodo, det.origen,
+                   det.minutosTardanza, det.observacion, det.marca3, det.marca4,
+                   det.horaEntradaEsperada, det.horasExtra25Min, det.horasExtra35Min,
+                   det.horasExtra100Min, det.horasExtraTotalMin,
+                   det.papeletaAutorizada, det.papeletaMotivoRechazo
+              FROM AsistenciaDetalle det,
+                   AsistenciaCabecera cab,
+                   Empleado e,
+                   Persona p
+             WHERE cab.id = det.cabeceraId
+               AND e.id = cab.empleadoId
+               AND p.id = e.personaId
+               AND cab.activo = 1
+               AND det.dia = :fecha
+               AND (:dni IS NULL OR p.dni LIKE CONCAT('%', :dni, '%'))
+               AND (:q IS NULL OR UPPER(p.nombreCompleto) LIKE UPPER(CONCAT('%', :q, '%')))
+             ORDER BY p.nombreCompleto, p.dni
+            """)
+    Page<Object[]> buscarDiaria(
+            @Param("fecha") LocalDate fecha,
+            @Param("dni") String dni,
+            @Param("q") String q,
+            Pageable pageable);
 }

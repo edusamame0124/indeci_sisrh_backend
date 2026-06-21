@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -63,4 +64,30 @@ public class AsistenciaImportacion {
 
     @Column(name = "RESULTADO_JSON")
     private String resultadoJson;
+
+    // ---- Auditoría de ciclo (V010_80) ----
+
+    @Column(name = "TAMANO_BYTES")
+    private Long tamanoBytes;
+
+    @Column(name = "EMPLEADOS_DETECTADOS")
+    private Integer empleadosDetectados = 0;
+
+    @Column(name = "PERIODO_DETECTADO_INI")
+    private LocalDate periodoDetectadoIni;
+
+    @Column(name = "PERIODO_DETECTADO_FIN")
+    private LocalDate periodoDetectadoFin;
+
+    @Column(name = "USUARIO_VALIDACION")
+    private String usuarioValidacion;
+
+    @Column(name = "FECHA_VALIDACION")
+    private LocalDateTime fechaValidacion;
+
+    @Column(name = "USUARIO_CONFIRMACION")
+    private String usuarioConfirmacion;
+
+    @Column(name = "FECHA_CONFIRMACION")
+    private LocalDateTime fechaConfirmacion;
 }

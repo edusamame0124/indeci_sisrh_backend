@@ -4,6 +4,8 @@ import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.previsional.*;
 import com.indeci.rrhh.service.ParametroPrevisionalService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -42,8 +44,10 @@ public class ParametroPrevisionalController {
 
     @GetMapping("/afp/parametros")
     public ApiResponse<List<AfpParametroDto>> afpParametros(
-            @RequestParam(required = false) String estado) {
-        return new ApiResponse<>("OK", "Parámetros AFP", service.listarAfpParametros(estado));
+            @RequestParam(required = false) String estado,
+            @RequestParam(defaultValue = "false") boolean incluirAnulados) {
+        return new ApiResponse<>("OK", "Parámetros AFP",
+                service.listarAfpParametros(estado, incluirAnulados));
     }
 
     @PostMapping("/afp/parametros")
@@ -66,17 +70,39 @@ public class ParametroPrevisionalController {
         return new ApiResponse<>("OK", "Vigencia AFP cerrada", null);
     }
 
+    @PostMapping("/afp/parametros/{id}/eliminar")
+    public ApiResponse<Void> eliminarAfpVigencia(
+            @PathVariable Long id,
+            @Valid @RequestBody AnularVigenciaRequestDto request) {
+        service.anularAfpVigencia(id, request.getMotivo(), usuarioActual());
+        return new ApiResponse<>("OK",
+                "Vigencia AFP anulada correctamente. Ya no será considerada por el motor de planilla.", null);
+    }
+
     @PostMapping("/afp/parametros/{id}/duplicar")
-    public ApiResponse<AfpParametroDto> duplicarAfpVigencia(@PathVariable Long id) {
+    public ApiResponse<AfpParametroDto> duplicarAfpVigencia(
+            @PathVariable Long id,
+            @Valid @RequestBody DuplicarVigenciaRequestDto request) {
         return new ApiResponse<>("OK", "Vigencia AFP duplicada",
-                service.duplicarAfpVigencia(id, usuarioActual()));
+                service.duplicarAfpVigencia(id, request, usuarioActual()));
+    }
+
+    @PostMapping("/onp/parametros/{id}/duplicar")
+    public ApiResponse<OnpParametroDto> duplicarOnpVigencia(
+            @PathVariable Long id,
+            @Valid @RequestBody DuplicarVigenciaRequestDto request) {
+        return new ApiResponse<>("OK", "Vigencia ONP duplicada",
+                service.duplicarOnpVigencia(id, request, usuarioActual()));
     }
 
     // ── Parámetros ONP ───────────────────────────────────────
 
     @GetMapping("/onp/parametros")
-    public ApiResponse<List<OnpParametroDto>> onpParametros() {
-        return new ApiResponse<>("OK", "Parámetros ONP", service.listarOnpParametros());
+    public ApiResponse<List<OnpParametroDto>> onpParametros(
+            @RequestParam(required = false) String estado,
+            @RequestParam(defaultValue = "false") boolean incluirAnulados) {
+        return new ApiResponse<>("OK", "Parámetros ONP",
+                service.listarOnpParametros(estado, incluirAnulados));
     }
 
     @PostMapping("/onp/parametros")
@@ -97,6 +123,15 @@ public class ParametroPrevisionalController {
     public ApiResponse<Void> cerrarOnpVigencia(@PathVariable Long id) {
         service.cerrarOnpVigencia(id, usuarioActual());
         return new ApiResponse<>("OK", "Vigencia ONP cerrada", null);
+    }
+
+    @PostMapping("/onp/parametros/{id}/eliminar")
+    public ApiResponse<Void> eliminarOnpVigencia(
+            @PathVariable Long id,
+            @Valid @RequestBody AnularVigenciaRequestDto request) {
+        service.anularOnpVigencia(id, request.getMotivo(), usuarioActual());
+        return new ApiResponse<>("OK",
+                "Vigencia ONP anulada correctamente. Ya no será considerada por el motor de planilla.", null);
     }
 
     // ── Resolver ─────────────────────────────────────────────

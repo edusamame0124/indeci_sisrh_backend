@@ -50,4 +50,16 @@ public class EmpleadoPension {
 
     @Column(name = "TIPO_COMISION_AFP_ID")
     private Long tipoComisionAfpId;
+
+    @Column(name = "CONDICION_ESPECIAL_AFP")
+    private String condicionEspecialAfp;
+
+    @Column(name = "FECHA_CONDICION_AFP")
+    private LocalDate fechaCondicionAfp;
+
+    @Column(name = "DOCUMENTO_SUSTENTO_ID")
+    private Long documentoSustentoId;
+
+    @Column(name = "OBSERVACION_CONDICION_AFP")
+    private String observacionCondicionAfp;
 }

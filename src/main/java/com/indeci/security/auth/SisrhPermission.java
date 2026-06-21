@@ -24,4 +24,15 @@ public final class SisrhPermission {
 
     public static final String RPT_READ = "RPT_READ";
     public static final String RPT_WRITE = "RPT_WRITE";
+
+    public static final String SUB_READ            = "SUB_READ";
+    public static final String SUB_WRITE           = "SUB_WRITE";
+    public static final String SUB_VALIDATE        = "SUB_VALIDATE";
+    public static final String SUB_CALCULATE       = "SUB_CALCULATE";
+    public static final String SUB_APPLY_PLANILLA  = "SUB_APPLY_PLANILLA";
+    public static final String SUB_ESSALUD         = "SUB_ESSALUD";
+    public static final String SUB_ADJUST          = "SUB_ADJUST";
+    public static final String SUB_ADMIN_CONFIG    = "SUB_ADMIN_CONFIG";
+    public static final String SUB_SIMULATE        = "SUB_SIMULATE";
+    public static final String SUB_EXPORT          = "SUB_EXPORT";
 }

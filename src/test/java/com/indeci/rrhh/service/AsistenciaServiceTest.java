@@ -8,6 +8,8 @@ import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +24,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +44,7 @@ class AsistenciaServiceTest {
     @Mock private AsistenciaCabeceraRepository cabeceraRepository;
     @Mock private AsistenciaDetalleRepository detalleRepository;
     @Mock private AuditoriaContext auditoriaContext;
+    @Mock private BaseAsistenciaResolver baseResolver;
 
     @InjectMocks private AsistenciaService service;
 
@@ -99,6 +105,65 @@ class AsistenciaServiceTest {
     }
 
     @Test
+    void guardarImportacion_primeraVez_creaVersion1_sinBorrarHistorico() {
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.empty());
+        when(cabeceraRepository.maxVersion(EMPLEADO_ID, PERIODO)).thenReturn(null);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class))).thenAnswer(inv -> {
+            AsistenciaCabecera c = inv.getArgument(0);
+            c.setId(11L);
+            return c;
+        });
+
+        service.guardarImportacion(EMPLEADO_ID, PERIODO, 3000.0, "FALLBACK", "PREVALIDADA", 5L,
+                List.of(dia("LABORAL", 0, 4)), null, null, null);
+
+        ArgumentCaptor<AsistenciaCabecera> capt = ArgumentCaptor.forClass(AsistenciaCabecera.class);
+        verify(cabeceraRepository).save(capt.capture());
+        AsistenciaCabecera nueva = capt.getValue();
+        assertThat(nueva.getVersion()).isEqualTo(1);
+        assertThat(nueva.getActivo()).isEqualTo(1);
+        assertThat(nueva.getMotivoRectificacion()).isNull();
+        verify(detalleRepository).saveAll(any());
+        // NO se borra detalle histórico (req 5)
+        verify(detalleRepository, never()).deleteByCabeceraId(anyLong());
+    }
+
+    @Test
+    void guardarImportacion_rectificacion_versiona_y_conserva_anterior() {
+        AsistenciaCabecera anterior = new AsistenciaCabecera();
+        anterior.setId(10L);
+        anterior.setActivo(1);
+        anterior.setEstado("VALIDADA");
+        anterior.setVersion(1);
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(anterior));
+        when(cabeceraRepository.maxVersion(EMPLEADO_ID, PERIODO)).thenReturn(1);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class))).thenAnswer(inv -> {
+            AsistenciaCabecera c = inv.getArgument(0);
+            c.setId(11L);
+            return c;
+        });
+
+        service.guardarImportacion(EMPLEADO_ID, PERIODO, 3000.0, "FALLBACK", "PREVALIDADA", 5L,
+                List.of(dia("LABORAL", 0, 4)), "Marca manual validada", "rrhh", "jefe");
+
+        // La anterior se conserva como ACTIVO=0 (req 4) y se desactiva ANTES (saveAndFlush).
+        verify(cabeceraRepository).saveAndFlush(argThat(c ->
+                c.getId().equals(10L) && c.getActivo() == 0));
+
+        ArgumentCaptor<AsistenciaCabecera> capt = ArgumentCaptor.forClass(AsistenciaCabecera.class);
+        verify(cabeceraRepository).save(capt.capture());
+        AsistenciaCabecera nueva = capt.getValue();
+        assertThat(nueva.getVersion()).isEqualTo(2);
+        assertThat(nueva.getActivo()).isEqualTo(1);
+        assertThat(nueva.getMotivoRectificacion()).isEqualTo("Marca manual validada");
+        assertThat(nueva.getAutorizadoPor()).isEqualTo("jefe");
+        // NO se borra detalle de versiones previas (req 5)
+        verify(detalleRepository, never()).deleteByCabeceraId(anyLong());
+    }
+
+    @Test
     void guardar_sin_empleado_o_periodo_lanza_excepcion() {
         AsistenciaGuardarDto dto = new AsistenciaGuardarDto();
         dto.setPeriodo(PERIODO);
@@ -122,6 +187,9 @@ class AsistenciaServiceTest {
     void obtener_inexistente_devuelve_dto_vacio() {
         when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(
                 EMPLEADO_ID, PERIODO, 1)).thenReturn(Optional.empty());
+        BaseAsistenciaResult base = new BaseAsistenciaResult();
+        base.setRemuneracionBase(0.0);
+        when(baseResolver.resolver(EMPLEADO_ID)).thenReturn(base);
 
         AsistenciaResponseDto dto = service.obtener(EMPLEADO_ID, PERIODO);
 

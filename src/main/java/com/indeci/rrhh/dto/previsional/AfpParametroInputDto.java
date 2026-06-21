@@ -32,7 +32,7 @@ public class AfpParametroInputDto {
     private BigDecimal primaSeguroPct;
 
     @NotNull @DecimalMin("0.0")
-    private BigDecimal remuneracionMaximaAseg;
+    private BigDecimal remuneracionMaximaAsegurable;
 
     @NotBlank
     private String fuenteOficial;

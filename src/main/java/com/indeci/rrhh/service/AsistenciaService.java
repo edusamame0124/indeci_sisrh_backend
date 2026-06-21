@@ -3,24 +3,42 @@ package com.indeci.rrhh.service;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.AsistenciaDiariaEditDto;
+import com.indeci.rrhh.dto.AsistenciaDiariaRowDto;
 import com.indeci.rrhh.dto.AsistenciaDiaDto;
 import com.indeci.rrhh.dto.AsistenciaGuardarDto;
 import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
+import com.indeci.rrhh.entity.SolicitudRrhh;
+import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
+import com.indeci.rrhh.repository.SolicitudRrhhRepository;
+import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
+import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.security.util.SecurityUtil;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Módulo M04 — Asistencia y Control de Tiempo (SPEC §12.2 PANTALLA-02).
@@ -38,7 +56,19 @@ public class AsistenciaService {
 
     private final AsistenciaCabeceraRepository cabeceraRepository;
     private final AsistenciaDetalleRepository detalleRepository;
+    private final EmpleadoRepository empleadoRepository;
+    private final PeriodoPlanillaRepository periodoPlanillaRepository;
     private final AuditoriaContext auditoriaContext;
+    private final BaseAsistenciaResolver baseResolver;
+    private final SolicitudRrhhRepository solicitudRrhhRepository;
+    private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
+
+    /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
+    private static final long ESTADO_SOLICITUD_APROBADA = 9L;
+
+    /** Códigos de tipo de solicitud que cuentan como permiso/papeleta en asistencia. */
+    private static final Set<String> CODIGOS_PERMISO_ASISTENCIA = Set.of(
+            "002", "003", "004", "005", "006", "008", "009", "010", "011", "012");
 
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
@@ -61,7 +91,7 @@ public class AsistenciaService {
      */
     public AsistenciaResponseDto obtener(Long empleadoId, String periodo) {
 
-        return cabeceraRepository
+        AsistenciaResponseDto dto = cabeceraRepository
                 .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
                 .map(this::aResponse)
                 .orElseGet(() -> {
@@ -77,6 +107,351 @@ public class AsistenciaService {
                     vacio.setDias(new ArrayList<>());
                     return vacio;
                 });
+
+        // La remuneración base es de SOLO LECTURA en la UI: proviene de la configuración
+        // del empleado (sueldo básico por régimen). Si el resolver la determina, se expone
+        // como valor vigente para el cálculo del descuento (D.Leg. 276 Art. 24).
+        double baseConfig = baseResolver.resolver(empleadoId).getRemuneracionBase();
+        if (baseConfig > 0) {
+            dto.setRemuneracionBase(baseConfig);
+        }
+        return dto;
+    }
+
+    // ==========================================
+    // CONSULTA DIARIA (fecha + DNI opcional)
+    // ==========================================
+
+    @Transactional(readOnly = true)
+    public Page<AsistenciaDiariaRowDto> listarDiaria(
+            LocalDate fecha,
+            String dni,
+            String q,
+            Pageable pageable) {
+        if (fecha == null) {
+            throw new NegocioException("La fecha es obligatoria.");
+        }
+        String dniFiltro = limpiarFiltro(dni);
+        String qFiltro = limpiarFiltro(q);
+        Page<AsistenciaDiariaRowDto> page = detalleRepository
+                .buscarDiaria(fecha, dniFiltro, qFiltro, pageable)
+                .map(this::mapearDiariaRow);
+        enriquecerPapeletas(page.getContent(), fecha);
+        return page;
+    }
+
+    /**
+     * Cruza cada fila con INDECI_SOLICITUD_RRHH para marcar si el empleado tiene una
+     * papeleta/permiso APROBADA (ESTADO_SOLICITUD_ID = 9) de un tipo de asistencia que
+     * cubre la fecha del día. Expone tipo, motivo y el tiempo del permiso.
+     */
+    private void enriquecerPapeletas(List<AsistenciaDiariaRowDto> rows, LocalDate fecha) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        List<Long> empleadoIds = rows.stream()
+                .map(AsistenciaDiariaRowDto::getEmpleadoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (empleadoIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, TipoSolicitudRrhh> tiposPermiso = tipoSolicitudRrhhRepository.findAll().stream()
+                .filter(t -> t.getCodigo() != null && CODIGOS_PERMISO_ASISTENCIA.contains(t.getCodigo()))
+                .collect(Collectors.toMap(TipoSolicitudRrhh::getId, t -> t));
+        if (tiposPermiso.isEmpty()) {
+            return;
+        }
+
+        Map<Long, SolicitudRrhh> papeletaPorEmpleado = new HashMap<>();
+        for (SolicitudRrhh s : solicitudRrhhRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1)) {
+            if (s.getEstadoSolicitudId() == null
+                    || s.getEstadoSolicitudId() != ESTADO_SOLICITUD_APROBADA) {
+                continue;
+            }
+            if (s.getTipoSolicitudId() == null
+                    || !tiposPermiso.containsKey(s.getTipoSolicitudId())) {
+                continue;
+            }
+            if (!cubreFecha(s, fecha)) {
+                continue;
+            }
+            papeletaPorEmpleado.putIfAbsent(s.getEmpleadoId(), s);
+        }
+
+        for (AsistenciaDiariaRowDto row : rows) {
+            SolicitudRrhh s = papeletaPorEmpleado.get(row.getEmpleadoId());
+            if (s == null) {
+                continue;
+            }
+            TipoSolicitudRrhh tipo = tiposPermiso.get(s.getTipoSolicitudId());
+            row.setTienePapeletaAprobada(true);
+            row.setPapeletaTipo(tipo != null ? tipo.getNombre() : null);
+            row.setPapeletaMotivo(s.getMotivo());
+            row.setPapeletaHoraInicio(s.getHoraInicio());
+            row.setPapeletaHoraFin(s.getHoraFin());
+            row.setPapeletaCantidadHoras(s.getCantidadHoras());
+        }
+    }
+
+    /** El día cae dentro del rango [fechaInicio, fechaFin] del permiso (o el único día). */
+    private boolean cubreFecha(SolicitudRrhh s, LocalDate fecha) {
+        LocalDate ini = s.getFechaInicio();
+        LocalDate fin = s.getFechaFin();
+        if (ini == null) {
+            return false;
+        }
+        if (fin == null) {
+            return fecha.isEqual(ini);
+        }
+        return !fecha.isBefore(ini) && !fecha.isAfter(fin);
+    }
+
+    @Auditable(accion = "EDITAR_ASISTENCIA_DIA")
+    @Transactional
+    public AsistenciaDiariaRowDto editarDia(Long detalleId, AsistenciaDiariaEditDto dto) {
+        AsistenciaDetalle det = detalleRepository.findById(detalleId)
+                .orElseThrow(() -> new NegocioException("Registro de asistencia no encontrado."));
+        AsistenciaCabecera cab = cabeceraRepository.findById(det.getCabeceraId())
+                .orElseThrow(() -> new NegocioException("Cabecera de asistencia no encontrada."));
+        if (cab.getActivo() == null || cab.getActivo() != 1) {
+            throw new NegocioException("No se puede editar una versión histórica de asistencia.");
+        }
+        validarPeriodoEditable(cab.getPeriodo());
+
+        boolean tienePapeleta = buscarPapeletaAprobada(cab.getEmpleadoId(), det.getDia()).isPresent();
+        if (tienePapeleta) {
+            aplicarDecisionPapeleta(det, dto);
+        } else if (dto.getTipoDia() != null) {
+            if (!TIPOS_DIA.contains(dto.getTipoDia())) {
+                throw new NegocioException("Tipo de día inválido: " + dto.getTipoDia());
+            }
+            det.setTipoDia(dto.getTipoDia());
+        }
+        if (dto.getMarcaEntrada() != null) {
+            det.setMarcaEntrada(dto.getMarcaEntrada().isBlank() ? null : dto.getMarcaEntrada().trim());
+        }
+        if (dto.getMarcaSalida() != null) {
+            det.setMarcaSalida(dto.getMarcaSalida().isBlank() ? null : dto.getMarcaSalida().trim());
+        }
+        if (dto.getMinutosTardanza() != null) {
+            det.setMinutosTardanza(Math.max(0, dto.getMinutosTardanza()));
+        }
+        if (dto.getObservacion() != null) {
+            det.setObservacion(dto.getObservacion().isBlank() ? null : dto.getObservacion().trim());
+        }
+        det.setOrigen("MANUAL");
+        detalleRepository.save(det);
+
+        recalcularCabeceraDesdeDetalle(cab);
+
+        auditoriaContext.setDetalle(
+                "Asistencia diaria editada detalle " + detalleId
+                        + " empleado " + cab.getEmpleadoId()
+                        + " fecha " + det.getDia());
+
+        AsistenciaDiariaRowDto row = construirDiariaRowDto(det, cab);
+        enriquecerPapeletas(List.of(row), det.getDia());
+        return row;
+    }
+
+    private void aplicarDecisionPapeleta(AsistenciaDetalle det, AsistenciaDiariaEditDto dto) {
+        if (dto.getPapeletaAutorizada() == null) {
+            throw new NegocioException(
+                    "Debe indicar si autoriza o no autoriza la papeleta del día.");
+        }
+        boolean autorizada = dto.getPapeletaAutorizada();
+        det.setPapeletaAutorizada(autorizada ? 1 : 0);
+        det.setPapeletaDecisionUsuario(obtenerUsuarioDecision());
+        det.setPapeletaDecisionFecha(LocalDateTime.now());
+        if (autorizada) {
+            det.setTipoDia("LABORAL");
+            det.setPapeletaMotivoRechazo(null);
+        } else {
+            String motivo = dto.getPapeletaMotivoRechazo();
+            if (motivo == null || motivo.isBlank()) {
+                throw new NegocioException(
+                        "Debe señalar el motivo de no autorización de la papeleta.");
+            }
+            String motivoTrim = motivo.trim();
+            if (motivoTrim.length() > 500) {
+                throw new NegocioException(
+                        "El motivo de no autorización no puede exceder 500 caracteres.");
+            }
+            det.setTipoDia("OBSERVADO");
+            det.setPapeletaMotivoRechazo(motivoTrim);
+        }
+    }
+
+    private Optional<SolicitudRrhh> buscarPapeletaAprobada(Long empleadoId, LocalDate fecha) {
+        if (empleadoId == null || fecha == null) {
+            return Optional.empty();
+        }
+        Map<Long, TipoSolicitudRrhh> tiposPermiso = tipoSolicitudRrhhRepository.findAll().stream()
+                .filter(t -> t.getCodigo() != null && CODIGOS_PERMISO_ASISTENCIA.contains(t.getCodigo()))
+                .collect(Collectors.toMap(TipoSolicitudRrhh::getId, t -> t));
+        if (tiposPermiso.isEmpty()) {
+            return Optional.empty();
+        }
+        for (SolicitudRrhh s : solicitudRrhhRepository.findByEmpleadoIdInAndActivo(List.of(empleadoId), 1)) {
+            if (s.getEstadoSolicitudId() == null
+                    || s.getEstadoSolicitudId() != ESTADO_SOLICITUD_APROBADA) {
+                continue;
+            }
+            if (s.getTipoSolicitudId() == null
+                    || !tiposPermiso.containsKey(s.getTipoSolicitudId())) {
+                continue;
+            }
+            if (!cubreFecha(s, fecha)) {
+                continue;
+            }
+            return Optional.of(s);
+        }
+        return Optional.empty();
+    }
+
+    private String obtenerUsuarioDecision() {
+        try {
+            String usuario = SecurityUtil.getUsername();
+            if (usuario != null && !usuario.isBlank()) {
+                return usuario;
+            }
+        } catch (Exception ignored) {
+            // Sin contexto de seguridad (tests u operación interna).
+        }
+        return "SISTEMA";
+    }
+
+    void validarPeriodoEditable(String periodo) {
+        periodoPlanillaRepository.findByPeriodoAndActivo(periodo, 1)
+                .ifPresent(p -> {
+                    String estado = p.getEstado();
+                    if ("CERRADO".equals(estado) || "APROBADO".equals(estado)) {
+                        throw new NegocioException(
+                                "No se puede modificar la asistencia: el periodo "
+                                        + periodo + " está " + estado.toLowerCase() + ".");
+                    }
+                });
+    }
+
+    private void recalcularCabeceraDesdeDetalle(AsistenciaCabecera cab) {
+        List<AsistenciaDiaDto> dias = detalleRepository.findByCabeceraIdOrderByDia(cab.getId())
+                .stream()
+                .map(this::aDiaDto)
+                .toList();
+        double remun = cab.getRemuneracionBase() != null ? cab.getRemuneracionBase() : 0.0;
+        AsistenciaResumenCalculator.Resumen agregados =
+                AsistenciaResumenCalculator.calcular(dias, remun);
+        cab.setDiasLaborados(agregados.getDiasLaborados());
+        cab.setDiasFalta(agregados.getDiasFalta());
+        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
+        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
+        cab.setDescuentoFalta(agregados.getDescuentoFalta());
+        cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
+        cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
+        cabeceraRepository.save(cab);
+    }
+
+    private AsistenciaDiaDto aDiaDto(AsistenciaDetalle det) {
+        AsistenciaDiaDto d = new AsistenciaDiaDto();
+        d.setDia(det.getDia());
+        d.setTipoDia(det.getTipoDia());
+        d.setMinutosTardanza(det.getMinutosTardanza());
+        d.setObservacion(det.getObservacion());
+        d.setMarcaEntrada(det.getMarcaEntrada());
+        d.setMarcaSalida(det.getMarcaSalida());
+        d.setMarca3(det.getMarca3());
+        d.setMarca4(det.getMarca4());
+        d.setHoraEntradaEsperada(det.getHoraEntradaEsperada());
+        d.setMinutosSalidaAnticipada(det.getMinutosSalidaAnticipada());
+        d.setHorasTrabajadasMin(det.getHorasTrabajadasMin());
+        d.setHorasExtra25Min(det.getHorasExtra25Min());
+        d.setHorasExtra35Min(det.getHorasExtra35Min());
+        d.setHorasExtra100Min(det.getHorasExtra100Min());
+        d.setHorasExtraTotalMin(det.getHorasExtraTotalMin());
+        d.setOrigen(det.getOrigen());
+        d.setPapeletaAutorizada(det.getPapeletaAutorizada());
+        return d;
+    }
+
+    private String limpiarFiltro(String valor) {
+        if (valor == null || valor.isBlank()) {
+            return null;
+        }
+        return valor.trim();
+    }
+
+    private AsistenciaDiariaRowDto mapearDiariaRow(Object[] row) {
+        AsistenciaDiariaRowDto dto = new AsistenciaDiariaRowDto();
+        dto.setDetalleId((Long) row[0]);
+        dto.setCabeceraId((Long) row[1]);
+        dto.setEmpleadoId((Long) row[2]);
+        dto.setDni((String) row[3]);
+        dto.setNombreCompleto((String) row[4]);
+        dto.setFecha((LocalDate) row[5]);
+        dto.setMarcaEntrada((String) row[6]);
+        dto.setMarcaSalida((String) row[7]);
+        dto.setTipoDia((String) row[8]);
+        dto.setHorasTrabajadasMin((Integer) row[9]);
+        dto.setMinutosSalidaAnticipada((Integer) row[10]);
+        dto.setPeriodo((String) row[11]);
+        dto.setOrigen((String) row[12]);
+        dto.setMinutosTardanza((Integer) row[13]);
+        dto.setObservacion((String) row[14]);
+        dto.setMarca3((String) row[15]);
+        dto.setMarca4((String) row[16]);
+        dto.setHoraEntradaEsperada((String) row[17]);
+        dto.setHorasExtra25Min((Integer) row[18]);
+        dto.setHorasExtra35Min((Integer) row[19]);
+        dto.setHorasExtra100Min((Integer) row[20]);
+        dto.setHorasExtraTotalMin((Integer) row[21]);
+        dto.setPapeletaAutorizada((Integer) row[22]);
+        dto.setPapeletaMotivoRechazo((String) row[23]);
+        return dto;
+    }
+
+    private AsistenciaDiariaRowDto mapearDiariaRow(AsistenciaDetalle det, AsistenciaCabecera cab) {
+        return construirDiariaRowDto(det, cab);
+    }
+
+    private AsistenciaDiariaRowDto construirDiariaRowDto(
+            AsistenciaDetalle det,
+            AsistenciaCabecera cab) {
+        AsistenciaDiariaRowDto dto = new AsistenciaDiariaRowDto();
+        dto.setDetalleId(det.getId());
+        dto.setCabeceraId(cab.getId());
+        dto.setEmpleadoId(cab.getEmpleadoId());
+        dto.setFecha(det.getDia());
+        dto.setMarcaEntrada(det.getMarcaEntrada());
+        dto.setMarcaSalida(det.getMarcaSalida());
+        dto.setTipoDia(det.getTipoDia());
+        dto.setHorasTrabajadasMin(det.getHorasTrabajadasMin());
+        dto.setMinutosSalidaAnticipada(det.getMinutosSalidaAnticipada());
+        dto.setPeriodo(cab.getPeriodo());
+        dto.setOrigen(det.getOrigen());
+        dto.setMinutosTardanza(det.getMinutosTardanza());
+        dto.setObservacion(det.getObservacion());
+        dto.setMarca3(det.getMarca3());
+        dto.setMarca4(det.getMarca4());
+        dto.setHoraEntradaEsperada(det.getHoraEntradaEsperada());
+        dto.setHorasExtra25Min(det.getHorasExtra25Min());
+        dto.setHorasExtra35Min(det.getHorasExtra35Min());
+        dto.setHorasExtra100Min(det.getHorasExtra100Min());
+        dto.setHorasExtraTotalMin(det.getHorasExtraTotalMin());
+        dto.setPapeletaAutorizada(det.getPapeletaAutorizada());
+        dto.setPapeletaMotivoRechazo(det.getPapeletaMotivoRechazo());
+        dto.setPapeletaDecisionUsuario(det.getPapeletaDecisionUsuario());
+        dto.setPapeletaDecisionFecha(det.getPapeletaDecisionFecha());
+        empleadoRepository.findPersonaResumenByEmpleadoIds(List.of(cab.getEmpleadoId()))
+                .stream()
+                .findFirst()
+                .ifPresent(row -> {
+                    dto.setNombreCompleto((String) row[1]);
+                    dto.setDni((String) row[2]);
+                });
+        return dto;
     }
 
     // ==========================================
@@ -144,7 +519,15 @@ public class AsistenciaService {
     }
 
     /**
-     * Persiste asistencia proveniente de importación masiva del marcador.
+     * Persiste asistencia proveniente de importación masiva del marcador, con
+     * VERSIONADO (F5 / P4): si ya existe una cabecera activa para el empleado+periodo,
+     * se conserva como ACTIVO=0 (con su detalle histórico intacto) y se crea una
+     * nueva cabecera ACTIVO=1 con VERSION = maxVersion+1 y la auditoría de
+     * rectificación. El motor M05 sigue leyendo siempre la cabecera ACTIVO=1.
+     *
+     * @param motivoRectificacion   motivo cuando la operación reemplaza una versión previa (puede ser null en la primera carga)
+     * @param usuarioRectificacion  usuario que ejecuta la rectificación
+     * @param autorizadoPor         usuario con rol autorizado que respalda la rectificación
      */
     @Transactional
     public void guardarImportacion(
@@ -154,31 +537,36 @@ public class AsistenciaService {
             String baseOrigen,
             String estado,
             Long importacionId,
-            List<AsistenciaDiaDto> dias) {
-
-        AsistenciaGuardarDto dto = new AsistenciaGuardarDto();
-        dto.setEmpleadoId(empleadoId);
-        dto.setPeriodo(periodo);
-        dto.setRemuneracionBase(remuneracionBase);
-        dto.setEstado(estado);
-        dto.setDias(dias);
-        dto.setObservacion("Importación marcador ID " + importacionId);
-
-        AsistenciaCabecera cab = cabeceraRepository
-                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
-                .orElseGet(() -> {
-                    AsistenciaCabecera nueva = new AsistenciaCabecera();
-                    nueva.setEmpleadoId(empleadoId);
-                    nueva.setPeriodo(periodo);
-                    nueva.setActivo(1);
-                    nueva.setCreatedAt(LocalDateTime.now());
-                    return nueva;
-                });
+            List<AsistenciaDiaDto> dias,
+            String motivoRectificacion,
+            String usuarioRectificacion,
+            String autorizadoPor) {
 
         validarTiposDia(dias);
         AsistenciaResumenCalculator.Resumen agregados =
                 AsistenciaResumenCalculator.calcular(dias, remuneracionBase);
 
+        AsistenciaCabecera anterior = cabeceraRepository
+                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                .orElse(null);
+        boolean esRectificacion = anterior != null;
+        if (esRectificacion) {
+            // Conserva la versión anterior como histórico (NO se borra su detalle).
+            // saveAndFlush garantiza que el UPDATE a ACTIVO=0 ocurra ANTES del INSERT
+            // de la nueva activa, respetando el índice único single-active.
+            anterior.setActivo(0);
+            cabeceraRepository.saveAndFlush(anterior);
+        }
+
+        Integer maxVersion = cabeceraRepository.maxVersion(empleadoId, periodo);
+        int nuevaVersion = (maxVersion != null ? maxVersion : 0) + 1;
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEmpleadoId(empleadoId);
+        cab.setPeriodo(periodo);
+        cab.setActivo(1);
+        cab.setVersion(nuevaVersion);
+        cab.setCreatedAt(LocalDateTime.now());
         cab.setRemuneracionBase(remuneracionBase);
         cab.setDiasLaborados(agregados.getDiasLaborados());
         cab.setDiasFalta(agregados.getDiasFalta());
@@ -190,9 +578,17 @@ public class AsistenciaService {
         cab.setBaseAsistenciaOrigen(baseOrigen);
         cab.setImportacionId(importacionId);
         cab.setEstado(normalizarEstado(estado));
+        cab.setObservacion("Importación marcador ID " + importacionId
+                + (esRectificacion ? " (rectificación v" + nuevaVersion + ")" : ""));
+        if (esRectificacion) {
+            cab.setMotivoRectificacion(motivoRectificacion);
+            cab.setUsuarioRectificacion(usuarioRectificacion);
+            cab.setFechaRectificacion(LocalDateTime.now());
+            cab.setAutorizadoPor(autorizadoPor);
+        }
 
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
-        detalleRepository.deleteByCabeceraId(guardada.getId());
+        // Detalle nuevo sobre la cabecera nueva: no se borra detalle de versiones previas.
         detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias));
     }
 
@@ -236,14 +632,16 @@ public class AsistenciaService {
             det.setObservacion(d.getObservacion());
             det.setMarcaEntrada(d.getMarcaEntrada());
             det.setMarcaSalida(d.getMarcaSalida());
+            det.setMarca3(d.getMarca3());
+            det.setMarca4(d.getMarca4());
             det.setHoraEntradaEsperada(d.getHoraEntradaEsperada());
             det.setMinutosSalidaAnticipada(
                     d.getMinutosSalidaAnticipada() != null ? d.getMinutosSalidaAnticipada() : 0);
-            det.setHorasTrabajadasMin(d.getHorasTrabajadasMin());
-            det.setHorasExtra25Min(d.getHorasExtra25Min());
-            det.setHorasExtra35Min(d.getHorasExtra35Min());
-            det.setHorasExtra100Min(d.getHorasExtra100Min());
-            det.setHorasExtraTotalMin(d.getHorasExtraTotalMin());
+            det.setHorasTrabajadasMin(d.getHorasTrabajadasMin() != null ? d.getHorasTrabajadasMin() : 0);
+            det.setHorasExtra25Min(d.getHorasExtra25Min() != null ? d.getHorasExtra25Min() : 0);
+            det.setHorasExtra35Min(d.getHorasExtra35Min() != null ? d.getHorasExtra35Min() : 0);
+            det.setHorasExtra100Min(d.getHorasExtra100Min() != null ? d.getHorasExtra100Min() : 0);
+            det.setHorasExtraTotalMin(d.getHorasExtraTotalMin() != null ? d.getHorasExtraTotalMin() : 0);
             det.setDiaSemana(d.getDiaSemana());
             det.setOrigen(d.getOrigen() != null ? d.getOrigen() : "MANUAL");
             detalles.add(det);

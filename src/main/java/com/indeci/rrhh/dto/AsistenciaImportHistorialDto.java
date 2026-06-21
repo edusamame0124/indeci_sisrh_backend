@@ -17,4 +17,7 @@ public class AsistenciaImportHistorialDto {
     private int filasValidas;
     private int filasError;
     private int empleadosProcesados;
+
+    /** REQUIERE_CALCULO | VALIDADO | null (no aplica: borrador/anulada). Solo lectura. */
+    private String estadoValidacion;
 }

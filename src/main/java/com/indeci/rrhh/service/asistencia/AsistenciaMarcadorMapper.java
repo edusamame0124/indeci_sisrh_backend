@@ -16,6 +16,8 @@ public final class AsistenciaMarcadorMapper {
             java.time.LocalDate fecha,
             String marca1,
             String marca2,
+            String marca3,
+            String marca4,
             String horaEntrada,
             int minutosTardanza,
             int minutosSalidaAnticipada,
@@ -26,6 +28,8 @@ public final class AsistenciaMarcadorMapper {
         dia.setDiaSemana(diaSemana);
         dia.setMarcaEntrada(marca1);
         dia.setMarcaSalida(marca2);
+        dia.setMarca3(marca3);
+        dia.setMarca4(marca4);
         dia.setHoraEntradaEsperada(horaEntrada);
         dia.setMinutosSalidaAnticipada(minutosSalidaAnticipada);
         dia.setHorasTrabajadasMin(null);

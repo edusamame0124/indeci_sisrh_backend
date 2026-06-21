@@ -5,6 +5,7 @@ import com.indeci.rrhh.dto.SubsidioCalculadoDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.entity.*;
 import com.indeci.rrhh.repository.*;
+import com.indeci.rrhh.service.Ir4taConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,6 +67,10 @@ class GeneradorPlanillaServiceTest {
     @Mock private TipoPersonalRepository tipoPersonalRepository;
     @Mock private CalculoSnapshotService calculoSnapshotService;
     @Mock private SubsidioCalculadorService subsidioCalculadorService;
+    @Mock private com.indeci.rrhh.service.subsidio.SubsidioPlanillaIntegracionService subsidioPlanillaIntegracionService;
+    @Mock private AfpParametroVigenciaRepository afpVigenciaRepository;
+    @Mock private OnpParametroVigenciaRepository onpVigenciaRepository;
+    @Mock private Ir4taConfigService ir4taConfigService;
 
     private GeneradorPlanillaService service;
 
@@ -104,9 +109,13 @@ class GeneradorPlanillaServiceTest {
                 empleadoEventoRepository,
                 eventoDistribucionMesRepository,
                 suspension4taService,
+                ir4taConfigService,
                 tipoPersonalRepository,
                 calculoSnapshotService,
-                subsidioCalculadorService);
+                subsidioCalculadorService,
+                subsidioPlanillaIntegracionService,
+                afpVigenciaRepository,
+                onpVigenciaRepository);
         // El proxy @Lazy `self` no se inyecta en test unitario: apuntarlo al
         // propio servicio para poder ejercitar generarTodoPeriodo.
         ReflectionTestUtils.setField(service, "self", service);

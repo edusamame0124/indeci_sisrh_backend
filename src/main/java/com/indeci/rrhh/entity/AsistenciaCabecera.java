@@ -63,6 +63,21 @@ public class AsistenciaCabecera {
     @Column(name = "ACTIVO")
     private Integer activo;
 
+    @Column(name = "VERSION")
+    private Integer version;
+
+    @Column(name = "MOTIVO_RECTIFICACION")
+    private String motivoRectificacion;
+
+    @Column(name = "USUARIO_RECTIFICACION")
+    private String usuarioRectificacion;
+
+    @Column(name = "FECHA_RECTIFICACION")
+    private LocalDateTime fechaRectificacion;
+
+    @Column(name = "AUTORIZADO_POR")
+    private String autorizadoPor;
+
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
 }

@@ -14,6 +14,12 @@ public interface EmpleadoRepository extends JpaRepository<Empleado, Long> {
 
     Optional<Empleado> findByPersonaId(Long personaId);
 
+    /** Múltiples vínculos por persona — resolución en importación CSV de asistencia. */
+    List<Empleado> findAllByPersonaId(Long personaId);
+
+    /** F3 — empleados activos de una persona (selección de vínculo en import CSV). */
+    List<Empleado> findAllByPersonaIdAndEstado(Long personaId, String estado);
+
     /** F3.3 — empleados por estado (uso típico: ACTIVO para preflight). */
     List<Empleado> findByEstado(String estado);
 
