@@ -1,9 +1,12 @@
 package com.indeci.rrhh.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
@@ -16,6 +19,7 @@ import java.util.stream.Collectors;
 
 import com.indeci.rrhh.dto.EmpleadoPlanillaDto;
 import com.indeci.rrhh.dto.EmpleadoPlanillaResponseDto;
+import com.indeci.rrhh.dto.IncrementosDsResponseDto;
 import com.indeci.rrhh.dto.PlanillaConsolidadaRowDto;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -34,16 +38,17 @@ import lombok.RequiredArgsConstructor;
 public class EmpleadoPlanillaService {
 
     private static final String EMP_ACTIVO = "ACTIVO";
+    private static final Pattern AIRHSP_PATTERN = Pattern.compile("^[0-9]{6}$");
+    private static final BigDecimal TOLERANCIA_SUELDO = new BigDecimal("0.01");
 
     private final EmpleadoPlanillaRepository repository;
     private final AuditoriaContext auditoriaContext;
-    // Catálogos para resolver etiquetas en el listado (mejora 2026-06-03).
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final TipoContratoRepository tipoContratoRepository;
     private final CondicionLaboralRepository condicionLaboralRepository;
-    // Consolidado de todos los empleados (mejora 2026-06-03).
     private final EmpleadoRepository empleadoRepository;
     private final PersonaRepository personaRepository;
+    private final IncrementosDsCalculoService incrementosDsCalculoService;
 
     // ============================
     // CREAR
@@ -51,12 +56,6 @@ public class EmpleadoPlanillaService {
     @Auditable(accion = "CREAR_PLANILLA")
     public void guardar(EmpleadoPlanillaDto dto) {
 
-        // 🔥 VALIDAR SUELDO
-        if (dto.getSueldoBasico() == null || dto.getSueldoBasico() <= 0) {
-            throw new NegocioException("Sueldo básico inválido");
-        }
-
-        // 🔥 SOLO UNA ACTIVA
         Optional<EmpleadoPlanilla> existente =
                 repository.findFirstByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1);
 
@@ -64,11 +63,11 @@ public class EmpleadoPlanillaService {
             throw new NegocioException("Ya existe planilla activa");
         }
 
+        RemuneracionCalculada remuneracion = calcularRemuneracionDesdeDto(dto);
+
         EmpleadoPlanilla entity = new EmpleadoPlanilla();
         entity.setEmpleadoId(dto.getEmpleadoId());
-        entity.setSueldoBasico(dto.getSueldoBasico());
-        entity.setMovilidad(dto.getMovilidad());
-        entity.setAlimentacion(dto.getAlimentacion());
+        aplicarRemuneracion(entity, remuneracion);
         entity.setTieneAsignacionFamiliar(dto.getTieneAsignacionFamiliar());
         entity.setNumHijos(dto.getNumHijos());
         entity.setDescuentoBanco(dto.getDescuentoBanco());
@@ -96,6 +95,8 @@ public class EmpleadoPlanillaService {
                     EmpleadoPlanillaResponseDto dto = new EmpleadoPlanillaResponseDto();
                     dto.setId(e.getId());
                     dto.setSueldoBasico(e.getSueldoBasico());
+                    dto.setCodigoAirhsp(e.getCodigoAirhsp());
+                    dto.setMontoContrato(e.getMontoContrato());
                     dto.setMovilidad(e.getMovilidad());
                     dto.setAlimentacion(e.getAlimentacion());
                     dto.setTieneAsignacionFamiliar(e.getTieneAsignacionFamiliar());
@@ -187,9 +188,8 @@ public class EmpleadoPlanillaService {
         EmpleadoPlanilla entity = repository.findById(id)
                 .orElseThrow(() -> new NegocioException("Planilla no encontrada"));
 
-        entity.setSueldoBasico(dto.getSueldoBasico());
-        entity.setMovilidad(dto.getMovilidad());
-        entity.setAlimentacion(dto.getAlimentacion());
+        RemuneracionCalculada remuneracion = calcularRemuneracionDesdeDto(dto);
+        aplicarRemuneracion(entity, remuneracion);
         entity.setTieneAsignacionFamiliar(dto.getTieneAsignacionFamiliar());
         entity.setNumHijos(dto.getNumHijos());
         entity.setDescuentoBanco(dto.getDescuentoBanco());
@@ -218,5 +218,57 @@ public class EmpleadoPlanillaService {
         repository.save(entity);
 
         auditoriaContext.setDetalle("Planilla desactivada ID: " + id);
+    }
+
+    private RemuneracionCalculada calcularRemuneracionDesdeDto(EmpleadoPlanillaDto dto) {
+        validarCodigoAirhsp(dto.getCodigoAirhsp());
+        validarMontoContrato(dto.getMontoContrato());
+
+        IncrementosDsResponseDto calculo = incrementosDsCalculoService.calcular(
+                dto.getRegimenLaboralId(),
+                dto.getCondicionLaboralId(),
+                BigDecimal.valueOf(dto.getMontoContrato()),
+                LocalDate.now());
+
+        validarCoherenciaSueldoBasico(dto.getSueldoBasico(), calculo.remuneracionMensual());
+
+        return new RemuneracionCalculada(
+                dto.getCodigoAirhsp(),
+                dto.getMontoContrato(),
+                calculo.remuneracionMensual().doubleValue());
+    }
+
+    private static void validarCodigoAirhsp(String codigoAirhsp) {
+        if (codigoAirhsp == null || !AIRHSP_PATTERN.matcher(codigoAirhsp).matches()) {
+            throw new NegocioException("Código AIRHSP inválido: debe tener 6 dígitos numéricos");
+        }
+    }
+
+    private static void validarMontoContrato(Double montoContrato) {
+        if (montoContrato == null || montoContrato <= 0) {
+            throw new NegocioException("Monto contratado inválido");
+        }
+    }
+
+    private static void validarCoherenciaSueldoBasico(Double sueldoEnviado, BigDecimal sueldoCalculado) {
+        if (sueldoEnviado == null) {
+            return;
+        }
+        BigDecimal enviado = BigDecimal.valueOf(sueldoEnviado).setScale(2, RoundingMode.HALF_UP);
+        if (enviado.subtract(sueldoCalculado).abs().compareTo(TOLERANCIA_SUELDO) > 0) {
+            throw new NegocioException(
+                    "Remuneración mensual no coincide con el cálculo del servidor");
+        }
+    }
+
+    private static void aplicarRemuneracion(EmpleadoPlanilla entity, RemuneracionCalculada remuneracion) {
+        entity.setCodigoAirhsp(remuneracion.codigoAirhsp());
+        entity.setMontoContrato(remuneracion.montoContrato());
+        entity.setSueldoBasico(remuneracion.sueldoBasico());
+        entity.setMovilidad(null);
+        entity.setAlimentacion(null);
+    }
+
+    private record RemuneracionCalculada(String codigoAirhsp, Double montoContrato, Double sueldoBasico) {
     }
 }

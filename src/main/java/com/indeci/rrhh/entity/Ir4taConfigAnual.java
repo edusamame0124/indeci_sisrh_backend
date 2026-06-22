@@ -45,6 +45,55 @@ public class Ir4taConfigAnual {
     @Column(name = "BASE_INAFECTA_IR4TA", precision = 10, scale = 2)
     private BigDecimal baseInafectaIr4ta;
 
+    // ── V010_93 — Límites de suspensión y reglas de alerta ──────────────────
+    /** Tope anual de suspensión para personal CAS general (S/). */
+    @Column(name = "TOPE_ANUAL_GENERAL", precision = 12, scale = 2)
+    private BigDecimal topeAnualGeneral;
+
+    /** Tope anual de suspensión referencial para directores y similares (S/). */
+    @Column(name = "TOPE_ANUAL_DIRECTOR", precision = 12, scale = 2)
+    private BigDecimal topeAnualDirector;
+
+    /** ¿El tope general aplica a CAS? (Sí por defecto). */
+    @Column(name = "APLICA_CAS_GENERAL")
+    private Integer aplicaCasGeneral;
+
+    /** ¿El tope director/similar aplica a CAS? (No por defecto). */
+    @Column(name = "APLICA_CAS_DIRECTOR")
+    private Integer aplicaCasDirector;
+
+    /** Umbral de alerta preventiva (% del tope). Default 80. */
+    @Column(name = "PCT_ALERTA_PREV", precision = 5, scale = 2)
+    private BigDecimal pctAlertaPrev;
+
+    /** Umbral de alerta crítica (% del tope). Default 90. */
+    @Column(name = "PCT_ALERTA_CRIT", precision = 5, scale = 2)
+    private BigDecimal pctAlertaCrit;
+
+    /** Código tributo SUNAT/PLAME (referencial 3042). */
+    @Column(name = "CODIGO_SUNAT_PLAME", length = 10)
+    private String codigoSunatPlame;
+
+    /** Regla: calcular acumulado conocido por INDECI. */
+    @Column(name = "FLG_CALC_ACUMULADO")
+    private Integer flgCalcAcumulado;
+
+    /** Regla: generar alerta al alcanzar el % preventivo. */
+    @Column(name = "FLG_ALERTA_80")
+    private Integer flgAlerta80;
+
+    /** Regla: generar alerta al alcanzar el % crítico. */
+    @Column(name = "FLG_ALERTA_90")
+    private Integer flgAlerta90;
+
+    /** Regla: marcar "requiere validación" al superar el tope. */
+    @Column(name = "FLG_MARCAR_VALIDACION")
+    private Integer flgMarcarValidacion;
+
+    /** Regla: activar retención automática sin validación RR.HH. (0 por defecto). */
+    @Column(name = "FLG_RETENCION_AUTO")
+    private Integer flgRetencionAuto;
+
     @Column(name = "FUENTE_OFICIAL", nullable = false, length = 500)
     private String fuenteOficial;
 

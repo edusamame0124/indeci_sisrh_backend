@@ -13,6 +13,10 @@ public class EmpleadoPlanillaResponseDto {
 
     private Double sueldoBasico;
 
+    private String codigoAirhsp;
+
+    private Double montoContrato;
+
     private Double movilidad;
 
     private Double alimentacion;
