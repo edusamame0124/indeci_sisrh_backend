@@ -62,6 +62,7 @@ public class AsistenciaService {
     private final BaseAsistenciaResolver baseResolver;
     private final SolicitudRrhhRepository solicitudRrhhRepository;
     private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
+    
 
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
@@ -138,6 +139,44 @@ public class AsistenciaService {
                 .map(this::mapearDiariaRow);
         enriquecerPapeletas(page.getContent(), fecha);
         return page;
+    }
+    
+    
+    @Transactional(readOnly = true)
+    public Page<AsistenciaDiariaRowDto> misAsistencias(
+            LocalDate fechaInicio,
+            LocalDate fechaFin,
+            Pageable pageable) {
+
+        Long empleadoId = obtenerEmpleadoActual();
+
+        Page<AsistenciaDiariaRowDto> page =
+                detalleRepository
+                        .buscarMisAsistencias(
+                                empleadoId,
+                                fechaInicio,
+                                fechaFin,
+                                pageable)
+                        .map(this::mapearDiariaRow);
+
+        return page;
+    }
+    
+    private Long obtenerEmpleadoActual() {
+
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado.");
+        }
+
+        empleadoRepository.findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"));
+
+        return empleadoId;
     }
 
     /**

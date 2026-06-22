@@ -47,4 +47,30 @@ public interface AsistenciaDetalleRepository
             @Param("dni") String dni,
             @Param("q") String q,
             Pageable pageable);
+    
+    @Query("""
+            SELECT det.id, cab.id, cab.empleadoId, p.dni, p.nombreCompleto, det.dia,
+                   det.marcaEntrada, det.marcaSalida, det.tipoDia,
+                   det.horasTrabajadasMin, det.minutosSalidaAnticipada, cab.periodo, det.origen,
+                   det.minutosTardanza, det.observacion, det.marca3, det.marca4,
+                   det.horaEntradaEsperada, det.horasExtra25Min, det.horasExtra35Min,
+                   det.horasExtra100Min, det.horasExtraTotalMin,
+                   det.papeletaAutorizada, det.papeletaMotivoRechazo
+              FROM AsistenciaDetalle det,
+                   AsistenciaCabecera cab,
+                   Empleado e,
+                   Persona p
+             WHERE cab.id = det.cabeceraId
+               AND e.id = cab.empleadoId
+               AND p.id = e.personaId
+               AND cab.activo = 1
+               AND cab.empleadoId = :empleadoId
+               AND det.dia BETWEEN :fechaInicio AND :fechaFin
+             ORDER BY det.dia DESC
+            """)
+    Page<Object[]> buscarMisAsistencias(
+            @Param("empleadoId") Long empleadoId,
+            @Param("fechaInicio") LocalDate fechaInicio,
+            @Param("fechaFin") LocalDate fechaFin,
+            Pageable pageable);
 }

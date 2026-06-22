@@ -52,6 +52,21 @@ public class AsistenciaController {
         return new ApiResponse<>("OK", "Asistencia del día",
                 service.listarDiaria(fecha, dni, q, pageable));
     }
+    
+    @GetMapping("/mis-asistencias")
+    public ApiResponse<Page<AsistenciaDiariaRowDto>> misAsistencias(
+            @RequestParam LocalDate fechaInicio,
+            @RequestParam LocalDate fechaFin,
+            @PageableDefault(size = 10) Pageable pageable) {
+
+        return new ApiResponse<>(
+                "OK",
+                "Mis asistencias",
+                service.misAsistencias(
+                        fechaInicio,
+                        fechaFin,
+                        pageable));
+    }
 
     /** Edición puntual de un día desde consulta diaria. */
     @PatchMapping("/diaria/{detalleId}")
