@@ -71,6 +71,7 @@ class GeneradorPlanillaServiceTest {
     @Mock private AfpParametroVigenciaRepository afpVigenciaRepository;
     @Mock private OnpParametroVigenciaRepository onpVigenciaRepository;
     @Mock private Ir4taConfigService ir4taConfigService;
+    @Mock private Ir4taControlAnualService ir4taControlAnualService;
 
     private GeneradorPlanillaService service;
 
@@ -110,6 +111,7 @@ class GeneradorPlanillaServiceTest {
                 eventoDistribucionMesRepository,
                 suspension4taService,
                 ir4taConfigService,
+                ir4taControlAnualService,
                 tipoPersonalRepository,
                 calculoSnapshotService,
                 subsidioCalculadorService,
@@ -134,6 +136,12 @@ class GeneradorPlanillaServiceTest {
         when(eventoDistribucionMesRepository
                 .findEventoIdsConTramoEnPeriodo(any(), any()))
                 .thenReturn(List.of());
+
+        // Integración de subsidios (PASO 7c): por defecto sin subsidio. El motor
+        // refactorizado lee el ingreso vía SubsidioPlanillaIntegracionService;
+        // sin este stub el mock devuelve null y rompe totalIngresos.add(...).
+        when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(any(), any()))
+                .thenReturn(BigDecimal.ZERO);
 
         // No hay movimiento anterior
         when(movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))

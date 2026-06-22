@@ -252,6 +252,31 @@ public class Ir4taConfigService {
         c.setUrlFuenteOficial(input.getUrlFuenteOficial());
         c.setFechaPublicacion(input.getFechaPublicacion());
         c.setObservacion(input.getObservacion());
+
+        // ── V010_93 — Límites de suspensión y reglas (con defaults normativos) ──
+        c.setTopeAnualGeneral(input.getTopeAnualGeneral());
+        c.setTopeAnualDirector(input.getTopeAnualDirector());
+        c.setAplicaCasGeneral(boolToInt(input.getAplicaCasGeneral(), 1));
+        c.setAplicaCasDirector(boolToInt(input.getAplicaCasDirector(), 0));
+        c.setPctAlertaPrev(input.getPctAlertaPrev() != null
+                ? input.getPctAlertaPrev() : BigDecimal.valueOf(80));
+        c.setPctAlertaCrit(input.getPctAlertaCrit() != null
+                ? input.getPctAlertaCrit() : BigDecimal.valueOf(90));
+        c.setCodigoSunatPlame(input.getCodigoSunatPlame() != null
+                ? input.getCodigoSunatPlame() : "3042");
+        c.setFlgCalcAcumulado(boolToInt(input.getFlgCalcAcumulado(), 1));
+        c.setFlgAlerta80(boolToInt(input.getFlgAlerta80(), 1));
+        c.setFlgAlerta90(boolToInt(input.getFlgAlerta90(), 1));
+        c.setFlgMarcarValidacion(boolToInt(input.getFlgMarcarValidacion(), 1));
+        c.setFlgRetencionAuto(boolToInt(input.getFlgRetencionAuto(), 0));
+    }
+
+    private int boolToInt(Boolean v, int def) {
+        return v == null ? def : (v ? 1 : 0);
+    }
+
+    private boolean intToBool(Integer v) {
+        return v != null && v == 1;
     }
 
     private LocalDate parsePeriodoToDate(String periodo) {
@@ -278,6 +303,18 @@ public class Ir4taConfigService {
         dto.setUrlFuenteOficial(c.getUrlFuenteOficial());
         dto.setFechaPublicacion(c.getFechaPublicacion());
         dto.setObservacion(c.getObservacion());
+        dto.setTopeAnualGeneral(c.getTopeAnualGeneral());
+        dto.setTopeAnualDirector(c.getTopeAnualDirector());
+        dto.setAplicaCasGeneral(intToBool(c.getAplicaCasGeneral()));
+        dto.setAplicaCasDirector(intToBool(c.getAplicaCasDirector()));
+        dto.setPctAlertaPrev(c.getPctAlertaPrev());
+        dto.setPctAlertaCrit(c.getPctAlertaCrit());
+        dto.setCodigoSunatPlame(c.getCodigoSunatPlame());
+        dto.setFlgCalcAcumulado(intToBool(c.getFlgCalcAcumulado()));
+        dto.setFlgAlerta80(intToBool(c.getFlgAlerta80()));
+        dto.setFlgAlerta90(intToBool(c.getFlgAlerta90()));
+        dto.setFlgMarcarValidacion(intToBool(c.getFlgMarcarValidacion()));
+        dto.setFlgRetencionAuto(intToBool(c.getFlgRetencionAuto()));
         dto.setEstado(c.getEstado());
         dto.setBloqueadoPorPlanilla(c.getBloqueadoPorPlanilla() == 1);
         dto.setCreadoPor(c.getCreadoPor());

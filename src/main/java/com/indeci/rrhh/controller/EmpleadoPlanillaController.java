@@ -1,5 +1,7 @@
 package com.indeci.rrhh.controller;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -10,13 +12,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.EmpleadoPlanillaDto;
 import com.indeci.rrhh.dto.EmpleadoPlanillaResponseDto;
+import com.indeci.rrhh.dto.IncrementosDsResponseDto;
 import com.indeci.rrhh.dto.PlanillaConsolidadaRowDto;
 import com.indeci.rrhh.service.EmpleadoPlanillaService;
+import com.indeci.rrhh.service.IncrementosDsCalculoService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
@@ -28,6 +33,23 @@ import lombok.RequiredArgsConstructor;
 public class EmpleadoPlanillaController {
 
     private final EmpleadoPlanillaService service;
+    private final IncrementosDsCalculoService incrementosDsCalculoService;
+
+    /** Preview UI: incrementos DS sin persistir. */
+    @GetMapping("/incrementos-ds")
+    public ApiResponse<IncrementosDsResponseDto> calcularIncrementosDs(
+            @RequestParam Long regimenLaboralId,
+            @RequestParam(required = false) Long condicionLaboralId,
+            @RequestParam BigDecimal montoContratado) {
+        return new ApiResponse<>(
+                "OK",
+                "Incrementos DS calculados",
+                incrementosDsCalculoService.calcular(
+                        regimenLaboralId,
+                        condicionLaboralId,
+                        montoContratado,
+                        LocalDate.now()));
+    }
 
     @PostMapping
     @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)

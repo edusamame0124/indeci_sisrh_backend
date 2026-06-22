@@ -199,6 +199,9 @@ public class GeneradorPlanillaService {
     /** V010_76 — Configuración anual IR4ta: UIT, tasa y base inafecta por año fiscal. */
     private final Ir4taConfigService ir4taConfigService;
 
+    /** V010_93/94 — Control anual del tope de suspensión IR4ta (pendiente B2). */
+    private final Ir4taControlAnualService ir4taControlAnualService;
+
     /** Mejora 2026-06-03 — subgrupo SERVIR para resolver la compensación base. */
     private final TipoPersonalRepository tipoPersonalRepository;
 
@@ -443,8 +446,21 @@ public class GeneradorPlanillaService {
                     .subtract(montoNoAfectoIr4ta)
                     .max(BigDecimal.ZERO);
 
+            // B2 — Control anual del tope de suspensión: monitorea acumulado y, si
+            //      RR.HH. confirmó el reinicio (o se habilitó retención automática),
+            //      indica retener pese a la constancia. Efecto lateral defensivo:
+            //      ante cualquier error mantiene el comportamiento actual.
+            boolean suspendeEfectiva = suspension.vigente();
+            Ir4taControlAnualService.MotorDecision controlTope =
+                    ir4taControlAnualService.evaluarEnMotor(
+                            empleadoId, anioFiscal, periodo, baseIr4ta,
+                            suspension.vigente(), null);
+            if (controlTope != null && controlTope.aplicarRetencionPeseASuspension()) {
+                suspendeEfectiva = false;
+            }
+
             ir4taCas = calcular4taCategoriaCAS(
-                    baseIr4ta, regimenLaboralCodigo, anioFiscal, suspension.vigente());
+                    baseIr4ta, regimenLaboralCodigo, anioFiscal, suspendeEfectiva);
             if (ir4taCas.signum() > 0) {
                 ConceptoPlanilla conceptoIr4ta = conceptoIr4taCas();
                 String obs = String.format(

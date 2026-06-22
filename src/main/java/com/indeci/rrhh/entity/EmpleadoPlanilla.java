@@ -75,6 +75,10 @@ public class EmpleadoPlanilla {
     @Column(name = "CODIGO_AIRHSP")
     private String codigoAirhsp;
 
+    /** Sueldo pactado en contrato (base antes de incrementos DS). */
+    @Column(name = "MONTO_CONTRATO")
+    private Double montoContrato;
+
     @Column(name = "META")
     private String meta;
 
