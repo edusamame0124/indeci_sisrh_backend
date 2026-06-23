@@ -1,5 +1,6 @@
 package com.indeci.rrhh.repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -38,4 +39,26 @@ public interface CalculoSnapshotRepository
     int desactivarVigentes(
             @Param("empleadoId") Long empleadoId,
             @Param("periodo") String periodo);
+
+    /**
+     * Acumulado conocido por INDECI: suma de la base afecta 4ta ({@code baseCalculo}
+     * de los snapshots {@code IR4TA_CAS} vigentes) del empleado en el año fiscal.
+     *
+     * <p>El año se identifica por el prefijo del período (sirve para "YYYYMM" y
+     * "YYYY-MM"). Cuando {@code periodoExcluyenteDesde} no es null, solo cuenta
+     * períodos ESTRICTAMENTE anteriores a ese valor (separa acumulado de la
+     * proyección del período actual). Devuelve 0 si no hay filas.</p>
+     */
+    @Query("""
+        SELECT COALESCE(SUM(s.baseCalculo), 0) FROM CalculoSnapshot s
+        WHERE s.empleadoId = :empleadoId
+          AND s.regla = 'IR4TA_CAS'
+          AND s.activo = 1
+          AND s.periodo LIKE :anioPrefijo
+          AND (:periodoExcluyenteDesde IS NULL OR s.periodo < :periodoExcluyenteDesde)
+        """)
+    BigDecimal sumarBaseIr4taPorAnio(
+            @Param("empleadoId") Long empleadoId,
+            @Param("anioPrefijo") String anioPrefijo,
+            @Param("periodoExcluyenteDesde") String periodoExcluyenteDesde);
 }

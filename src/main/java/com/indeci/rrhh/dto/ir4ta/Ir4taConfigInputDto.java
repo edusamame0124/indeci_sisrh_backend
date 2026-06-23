@@ -42,4 +42,31 @@ public class Ir4taConfigInputDto {
 
     @Size(max = 200)
     private String observacion;
+
+    // ── V010_93 — Límites de suspensión y reglas (opcionales en el input) ───
+    @DecimalMin(value = "0", message = "El tope general no puede ser negativo.")
+    private BigDecimal topeAnualGeneral;
+
+    @DecimalMin(value = "0", message = "El tope director no puede ser negativo.")
+    private BigDecimal topeAnualDirector;
+
+    private Boolean aplicaCasGeneral;
+    private Boolean aplicaCasDirector;
+
+    @DecimalMin(value = "0", message = "El % de alerta preventiva no puede ser negativo.")
+    @DecimalMax(value = "100", message = "El % de alerta preventiva no puede superar 100.")
+    private BigDecimal pctAlertaPrev;
+
+    @DecimalMin(value = "0", message = "El % de alerta crítica no puede ser negativo.")
+    @DecimalMax(value = "100", message = "El % de alerta crítica no puede superar 100.")
+    private BigDecimal pctAlertaCrit;
+
+    @Size(max = 10)
+    private String codigoSunatPlame;
+
+    private Boolean flgCalcAcumulado;
+    private Boolean flgAlerta80;
+    private Boolean flgAlerta90;
+    private Boolean flgMarcarValidacion;
+    private Boolean flgRetencionAuto;
 }

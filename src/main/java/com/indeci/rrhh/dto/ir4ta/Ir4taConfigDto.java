@@ -20,6 +20,19 @@ public class Ir4taConfigDto {
     private String urlFuenteOficial;
     private LocalDate fechaPublicacion;
     private String observacion;
+    // ── V010_93 — Límites de suspensión y reglas ────────────────────────────
+    private BigDecimal topeAnualGeneral;
+    private BigDecimal topeAnualDirector;
+    private boolean aplicaCasGeneral;
+    private boolean aplicaCasDirector;
+    private BigDecimal pctAlertaPrev;
+    private BigDecimal pctAlertaCrit;
+    private String codigoSunatPlame;
+    private boolean flgCalcAcumulado;
+    private boolean flgAlerta80;
+    private boolean flgAlerta90;
+    private boolean flgMarcarValidacion;
+    private boolean flgRetencionAuto;
     private String estado;
     private boolean bloqueadoPorPlanilla;
     private String creadoPor;
