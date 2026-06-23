@@ -49,7 +49,6 @@ public class LegajoDocumentoService {
     private final LegajoSubcategoriaRepository subcategoriaRepository;
     private final FtpService ftpService;
     private final AuditoriaContext auditoriaContext;
-
     // =================== LISTAR ===================
 
     public List<LegajoDocumentoResponseDto> listarPorEmpleado(Long empleadoId) {
@@ -301,5 +300,16 @@ public class LegajoDocumentoService {
             sub.ifPresent(s -> dto.setSubcategoriaNombre(s.getNombre()));
         }
         return dto;
+    }
+    
+    public void inactivarSiExiste(Long id) {
+        if (id == null) {
+            return;
+        }
+
+        repository.findById(id).ifPresent(doc -> {
+            doc.setActivo(0);
+            repository.save(doc);
+        });
     }
 }

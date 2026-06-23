@@ -3,6 +3,7 @@ package com.indeci.rrhh.controller;
 import java.time.LocalDate;
 import java.util.List;
 
+
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.PutMapping;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.LegajoArchivoDescargaDto;
@@ -28,6 +30,7 @@ import com.indeci.rrhh.entity.LegajoSubcategoria;
 import com.indeci.rrhh.repository.LegajoCategoriaRepository;
 import com.indeci.rrhh.repository.LegajoSubcategoriaRepository;
 import com.indeci.rrhh.service.LegajoDocumentoService;
+import com.indeci.rrhh.service.LegajoSustentoService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
@@ -71,9 +74,10 @@ import lombok.RequiredArgsConstructor;
 @PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class LegajoDocumentoController {
 
-    private final LegajoDocumentoService service;
-    private final LegajoCategoriaRepository categoriaRepository;
-    private final LegajoSubcategoriaRepository subcategoriaRepository;
+	private final LegajoDocumentoService service;
+	private final LegajoSustentoService legajoSustentoService;
+	private final LegajoCategoriaRepository categoriaRepository;
+	private final LegajoSubcategoriaRepository subcategoriaRepository;
 
     @GetMapping("/categorias")
     public ApiResponse<List<LegajoCategoria>> categorias() {
@@ -164,5 +168,41 @@ public class LegajoDocumentoController {
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return new ApiResponse<>("OK", "Documento desactivado", null);
+    }
+    
+    //CAMBIO GX
+    @PutMapping(
+            value = "/sustento/{tipo}/{registroId}",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<LegajoDocumentoResponseDto> reemplazarSustento(
+            @PathVariable String tipo,
+            @PathVariable Long registroId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam Long empleadoId,
+            @RequestParam Long categoriaId,
+            @RequestParam(required = false) Long subcategoriaId,
+            @RequestParam(required = false) String nombreDocumento,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fechaDocumento,
+            @RequestParam(required = false) String observacion) {
+
+        LegajoDocumentoResponseDto response =
+                legajoSustentoService.reemplazarSustento(
+                        tipo,
+                        registroId,
+                        empleadoId,
+                        categoriaId,
+                        subcategoriaId,
+                        nombreDocumento,
+                        fechaDocumento,
+                        observacion,
+                        file);
+
+        return new ApiResponse<>(
+                "OK",
+                "Sustento actualizado correctamente",
+                response);
     }
 }
