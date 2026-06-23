@@ -88,6 +88,91 @@ public class FtpService {
             desconectar(ftp);
         }
     }
+    
+    public String subirPdfGenerado(
+            byte[] contenido,
+            String carpeta,
+            String nombreArchivo) {
+
+        String nombreFinal =
+                System.currentTimeMillis() + "_" + nombreArchivo;
+
+        if (usarAlmacenamientoLocal()) {
+
+            try {
+
+                Path dir =
+                        Paths.get(
+                                localBasePath,
+                                carpeta.split("/"));
+
+                Files.createDirectories(dir);
+
+                Path destino =
+                        dir.resolve(nombreFinal);
+
+                Files.write(
+                        destino,
+                        contenido);
+
+                return destino
+                        .toAbsolutePath()
+                        .toString()
+                        .replace('\\', '/');
+
+            } catch (Exception e) {
+
+                throw new NegocioException(
+                        "No se pudo guardar el archivo");
+            }
+        }
+
+        FTPClient ftp = null;
+
+        try {
+
+            ftp = conectar();
+
+            String rutaCompleta =
+                    basePath + carpeta;
+
+            crearDirectorios(
+                    ftp,
+                    rutaCompleta);
+
+            ftp.changeWorkingDirectory(
+                    rutaCompleta);
+
+            try (java.io.ByteArrayInputStream input =
+                         new java.io.ByteArrayInputStream(
+                                 contenido)) {
+
+                boolean ok =
+                        ftp.storeFile(
+                                nombreFinal,
+                                input);
+
+                if (!ok) {
+
+                    throw new NegocioException(
+                            "No se pudo subir el documento");
+                }
+            }
+
+            return rutaCompleta
+                    + "/"
+                    + nombreFinal;
+
+        } catch (Exception e) {
+
+            throw new NegocioException(
+                    "No se pudo guardar el documento");
+
+        } finally {
+
+            desconectar(ftp);
+        }
+    }
 
     public byte[] descargarArchivo(String rutaArchivo) {
         if (usarAlmacenamientoLocal()) {

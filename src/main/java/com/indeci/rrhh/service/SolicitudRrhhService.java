@@ -12,13 +12,16 @@ import com.indeci.rrhh.entity.*;
 
 import com.indeci.rrhh.repository.*;
 import com.indeci.security.util.SecurityUtil;
+import com.itextpdf.text.Document;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,6 +32,8 @@ import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.itextpdf.text.Paragraph;
+import com.itextpdf.text.pdf.PdfWriter;
 
 @Service
 @RequiredArgsConstructor
@@ -164,7 +169,7 @@ public class SolicitudRrhhService {
             String ruta =
                     ftpService.subirArchivo(
                             archivo,
-                            "sustentos",
+                            "papeletas",
                             archivo.getOriginalFilename());
 
             SolicitudRrhhDoc doc =
@@ -609,7 +614,7 @@ public class SolicitudRrhhService {
             String ruta =
                     ftpService.subirArchivo(
                             sustento,
-                            "sustentos",
+                            "papeletas",
                             sustento.getOriginalFilename());
 
             SolicitudRrhhDoc doc =
@@ -1650,7 +1655,7 @@ public class SolicitudRrhhService {
             String ruta =
                     ftpService.subirArchivo(
                             sustento,
-                            "sustentos",
+                            "papeletas",
                             sustento.getOriginalFilename());
 
             SolicitudRrhhDoc doc =
@@ -1996,38 +2001,68 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Estado no encontrado"));
-
-        // ==========================================
-        // VALIDAR ARCHIVO
-        // ==========================================
-
-        if (file == null
-                || file.isEmpty()) {
-
-            throw new NegocioException(
-                    "Documento firmado es obligatorio");
-        }
-
-        // ==========================================
-        // VALIDAR BORRADOR
-        // ==========================================
-
-        if (!estadoActual.getCodigo()
-                .equals("BORRADOR")) {
+        
+        if (!"BORRADOR".equals(
+                estadoActual.getCodigo())) {
 
             throw new NegocioException(
                     "Solo solicitudes en borrador pueden enviarse");
         }
 
         // ==========================================
+        // VALIDAR ARCHIVO
+        // ==========================================
+
+        MultipartFile archivoFinal = file;
+
+        String rutaArchivo;
+        String nombreArchivo;
+        String mimeType;
+        Long tamanioBytes;
+
+        if (file == null || file.isEmpty()) {
+
+            byte[] pdf =
+                    generarPdfSinFirma(
+                            "SOLICITUD NO REQUIERE FIRMA");
+
+            rutaArchivo =
+                    ftpService.subirPdfGenerado(
+                            pdf,
+                            "papeletas",
+                            "solicitud_no_requiere_firma.pdf");
+
+            nombreArchivo =
+                    "solicitud_no_requiere_firma.pdf";
+
+            mimeType =
+                    "application/pdf";
+
+            tamanioBytes =
+                    (long) pdf.length;
+
+        } else {
+
+            rutaArchivo =
+                    ftpService.subirArchivo(
+                            file,
+                            "papeletas",
+                            file.getOriginalFilename());
+
+            nombreArchivo =
+                    file.getOriginalFilename();
+
+            mimeType =
+                    file.getContentType();
+
+            tamanioBytes =
+                    file.getSize();
+        }
+        // ==========================================
         // SUBIR FTP
         // ==========================================
 
-        String rutaArchivo =
-                ftpService.subirArchivo(
-                        file,
-                        "papeletas",
-                        file.getOriginalFilename());
+       
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -2043,16 +2078,16 @@ public class SolicitudRrhhService {
                 "EMPLEADO");
 
         doc.setNombreArchivo(
-                file.getOriginalFilename());
+                nombreArchivo);
 
         doc.setRutaArchivo(
                 rutaArchivo);
 
         doc.setMimeType(
-                file.getContentType());
+                mimeType);
 
         doc.setTamanioBytes(
-                file.getSize());
+                tamanioBytes);
 
         doc.setVersionDoc(1);
 
@@ -2138,22 +2173,57 @@ public class SolicitudRrhhService {
         // VALIDAR ARCHIVO
         // ==========================================
 
-        if (file == null
-                || file.isEmpty()) {
+   
 
-            throw new NegocioException(
-                    "Documento firmado por jefe es obligatorio");
+        String rutaArchivo;
+        String nombreArchivo;
+        String mimeType;
+        Long tamanioBytes;
+
+        if (file == null || file.isEmpty()) {
+
+            byte[] pdf =
+                    generarPdfSinFirma(
+                            "SOLICITUD NO REQUIERE FIRMA");
+
+            rutaArchivo =
+                    ftpService.subirPdfGenerado(
+                            pdf,
+                            "papeletas",
+                            "solicitud_no_requiere_firma.pdf");
+
+            nombreArchivo =
+                    "solicitud_no_requiere_firma.pdf";
+
+            mimeType =
+                    "application/pdf";
+
+            tamanioBytes =
+                    (long) pdf.length;
+
+        } else {
+
+            rutaArchivo =
+                    ftpService.subirArchivo(
+                            file,
+                            "papeletas",
+                            file.getOriginalFilename());
+
+            nombreArchivo =
+                    file.getOriginalFilename();
+
+            mimeType =
+                    file.getContentType();
+
+            tamanioBytes =
+                    file.getSize();
         }
 
         // ==========================================
         // SUBIR FTP
         // ==========================================
 
-        String rutaArchivo =
-                ftpService.subirArchivo(
-                        file,
-                        "papeletas",
-                        file.getOriginalFilename());
+       
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -2169,16 +2239,16 @@ public class SolicitudRrhhService {
                 "JEFE");
 
         doc.setNombreArchivo(
-                file.getOriginalFilename());
+                nombreArchivo);
 
         doc.setRutaArchivo(
                 rutaArchivo);
 
         doc.setMimeType(
-                file.getContentType());
+                mimeType);
 
         doc.setTamanioBytes(
-                file.getSize());
+                tamanioBytes);
 
         doc.setVersionDoc(2);
 
@@ -2364,22 +2434,57 @@ public class SolicitudRrhhService {
         // VALIDAR ARCHIVO
         // ==========================================
 
-        if (file == null
-                || file.isEmpty()) {
+       
 
-            throw new NegocioException(
-                    "Documento firmado por RRHH es obligatorio");
+        String rutaArchivo;
+        String nombreArchivo;
+        String mimeType;
+        Long tamanioBytes;
+
+        if (file == null || file.isEmpty()) {
+
+            byte[] pdf =
+                    generarPdfSinFirma(
+                            "SOLICITUD NO REQUIERE FIRMA");
+
+            rutaArchivo =
+                    ftpService.subirPdfGenerado(
+                            pdf,
+                            "papeletas",
+                            "solicitud_no_requiere_firma.pdf");
+
+            nombreArchivo =
+                    "solicitud_no_requiere_firma.pdf";
+
+            mimeType =
+                    "application/pdf";
+
+            tamanioBytes =
+                    (long) pdf.length;
+
+        } else {
+
+            rutaArchivo =
+                    ftpService.subirArchivo(
+                            file,
+                            "papeletas",
+                            file.getOriginalFilename());
+
+            nombreArchivo =
+                    file.getOriginalFilename();
+
+            mimeType =
+                    file.getContentType();
+
+            tamanioBytes =
+                    file.getSize();
         }
 
         // ==========================================
         // SUBIR FTP
         // ==========================================
 
-        String rutaArchivo =
-                ftpService.subirArchivo(
-                        file,
-                        "papeletas",
-                        file.getOriginalFilename());
+       
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -2395,16 +2500,17 @@ public class SolicitudRrhhService {
                 "RRHH");
 
         doc.setNombreArchivo(
-                file.getOriginalFilename());
+                nombreArchivo);
 
         doc.setRutaArchivo(
                 rutaArchivo);
 
         doc.setMimeType(
-                file.getContentType());
+                mimeType);
+
 
         doc.setTamanioBytes(
-                file.getSize());
+                tamanioBytes);
 
         doc.setVersionDoc(3);
 
@@ -2909,5 +3015,39 @@ public class SolicitudRrhhService {
                 .map(this::convertir)
                 .toList();
     }
+    
+    private byte[] generarPdfSinFirma(
+            String mensaje) {
+
+        try {
+
+            ByteArrayOutputStream baos =
+                    new ByteArrayOutputStream();
+
+            Document document =
+                    new Document();
+
+            PdfWriter.getInstance(
+                    document,
+                    baos);
+
+            document.open();
+
+            document.add(
+                    new Paragraph(
+                            mensaje));
+
+            document.close();
+
+            return baos.toByteArray();
+
+        } catch (Exception e) {
+
+            throw new RuntimeException(
+                    "Error generando PDF",
+                    e);
+        }
+    }
+   
     
 }

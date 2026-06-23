@@ -82,7 +82,8 @@ public class SolicitudRrhhController {
     //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> enviar(
             @PathVariable Long id,
-            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "file", required = false)
+            MultipartFile file,
             @RequestParam(value = "observacion", required = false) String observacion) {
 
         service.enviar(id, file, observacion);
@@ -95,7 +96,8 @@ public class SolicitudRrhhController {
     //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> aprobarJefe(
             @PathVariable Long id,
-            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "file", required = false)
+            MultipartFile file,
             @RequestParam(value = "observacion", required = false) String observacion) {
 
         service.aprobarSupervisor(id, file, observacion);
@@ -119,7 +121,7 @@ public class SolicitudRrhhController {
 
             @PathVariable Long id,
 
-            @RequestParam("file")
+            @RequestParam(value = "file", required = false)
             MultipartFile file,
 
             @RequestParam(
