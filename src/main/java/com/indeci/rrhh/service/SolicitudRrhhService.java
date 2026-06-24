@@ -59,7 +59,7 @@ public class SolicitudRrhhService {
     private final SolicitudVacacionDetRepository solicitudVacacionDetRepository;
     private final SolicitudCompensacionDetRepository solicitudCompensacionDetRepository;
     private final TipoDescansoDocRepository tipoDescansoDocRepository;
-    
+    private final PersonaRepository personaRepository;
     //private static final String TIPO_VACACIONES = "VAC";
     
 
@@ -1793,8 +1793,24 @@ public class SolicitudRrhhService {
 
         if (empleado != null) {
 
+            String nombreEmpleado = null;
+
+            if (empleado.getPersonaId() != null) {
+
+                Persona persona = personaRepository
+                        .findById(empleado.getPersonaId())
+                        .orElse(null);
+
+                if (persona != null) {
+                    nombreEmpleado = persona.getNombreCompleto();
+                }
+            }
+
             dto.setEmpleado(
-                    empleado.getCodigoInterno());
+                    nombreEmpleado != null && !nombreEmpleado.isBlank()
+                            ? nombreEmpleado
+                            : empleado.getCodigoInterno()
+            );
         }
 
         dto.setTipoSolicitudId(

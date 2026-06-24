@@ -89,7 +89,13 @@ public class PersonaController {
         if (page < 0) page = 0;
         return new ApiResponse<>("OK", "Listado paginado", personaService.listarPaginado(q, page, size));
     }
-
+    @GetMapping("/persona/me")
+    public ApiResponse<PersonaEmpleadoResponseDto> obtenerMiPerfil() {
+        return new ApiResponse<>(
+                "OK",
+                "Detalle del empleado logueado",
+                personaService.obtenerMiPerfil());
+    }
     // DETALLE
     @GetMapping("/persona/{id}")
     public ApiResponse<PersonaEmpleadoResponseDto> obtener(@PathVariable Long id) {
@@ -114,4 +120,5 @@ public class PersonaController {
         personaService.eliminar(id);
         return new ApiResponse<>("OK", "Eliminado correctamente", null);
     }
+    
 }

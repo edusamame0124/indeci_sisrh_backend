@@ -16,7 +16,9 @@ import com.indeci.rrhh.entity.TeletrabajoReporteDet;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.TeletrabajoReporteDetRepository;
 import com.indeci.rrhh.repository.TeletrabajoReporteRepository;
-
+import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.PersonaRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -35,7 +37,9 @@ public class TeletrabajoReporteService {
 
     private final EmpleadoRepository
             empleadoRepository;
-
+    
+    private final PersonaRepository personaRepository;
+    
     @Transactional
     public void registrar(
             TeletrabajoReporteDto dto) {
@@ -183,7 +187,31 @@ public class TeletrabajoReporteService {
 
         dto.setEmpleadoId(
                 reporte.getEmpleadoId());
+        Empleado empleado = empleadoRepository
+                .findById(reporte.getEmpleadoId())
+                .orElse(null);
 
+        if (empleado != null) {
+
+            dto.setCodigoInterno(
+                    empleado.getCodigoInterno());
+
+            if (empleado.getPersonaId() != null) {
+
+                Persona persona = personaRepository
+                        .findById(empleado.getPersonaId())
+                        .orElse(null);
+
+                if (persona != null) {
+
+                    dto.setTrabajador(
+                            persona.getNombreCompleto());
+
+                    dto.setDni(
+                            persona.getDni());
+                }
+            }
+        }
         dto.setMes(
                 reporte.getMes());
 

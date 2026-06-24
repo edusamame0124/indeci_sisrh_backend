@@ -36,6 +36,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.indeci.security.util.SecurityUtil;
+
 
 @Service
 @RequiredArgsConstructor
@@ -384,7 +386,28 @@ public class PersonaService {
                     .flatMap(regimenLaboralRepository::findById)
                     .ifPresent(rl -> dto.setRegimenLaboral(rl.getNombre()));
         }
-
+        
         return dto;
+    }
+    public PersonaEmpleadoResponseDto obtenerMiPerfil() {
+
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado. Solicite al administrador que vincule su cuenta.");
+        }
+
+        Empleado empleado = empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException("Empleado no encontrado"));
+
+        Persona persona = personaRepository
+                .findById(empleado.getPersonaId())
+                .orElseThrow(() ->
+                        new NegocioException("Persona no encontrada"));
+
+        return mapearPersona(persona, empleado);
     }
 }

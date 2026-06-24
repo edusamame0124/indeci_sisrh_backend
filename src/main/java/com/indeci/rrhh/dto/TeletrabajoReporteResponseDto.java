@@ -23,7 +23,9 @@ public class TeletrabajoReporteResponseDto {
     private LocalDate fechaReporte;
 
     private String estado;
-
+    private String trabajador;
+    private String dni;
+    private String codigoInterno;
     private List<TeletrabajoReporteDetResponseDto>
             detalles;
 }
