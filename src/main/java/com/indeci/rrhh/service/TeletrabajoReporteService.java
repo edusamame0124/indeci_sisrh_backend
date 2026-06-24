@@ -354,6 +354,14 @@ public class TeletrabajoReporteService {
 
         detalle.setConformidadId(
                 dto.getConformidadId());
+        
+        TeletrabajoReporte objTeletrabajoReporte=reporteRepository.getById(dto.getReporteId());
+        
+        if (objTeletrabajoReporte.getEmpleadoId() == null) {
+            throw new NegocioException(
+                    "El reporte no tiene empleado asociado");
+        }
+        detalle.setEmpleadoId(objTeletrabajoReporte.getEmpleadoId());
 
         detalle.setActivo(1);
 

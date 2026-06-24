@@ -63,6 +63,9 @@ public class TeletrabajoReporteDet {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+    
+    @Column(name = "EMPLEADO_ID")
+    private Long empleadoId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
