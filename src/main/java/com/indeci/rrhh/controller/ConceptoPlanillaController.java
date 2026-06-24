@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
+import com.indeci.rrhh.dto.ConceptoHistorialDto;
+import com.indeci.rrhh.dto.ConceptoNuevaVersionDto;
 import com.indeci.rrhh.dto.ConceptoPlanillaDto;
 import com.indeci.rrhh.dto.ConceptoPlanillaResponseDto;
 import com.indeci.rrhh.service.ConceptoPlanillaService;
@@ -37,7 +39,8 @@ public class ConceptoPlanillaController {
 
     @GetMapping
     public ApiResponse<List<ConceptoPlanillaResponseDto>> listar() {
-        return new ApiResponse<>("OK", "Lista conceptos", service.listar());
+        // Catálogo de gestión: incluye BORRADOR/EN_REVISION (no solo ACTIVO=1).
+        return new ApiResponse<>("OK", "Lista conceptos", service.listarCatalogo());
     }
 
     @PutMapping("/{id}")
@@ -54,5 +57,55 @@ public class ConceptoPlanillaController {
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return new ApiResponse<>("OK", "Concepto eliminado", null);
+    }
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P1 — transiciones de estado (§8/D1)
+    // ============================================================
+
+    @PostMapping("/{id}/enviar-revision")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    public ApiResponse<Void> enviarRevision(@PathVariable Long id) {
+        service.enviarRevision(id);
+        return new ApiResponse<>("OK", "Concepto enviado a revisión", null);
+    }
+
+    @PostMapping("/{id}/activar")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
+    public ApiResponse<Void> activar(@PathVariable Long id) {
+        service.activar(id);
+        return new ApiResponse<>("OK", "Concepto activado", null);
+    }
+
+    @PostMapping("/{id}/cerrar")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
+    public ApiResponse<Void> cerrar(@PathVariable Long id) {
+        service.cerrar(id);
+        return new ApiResponse<>("OK", "Concepto cerrado", null);
+    }
+
+    @PostMapping("/{id}/anular")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_APPROVE)
+    public ApiResponse<Void> anular(@PathVariable Long id) {
+        service.anular(id);
+        return new ApiResponse<>("OK", "Concepto anulado", null);
+    }
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P3 — historial + nueva versión vigente (§12)
+    // ============================================================
+
+    @GetMapping("/{id}/historial")
+    public ApiResponse<ConceptoHistorialDto> historial(@PathVariable Long id) {
+        return new ApiResponse<>("OK", "Historial del concepto", service.historial(id));
+    }
+
+    @PostMapping("/{id}/nueva-version")
+    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    public ApiResponse<Long> nuevaVersion(
+            @PathVariable Long id,
+            @RequestBody ConceptoNuevaVersionDto body) {
+        Long nuevaId = service.crearNuevaVersion(id, body.getFechaVigIni());
+        return new ApiResponse<>("OK", "Nueva versión vigente creada", nuevaId);
     }
 }

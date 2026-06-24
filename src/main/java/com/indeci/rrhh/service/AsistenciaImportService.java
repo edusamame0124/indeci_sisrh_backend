@@ -41,6 +41,7 @@ import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
 import com.indeci.rrhh.service.asistencia.MarcadorCsvRow;
 import com.indeci.rrhh.service.asistencia.TardanzaCalculator;
+import com.indeci.rrhh.service.asistencia.TardanzaDescuentoCalculator;
 import com.indeci.security.auth.SisrhPermission;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -654,21 +655,31 @@ public class AsistenciaImportService {
         }
         List<AsistenciaDetalle> detalles =
                 detalleRepository.findByCabeceraIdOrderByDia(cabecera.getId());
-        int totalMin = 0;
+        // Modelo de dos niveles (V010_95): tardanza diaria EN BRUTO (sin restar
+        // tolerancia); el umbral diario clasifica D1 (diario) vs D2 (mensual).
+        List<Integer> tardanzasDiarias = new ArrayList<>();
         for (AsistenciaDetalle d : detalles) {
             if (esDiaTrabajado(d.getTipoDia())) {
-                Integer min = TardanzaCalculator.calcular(d.getMarcaEntrada(), d.getMarca3(), jornada);
+                Integer min = TardanzaCalculator.calcularBruto(d.getMarcaEntrada(), d.getMarca3(), jornada);
                 if (min != null) {
                     d.setMinutosTardanza(min);
                     d.setTipoDia(min > 0 ? "TARDANZA" : "LABORAL");
                 }
             }
             if ("TARDANZA".equals(d.getTipoDia()) && d.getMinutosTardanza() != null) {
-                totalMin += d.getMinutosTardanza();
+                tardanzasDiarias.add(d.getMinutosTardanza());
             }
         }
         detalleRepository.saveAll(detalles);
-        cabecera.setTotalMinTardanza(totalMin);
+
+        int umbral = jornada.getUmbralTardanzaDiariaMin() != null ? jornada.getUmbralTardanzaDiariaMin() : 10;
+        int tope = jornada.getTopeTardanzaMensualMin() != null ? jornada.getTopeTardanzaMensualMin() : 60;
+        TardanzaDescuentoCalculator.Resultado split = TardanzaDescuentoCalculator.calcular(
+                tardanzasDiarias, 0, jornada.getJornadaHoras(), umbral, tope);
+        cabecera.setMinTardanzaDiaria(split.getMinTardanzaDiaria());
+        cabecera.setMinTardanzaMenorAcum(split.getMinTardanzaMenorAcum());
+        cabecera.setMinTardanzaExcesoMes(split.getMinTardanzaExcesoMes());
+        cabecera.setTotalMinTardanza(split.getMinTardanzaDiaria() + split.getMinTardanzaMenorAcum());
     }
 
     /** Solo los días efectivamente trabajados se recalculan (no FALTA/DESCANSO/LICENCIA/etc). */
@@ -696,13 +707,33 @@ public class AsistenciaImportService {
             return;
         }
         double b = base.getRemuneracionBase();
-        int minTard = cabecera.getTotalMinTardanza() != null ? cabecera.getTotalMinTardanza() : 0;
         int diasFalta = cabecera.getDiasFalta() != null ? cabecera.getDiasFalta() : 0;
+
+        // Modelo de dos niveles (V010_95): el descuento usa el split persistido por
+        // recalcularTardanzaDesdeMarcas y la tasa por minuto del régimen (divisor
+        // remun/30/jornada/60). DESCUENTO_TARDANZA sigue siendo el TOTAL (D1+D2),
+        // que el motor de planilla lee sin cambios.
+        JornadaRegimen jornada = jornadaDeEmpleado(cabecera.getEmpleadoId());
+        java.math.BigDecimal jornadaHoras = (jornada != null && jornada.getJornadaHoras() != null)
+                ? jornada.getJornadaHoras()
+                : java.math.BigDecimal.valueOf(8);
+        int minDiaria = cabecera.getMinTardanzaDiaria() != null ? cabecera.getMinTardanzaDiaria() : 0;
+        int minExceso = cabecera.getMinTardanzaExcesoMes() != null ? cabecera.getMinTardanzaExcesoMes() : 0;
+
+        double descDiaria = TardanzaDescuentoCalculator.descuento(b, jornadaHoras, minDiaria);
+        double descMensual = TardanzaDescuentoCalculator.descuento(b, jornadaHoras, minExceso);
+
         cabecera.setRemuneracionBase(b);
-        cabecera.setDescuentoTardanza(
-                AsistenciaResumenCalculator.calcularDescuentoTardanza(b, minTard));
+        cabecera.setDescuentoTardanzaDiaria(descDiaria);
+        cabecera.setDescuentoTardanzaMensual(descMensual);
+        cabecera.setDescuentoTardanza(round2(descDiaria + descMensual));
         cabecera.setDescuentoFalta(
                 AsistenciaResumenCalculator.calcularDescuentoFalta(b, diasFalta));
+    }
+
+    private static double round2(double v) {
+        return java.math.BigDecimal.valueOf(v)
+                .setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
     }
 
     private void guardarEmpleadoDesdeImport(

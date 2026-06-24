@@ -88,6 +88,21 @@ public class GlobalExceptionHandler {
     }
 
     // ============================
+    // CONCEPTO USADO EN PLANILLA CERRADA (409) — SPEC_CONCEPTOS_PLANILLA P1 / D5
+    // ============================
+    @ExceptionHandler(ConceptoEnPlanillaCerradaException.class)
+    public ResponseEntity<?> handleConceptoEnPlanillaCerrada(
+            ConceptoEnPlanillaCerradaException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 409);
+        response.put("mensaje", ex.getMessage());
+        response.put("requiereCaptcha", false);
+
+        return ResponseEntity.status(409).body(response);
+    }
+
+    // ============================
     // VALIDACIÓN @VALID (400)
     // ============================
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -35,6 +35,31 @@ public class ConceptoPlanilla {
     private LocalDateTime createdAt;
 
     // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P1 (V010_97) — ciclo de vida + RTPS
+    // ============================================================
+
+    /**
+     * Ciclo de vida: BORRADOR | EN_REVISION | ACTIVO | CERRADO | ANULADO (§8/D1).
+     * En P1 el motor sigue leyendo {@link #activo}; {@code estado} es la fuente
+     * de verdad del flujo y mantiene {@code activo} sincronizado como espejo
+     * legacy (ACTIVO→1; CERRADO/ANULADO→0).
+     */
+    @Column(name = "ESTADO")
+    private String estado;
+
+    /** FK a {@code INDECI_CONCEPTO_RTPS(CODIGO)} — clasificación externa PDT 601. */
+    @Column(name = "RTPS_CODIGO")
+    private String rtpsCodigo;
+
+    /**
+     * SPEC_CONCEPTOS_PLANILLA P3 (V010_99) — n.º de versión por CÓDIGO.
+     * {@code crearNuevaVersion()} clona el concepto con {@code max(version)+1}
+     * para el mismo CÓDIGO. DEFAULT 1 (conceptos no versionados quedan en 1).
+     */
+    @Column(name = "VERSION")
+    private Integer version;
+
+    // ============================================================
     // Spec 010 — campos MEF (Ley 32448 / SPEC §6.1)
     // ============================================================
 
@@ -65,6 +90,15 @@ public class ConceptoPlanilla {
     /** REMUNERATIVO | NO_REMUNERATIVO | DESCUENTO | APORTE_TRABAJADOR | APORTE_EMPLEADOR. */
     @Column(name = "TIPO_CONCEPTO")
     private String tipoConcepto;
+
+    /**
+     * SPEC_CONCEPTOS_PLANILLA §13 (V010_100) — "Tipo de Concepto" funcional (SISPER).
+     * FK a {@code INDECI_TIPO_CONCEPTO_INTERNO(CODIGO)}. El {@link #tipoConcepto}
+     * (motor) se DERIVA de la {@code CLASIFICACION_MOTOR} de la fila referenciada;
+     * el motor sigue leyendo {@code TIPO_CONCEPTO}.
+     */
+    @Column(name = "TIPO_CONCEPTO_INTERNO")
+    private String tipoConceptoInterno;
 
     /** S/N — afecto a retención 5ta categoría. */
     @Column(name = "AFECTO_IR_5TA")
@@ -109,4 +143,16 @@ public class ConceptoPlanilla {
      */
     @Column(name = "ES_PRORRATEABLE")
     private String esProrrateable;
+
+    /**
+     * SPEC_CONCEPTOS_PLANILLA §14 / P4 (V010_101) — Modo de cálculo.
+     * Valores: MONTO_FIJO | MONTO_INDIVIDUAL | PORCENTAJE | RESULTADO_MOTOR |
+     * IMPORTACION. DEFAULT 'RESULTADO_MOTOR'.
+     *
+     * <p>MODO_CALCULO: metadata/intención; el motor NO se ramifica por él (P4).
+     * Solo documenta cómo se origina el monto para guiar al operador; el motor v3
+     * sigue valorizando cada concepto como hoy, sin consumir este campo.</p>
+     */
+    @Column(name = "MODO_CALCULO")
+    private String modoCalculo;
 }

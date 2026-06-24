@@ -3,6 +3,7 @@ package com.indeci.rrhh.dto;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Response del catálogo de conceptos de planilla.
@@ -32,6 +33,9 @@ public class ConceptoPlanillaResponseDto {
     private String codigoSisper;
     private String tipoConcepto;
 
+    /** §13 — "Tipo de Concepto" funcional (SISPER); el motor sigue usando tipoConcepto. */
+    private String tipoConceptoInterno;
+
     // F3.2 — códigos externos para PLAME y MCPP (V010_27 / B3).
     private String codigoPlameSunat;
     private String codigoMcpp;
@@ -54,4 +58,48 @@ public class ConceptoPlanillaResponseDto {
 
     // F1.5b — el motor v3 prorratea el monto por días laborados si "S".
     private String esProrrateable;
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P1 (V010_97) — ciclo de vida + RTPS
+    // ============================================================
+
+    /** BORRADOR | EN_REVISION | ACTIVO | CERRADO | ANULADO. */
+    private String estado;
+
+    /** FK al catálogo RTPS (PDT 601). */
+    private String rtpsCodigo;
+
+    /** Descripción RTPS resuelta para display (evita un join en la UI). */
+    private String rtpsDescripcion;
+
+    /** Código de tributo SUNAT (ej. 3042) — antes solo en request. */
+    private String codigoTributoSunat;
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P3 (V010_99) — versionado por vigencia
+    // ============================================================
+
+    /** N.º de versión por CÓDIGO (display). DEFAULT 1. */
+    private Integer version;
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA §14 / P4 (V010_101) — Modo de cálculo
+    // ============================================================
+
+    /**
+     * Modo de cálculo (metadata): MONTO_FIJO | MONTO_INDIVIDUAL | PORCENTAJE |
+     * RESULTADO_MOTOR | IMPORTACION. DEFAULT 'RESULTADO_MOTOR'. El motor NO se
+     * ramifica por este campo.
+     */
+    private String modoCalculo;
+
+    // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA §15 / Fase A (V010_102) — planillas asociadas
+    // ============================================================
+
+    /**
+     * Códigos de los tipos de planilla asociados al concepto (M:N). Vacío si el
+     * concepto aún no declara ninguno (conceptos legacy previos a Fase A).
+     */
+    private List<String> planillaTipos;
 }

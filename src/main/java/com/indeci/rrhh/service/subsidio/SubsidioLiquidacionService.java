@@ -101,6 +101,18 @@ public class SubsidioLiquidacionService {
                 detalles, params, base.getTopeMensual(), base.getMesesEvaluados());
         BigDecimal subsidioDiario = formulaEngine.evaluar(formula.getExpresionJson(), ctx);
 
+        // Guard de coherencia: el subsidio diario nace de un SUM_TOP sobre los
+        // detalles de la base. Si calcula cero pese a existir base reconocida
+        // positiva, la base quedó sin detalles (estado inconsistente): no se debe
+        // grabar una liquidación en S/ 0 en silencio — exigir recálculo de base.
+        if (subsidioDiario.signum() <= 0 && base.getBaseReconocida() != null
+                && base.getBaseReconocida().signum() > 0) {
+            throw new NegocioException(
+                    "El subsidio diario calculó S/ 0 pese a una base reconocida de S/ "
+                            + base.getBaseReconocida() + ". Recalcule la base histórica del caso "
+                            + "antes de liquidar. (SUB_V008)");
+        }
+
         BigDecimal remuneracionMensual = resolverRemuneracion(caso.getEmpleadoId());
         BigDecimal contraprestacionDiaria = remuneracionMensual
                 .divide(TREINTA, 4, RoundingMode.HALF_UP);

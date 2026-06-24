@@ -42,6 +42,30 @@ public class AsistenciaCabecera {
     @Column(name = "DESCUENTO_FALTA")
     private Double descuentoFalta;
 
+    // ── V010_95 — agregados del modelo de dos niveles (Descuento 1 / Descuento 2) ──
+    // Columnas NOT NULL DEFAULT 0: se inicializan en 0 para que una cabecera nueva
+    // (p.ej. al confirmar la importación) inserte 0 y no NULL (el DEFAULT de Oracle
+    // solo aplica si la columna se omite del INSERT, y JPA la incluye).
+    /** Minutos de días con tardanza > umbral diario (Descuento 1). */
+    @Column(name = "MIN_TARDANZA_DIARIA")
+    private Integer minTardanzaDiaria = 0;
+
+    /** Minutos acumulados de días con tardanza ≤ umbral diario. */
+    @Column(name = "MIN_TARDANZA_MENOR_ACUM")
+    private Integer minTardanzaMenorAcum = 0;
+
+    /** Exceso de la acumulación mensual sobre el tope (Descuento 2). */
+    @Column(name = "MIN_TARDANZA_EXCESO_MES")
+    private Integer minTardanzaExcesoMes = 0;
+
+    /** Descuento por tardanza diaria (Descuento 1, S/). */
+    @Column(name = "DESCUENTO_TARDANZA_DIARIA")
+    private Double descuentoTardanzaDiaria = 0.0;
+
+    /** Descuento por exceso mensual (Descuento 2, S/). */
+    @Column(name = "DESCUENTO_TARDANZA_MENSUAL")
+    private Double descuentoTardanzaMensual = 0.0;
+
     @Column(name = "ESTADO")
     private String estado;
 

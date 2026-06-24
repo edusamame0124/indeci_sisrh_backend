@@ -36,6 +36,25 @@ public class MovimientoPlanillaDetalle {
     private LocalDateTime createdAt;
 
     // ============================================================
+    // SPEC_CONCEPTOS_PLANILLA P3 (V010_99) — snapshot histórico del concepto
+    //   Congela nombre/código/tipo al grabar el detalle (§8/D5). Renombrar o
+    //   reconfigurar el concepto NO altera la boleta histórica. Nullable: filas
+    //   previas a V010_99 hacen fallback al concepto vivo.
+    // ============================================================
+
+    /** Snapshot del CÓDIGO del concepto al grabar. */
+    @Column(name = "CONCEPTO_CODIGO")
+    private String conceptoCodigo;
+
+    /** Snapshot del NOMBRE del concepto al grabar. */
+    @Column(name = "CONCEPTO_NOMBRE")
+    private String conceptoNombre;
+
+    /** Snapshot del TIPO_CONCEPTO al grabar. */
+    @Column(name = "CONCEPTO_TIPO")
+    private String conceptoTipo;
+
+    // ============================================================
     // Spec 010 / V010_09 — campos v2 del detalle de planilla
     // ============================================================
 

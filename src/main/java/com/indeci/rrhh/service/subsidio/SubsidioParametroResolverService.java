@@ -53,6 +53,15 @@ public class SubsidioParametroResolverService {
         return BigDecimal.ZERO;
     }
 
+    /** Valor de texto de un parámetro versionado vigente (p. ej. SUBSIDIO_DIVISOR_MODO). */
+    @Transactional(readOnly = true)
+    public String obtenerTexto(String codigo, LocalDate fecha) {
+        return parametroRepository.findByCodigoAndActivo(codigo, 1)
+                .flatMap(p -> versionRepository.findVigente(p.getId(), fecha))
+                .map(SubsidioParametroVersion::getValorTexto)
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, BigDecimal> mapaNumerico(LocalDate fecha, int anioFiscal) {
         Map<String, BigDecimal> map = new HashMap<>();

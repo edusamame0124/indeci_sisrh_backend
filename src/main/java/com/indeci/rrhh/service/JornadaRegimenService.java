@@ -62,6 +62,8 @@ public class JornadaRegimenService {
                     dto.setRegimenNombre(regimen.getNombre());
                     dto.setToleranciaIngresoMin(0);
                     dto.setToleranciaAlmuerzoMin(0);
+                    dto.setUmbralTardanzaDiariaMin(10);
+                    dto.setTopeTardanzaMensualMin(60);
                     dto.setJornadaHoras(BigDecimal.valueOf(8));
                     return dto;
                 });
@@ -102,6 +104,8 @@ public class JornadaRegimenService {
         entity.setRefrigerioFin(trim(dto.getRefrigerioFin()));
         entity.setToleranciaIngresoMin(dto.getToleranciaIngresoMin() != null ? dto.getToleranciaIngresoMin() : 0);
         entity.setToleranciaAlmuerzoMin(dto.getToleranciaAlmuerzoMin() != null ? dto.getToleranciaAlmuerzoMin() : 0);
+        entity.setUmbralTardanzaDiariaMin(dto.getUmbralTardanzaDiariaMin() != null ? dto.getUmbralTardanzaDiariaMin() : 10);
+        entity.setTopeTardanzaMensualMin(dto.getTopeTardanzaMensualMin() != null ? dto.getTopeTardanzaMensualMin() : 60);
         entity.setJornadaHoras(dto.getJornadaHoras() != null ? dto.getJornadaHoras() : BigDecimal.valueOf(8));
         entity.setUpdatedAt(LocalDateTime.now());
 
@@ -139,6 +143,12 @@ public class JornadaRegimenService {
         }
         if (dto.getJornadaHoras() != null && dto.getJornadaHoras().signum() <= 0) {
             throw new NegocioException("La jornada (horas) debe ser mayor que cero.");
+        }
+        if (dto.getUmbralTardanzaDiariaMin() != null && dto.getUmbralTardanzaDiariaMin() < 0) {
+            throw new NegocioException("El umbral de tardanza diaria no puede ser negativo.");
+        }
+        if (dto.getTopeTardanzaMensualMin() != null && dto.getTopeTardanzaMensualMin() < 0) {
+            throw new NegocioException("El tope mensual de tardanzas no puede ser negativo.");
         }
     }
 
@@ -183,6 +193,8 @@ public class JornadaRegimenService {
         dto.setRefrigerioFin(j.getRefrigerioFin());
         dto.setToleranciaIngresoMin(j.getToleranciaIngresoMin());
         dto.setToleranciaAlmuerzoMin(j.getToleranciaAlmuerzoMin());
+        dto.setUmbralTardanzaDiariaMin(j.getUmbralTardanzaDiariaMin());
+        dto.setTopeTardanzaMensualMin(j.getTopeTardanzaMensualMin());
         dto.setJornadaHoras(j.getJornadaHoras());
         return dto;
     }

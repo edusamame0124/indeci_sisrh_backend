@@ -56,6 +56,36 @@ public final class TardanzaCalculator {
         return calculado ? total : null;
     }
 
+    /**
+     * Modelo de dos niveles (V010_95): tardanza diaria EN BRUTO, sin restar
+     * tolerancia (el umbral diario hace la clasificación posterior). Suma la
+     * demora de ingreso (Marca1 vs hora ingreso) y la de regreso de refrigerio
+     * (Marca3 vs fin de refrigerio). Devuelve {@code null} si no se puede medir.
+     */
+    public static Integer calcularBruto(String marcaIngresoStr, String marcaRegresoStr, JornadaRegimen jornada) {
+        if (jornada == null) {
+            return null;
+        }
+        int total = 0;
+        boolean calculado = false;
+
+        Integer marcaIngreso = toMinutos(marcaIngresoStr);
+        Integer horaIngreso = toMinutos(jornada.getHoraIngreso());
+        if (marcaIngreso != null && horaIngreso != null) {
+            total += Math.max(0, marcaIngreso - horaIngreso);
+            calculado = true;
+        }
+
+        Integer marcaRegreso = toMinutos(marcaRegresoStr);
+        Integer finRefrigerio = toMinutos(jornada.getRefrigerioFin());
+        if (marcaRegreso != null && finRefrigerio != null) {
+            total += Math.max(0, marcaRegreso - finRefrigerio);
+            calculado = true;
+        }
+
+        return calculado ? total : null;
+    }
+
     private static int tol(Integer valor) {
         return valor != null ? Math.max(0, valor) : 0;
     }

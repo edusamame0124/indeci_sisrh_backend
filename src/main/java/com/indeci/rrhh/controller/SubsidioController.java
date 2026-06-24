@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.subsidio.SubsidioBaseHistoricaResponseDto;
+import com.indeci.rrhh.dto.subsidio.SubsidioBaseManualInput;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoPageDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoResponseDto;
@@ -134,6 +135,20 @@ public class SubsidioController {
     @GetMapping("/casos/{id}/base-historica")
     public ApiResponse<SubsidioBaseHistoricaResponseDto> obtenerBase(@PathVariable Long id) {
         return new ApiResponse<>("OK", "Base histórica vigente", casoService.obtenerBaseHistorica(id));
+    }
+
+    @GetMapping("/casos/{id}/base-historica/borrador")
+    public ApiResponse<SubsidioBaseHistoricaResponseDto> borradorBase(@PathVariable Long id) {
+        return new ApiResponse<>("OK", "Borrador de base editable",
+                casoService.prepararBaseBorrador(id));
+    }
+
+    @PutMapping("/casos/{id}/base-historica/manual")
+    @PreAuthorize(SisrhSecurityExpressions.SUB_WRITE)
+    public ApiResponse<SubsidioBaseHistoricaResponseDto> guardarBaseManual(
+            @PathVariable Long id, @RequestBody SubsidioBaseManualInput input) {
+        return new ApiResponse<>("OK", "Base histórica manual guardada",
+                casoService.guardarBaseManual(id, input));
     }
 
     @PostMapping("/tramos/{tramoId}/liquidaciones/calcular")

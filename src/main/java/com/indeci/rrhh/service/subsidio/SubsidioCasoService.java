@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.subsidio.SubsidioBaseDetalleDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioBaseHistoricaResponseDto;
+import com.indeci.rrhh.dto.subsidio.SubsidioBaseManualInput;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoPageDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioCasoResponseDto;
@@ -49,8 +51,13 @@ public class SubsidioCasoService {
 
     private static final Set<String> TIPOS = Set.of(
             SubsidioEstados.TIPO_ENFERMEDAD, SubsidioEstados.TIPO_MATERNIDAD);
+    // Se permite corregir datos del caso (fechas, etc.) hasta CALCULADO inclusive
+    // —antes de aplicar a planilla—. APLICADO_PLANILLA y estados posteriores quedan
+    // bloqueados (ya impactaron el pago): ahí solo cabe reversión/ajuste autorizado.
     private static final Set<String> ESTADOS_EDITABLES = Set.of(
-            SubsidioEstados.CASO_BORRADOR, SubsidioEstados.CASO_PENDIENTE_VALIDACION);
+            SubsidioEstados.CASO_BORRADOR,
+            SubsidioEstados.CASO_PENDIENTE_VALIDACION,
+            SubsidioEstados.CASO_CALCULADO);
 
     private final SubsidioCasoRepository casoRepository;
     private final SubsidioCittRepository cittRepository;
@@ -121,6 +128,17 @@ public class SubsidioCasoService {
         SubsidioCaso caso = buscar(id);
         assertEditable(caso);
         validarDto(dto);
+
+        // Si cambian las fechas (afectan la ventana de la base y todo el cálculo)
+        // de un caso ya CALCULADO, se reabre a BORRADOR: la base/liquidación
+        // previas quedaron obsoletas y deben recalcularse.
+        boolean fechasCambiaron =
+                !Objects.equals(caso.getFechaContingencia(), dto.fechaContingencia())
+                        || !Objects.equals(caso.getFechaInicio(), dto.fechaInicio())
+                        || !Objects.equals(caso.getFechaFin(), dto.fechaFin());
+        boolean reabrir = fechasCambiaron
+                && SubsidioEstados.CASO_CALCULADO.equals(caso.getEstado());
+
         caso.setFechaContingencia(dto.fechaContingencia());
         caso.setFechaInicio(dto.fechaInicio());
         caso.setFechaFin(dto.fechaFin());
@@ -129,10 +147,17 @@ public class SubsidioCasoService {
         if (dto.modoCalculo() != null) {
             caso.setModoCalculo(dto.modoCalculo());
         }
+        if (reabrir) {
+            caso.setEstado(SubsidioEstados.CASO_BORRADOR);
+        }
         caso.setModifiedAt(LocalDateTime.now());
         caso.setModifiedBy(SecurityUtil.getUsername());
         casoRepository.save(caso);
-        timelineService.registrar(id, "ACTUALIZACION", "Datos del caso actualizados", id);
+        timelineService.registrar(id, "ACTUALIZACION",
+                reabrir
+                        ? "Fechas del caso modificadas — reabierto a BORRADOR: recalcular base y liquidación"
+                        : "Datos del caso actualizados",
+                id);
         return obtener(id);
     }
 
@@ -223,6 +248,23 @@ public class SubsidioCasoService {
     @Transactional
     public SubsidioBaseHistoricaResponseDto calcularBaseHistorica(Long casoId) {
         return toBaseResponse(baseHistoricaService.calcular(casoId));
+    }
+
+    @Transactional(readOnly = true)
+    public SubsidioBaseHistoricaResponseDto prepararBaseBorrador(Long casoId) {
+        var preview = baseHistoricaService.prepararBorrador(casoId);
+        return toBaseResponse(preview.base(), preview.detalles());
+    }
+
+    @Transactional
+    public SubsidioBaseHistoricaResponseDto guardarBaseManual(
+            Long casoId, SubsidioBaseManualInput input) {
+        SubsidioBaseHistorica base = baseHistoricaService.guardarManual(casoId, input);
+        String sustento = input != null && input.observacion() != null
+                ? ": " + input.observacion() : "";
+        timelineService.registrar(casoId, "BASE_MANUAL",
+                "Base histórica ingresada manualmente" + sustento, base.getId());
+        return toBaseResponse(base);
     }
 
     @Transactional
@@ -358,7 +400,12 @@ public class SubsidioCasoService {
     }
 
     private SubsidioBaseHistoricaResponseDto toBaseResponse(SubsidioBaseHistorica base) {
-        List<SubsidioBaseDetalleDto> det = baseHistoricaService.listarDetalle(base.getId()).stream()
+        return toBaseResponse(base, baseHistoricaService.listarDetalle(base.getId()));
+    }
+
+    private SubsidioBaseHistoricaResponseDto toBaseResponse(
+            SubsidioBaseHistorica base, List<SubsidioBaseDetalle> detalles) {
+        List<SubsidioBaseDetalleDto> det = detalles.stream()
                 .map(this::toBaseDetalleDto)
                 .toList();
         return new SubsidioBaseHistoricaResponseDto(
@@ -370,7 +417,8 @@ public class SubsidioCasoService {
     private SubsidioBaseDetalleDto toBaseDetalleDto(SubsidioBaseDetalle d) {
         return new SubsidioBaseDetalleDto(
                 d.getPeriodo(), d.getRemuneracionReal(), d.getTopeAplicado(),
-                d.getBaseComputable(), d.getFuenteMovimientoId());
+                d.getBaseComputable(), d.getIncidencia(), d.getEsManual(),
+                d.getFuenteMovimientoId());
     }
 
     private SubsidioTimelineEventoDto toTimelineDto(SubsidioTimelineEvento e) {
