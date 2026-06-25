@@ -665,6 +665,9 @@ public class SolicitudRrhhService {
         validarLactancia(
                 dto,
                 tipo);
+        completarFechasLactancia(
+                dto,
+                tipo);
         
         validarDescansoMedico(
                 dto,
@@ -852,6 +855,11 @@ public class SolicitudRrhhService {
         if(!esLactancia){
             return;
         }
+        
+        if(dto.getFechaNacimientoHijo() == null) {
+            throw new NegocioException(
+                    "Fecha nacimiento del hijo es obligatoria");
+        }
 
         if(dto.getFechaNacimientoHijo()
                 .isAfter(LocalDate.now())) {
@@ -859,6 +867,8 @@ public class SolicitudRrhhService {
             throw new NegocioException(
                     "La fecha de nacimiento del hijo no puede ser futura");
         }
+        
+     
         
         
         boolean continua =
@@ -956,15 +966,12 @@ public class SolicitudRrhhService {
         	            "Minutos salida inválidos");
         	}
 
-            if(dto.getFechaNacimientoHijo() == null) {
-                throw new NegocioException(
-                        "Fecha nacimiento del hijo es obligatoria");
-            }
+           
 
-            if(dto.getFechaFinPostnatal() == null) {
+           /* if(dto.getFechaFinPostnatal() == null) {
                 throw new NegocioException(
                         "Fecha fin postnatal es obligatoria");
-            }
+            }*/
             
             
         	LocalDate fechaLimite =
@@ -981,6 +988,17 @@ public class SolicitudRrhhService {
         
     }
     
+    private void completarFechasLactancia(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo) {
+
+        if (!"008".equals(tipo.getCodigo())) {
+            return;
+        }
+
+        dto.setFechaInicio(dto.getFechaNacimientoHijo());
+        dto.setFechaFin(dto.getFechaNacimientoHijo());
+    }
     private void validarSustento(
             TipoSolicitudRrhh tipo,
             MultipartFile sustento) {
@@ -1150,11 +1168,21 @@ public class SolicitudRrhhService {
 
         entity.setLugarComision(dto.getLugarComision());
 
+        
+        
+        if (dto.getFechaNacimientoHijo() == null) {
+            throw new NegocioException(
+                    "La fecha de nacimiento del hijo es obligatoria");
+        }
+
         entity.setFechaNacimientoHijo(
                 dto.getFechaNacimientoHijo());
 
         entity.setFechaFinPostnatal(
-                dto.getFechaFinPostnatal());
+                dto.getFechaNacimientoHijo()
+                        .plusYears(1));
+
+     
 
         entity.setMinutosIngreso(
                 dto.getMinutosIngreso());
@@ -2679,6 +2707,9 @@ public class SolicitudRrhhService {
        
 
         validarLactancia(
+                dto,
+                tipo);
+        completarFechasLactancia(
                 dto,
                 tipo);
         validarVacacion(
