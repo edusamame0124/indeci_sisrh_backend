@@ -1169,12 +1169,19 @@ public class SolicitudRrhhService {
 
         entity.setLugarComision(dto.getLugarComision());
 
+        boolean esLactancia =
+                "008".equals(tipo.getCodigo())
+                || "009".equals(tipo.getCodigo());
         
         
-        if (dto.getFechaNacimientoHijo() == null) {
-            throw new NegocioException(
-                    "La fecha de nacimiento del hijo es obligatoria");
+        if(esLactancia) {
+        	if (dto.getFechaNacimientoHijo() == null) {
+                throw new NegocioException(
+                        "La fecha de nacimiento del hijo es obligatoria");
+            }
+        	
         }
+        
 
         entity.setFechaNacimientoHijo(
                 dto.getFechaNacimientoHijo());
