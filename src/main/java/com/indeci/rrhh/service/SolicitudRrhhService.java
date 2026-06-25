@@ -1136,12 +1136,12 @@ public class SolicitudRrhhService {
                     "Debe seleccionar el tipo de licencia");
         }
 
-        if(dto.getTotalFolios() == null
+       /* if(dto.getTotalFolios() == null
                 || dto.getTotalFolios() <= 0) {
 
             throw new NegocioException(
                     "Debe indicar la cantidad de folios");
-        }
+        }*/
     }
     
     private SolicitudRrhh construirSolicitud(
