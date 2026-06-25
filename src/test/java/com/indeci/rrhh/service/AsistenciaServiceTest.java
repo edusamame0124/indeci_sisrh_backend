@@ -6,8 +6,11 @@ import com.indeci.rrhh.dto.AsistenciaDiaDto;
 import com.indeci.rrhh.dto.AsistenciaGuardarDto;
 import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
+import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
 import org.junit.jupiter.api.Test;
@@ -26,9 +29,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import org.mockito.InOrder;
 
 /**
  * Spec 010 / M04 — Tests del servicio de asistencia (SPEC §12.2 PANTALLA-02).
@@ -45,6 +51,8 @@ class AsistenciaServiceTest {
     @Mock private AsistenciaDetalleRepository detalleRepository;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private BaseAsistenciaResolver baseResolver;
+    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
 
     @InjectMocks private AsistenciaService service;
 
@@ -102,6 +110,44 @@ class AsistenciaServiceTest {
 
         verify(detalleRepository).deleteByCabeceraId(10L);
         verify(detalleRepository).saveAll(any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void guardar_preserva_marcas_y_hace_flush_antes_de_insertar() {
+        AsistenciaGuardarDto dto = dtoBase();
+        // El front envía el día SIN marcas (el GET no las devuelve).
+        dto.setDias(List.of(dia("TARDANZA", 20, 11)));
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(10L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo(PERIODO);
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(cab));
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        // Detalle previo con las marcas del marcador.
+        AsistenciaDetalle prev = new AsistenciaDetalle();
+        prev.setDia(LocalDate.of(2026, 5, 11));
+        prev.setMarcaEntrada("08:50");
+        prev.setMarca3("13:05");
+        when(detalleRepository.findByCabeceraIdOrderByDia(10L)).thenReturn(List.of(prev));
+
+        service.guardar(dto);
+
+        // Fix 1 — el DELETE se vacía (flush) ANTES de los INSERT (evita ORA-00001).
+        InOrder orden = inOrder(detalleRepository);
+        orden.verify(detalleRepository).deleteByCabeceraId(10L);
+        orden.verify(detalleRepository).flush();
+        ArgumentCaptor<List<AsistenciaDetalle>> capt = ArgumentCaptor.forClass(List.class);
+        orden.verify(detalleRepository).saveAll(capt.capture());
+
+        // Fix 2 — las marcas se conservan del detalle previo.
+        AsistenciaDetalle guardado = capt.getValue().get(0);
+        assertThat(guardado.getMarcaEntrada()).isEqualTo("08:50");
+        assertThat(guardado.getMarca3()).isEqualTo("13:05");
     }
 
     @Test

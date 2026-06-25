@@ -10,16 +10,23 @@ import com.indeci.rrhh.dto.AsistenciaGuardarDto;
 import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.rrhh.service.asistencia.TardanzaDescuentoCalculator;
+
+import java.math.BigDecimal;
 import com.indeci.security.util.SecurityUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -62,14 +69,16 @@ public class AsistenciaService {
     private final BaseAsistenciaResolver baseResolver;
     private final SolicitudRrhhRepository solicitudRrhhRepository;
     private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
-    
+
+    private final JornadaRegimenRepository jornadaRegimenRepository;
+    private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
 
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
 
     /** Códigos de tipo de solicitud que cuentan como permiso/papeleta en asistencia. */
     private static final Set<String> CODIGOS_PERMISO_ASISTENCIA = Set.of(
-            "002", "003", "004", "005", "006", "008", "009", "010", "011", "012");
+            "001", "002", "003", "004", "005", "006", "008", "009", "010", "011", "012");
 
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
@@ -385,12 +394,57 @@ public class AsistenciaService {
                 AsistenciaResumenCalculator.calcular(dias, remun);
         cab.setDiasLaborados(agregados.getDiasLaborados());
         cab.setDiasFalta(agregados.getDiasFalta());
-        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
-        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
-        cab.setDescuentoFalta(agregados.getDescuentoFalta());
         cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
         cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
+        cab.setDescuentoFalta(agregados.getDescuentoFalta());
+
+        aplicarDescuentoTardanzaDosNiveles(cab, dias, remun);
         cabeceraRepository.save(cab);
+    }
+
+    /**
+     * Aplica el descuento de tardanza de dos niveles (V010_95) a la cabecera:
+     * clasifica cada día por el umbral, acumula el Descuento 2 y persiste el
+     * split (D1/D2). {@code DESCUENTO_TARDANZA} queda como el total (D1+D2), que
+     * es lo que lee el motor de planilla. Fuente única para guardar y recalcular.
+     */
+    private void aplicarDescuentoTardanzaDosNiveles(
+            AsistenciaCabecera cab, List<AsistenciaDiaDto> dias, double remun) {
+        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        List<Integer> tardanzasDiarias = dias.stream()
+                .filter(d -> "TARDANZA".equals(d.getTipoDia()) && d.getMinutosTardanza() != null)
+                .map(AsistenciaDiaDto::getMinutosTardanza)
+                .toList();
+        int umbral = (jornada != null && jornada.getUmbralTardanzaDiariaMin() != null)
+                ? jornada.getUmbralTardanzaDiariaMin() : 10;
+        int tope = (jornada != null && jornada.getTopeTardanzaMensualMin() != null)
+                ? jornada.getTopeTardanzaMensualMin() : 60;
+        BigDecimal jornadaHoras = (jornada != null && jornada.getJornadaHoras() != null)
+                ? jornada.getJornadaHoras() : BigDecimal.valueOf(8);
+
+        TardanzaDescuentoCalculator.Resultado split =
+                TardanzaDescuentoCalculator.calcular(tardanzasDiarias, remun, jornadaHoras, umbral, tope);
+        cab.setMinTardanzaDiaria(split.getMinTardanzaDiaria());
+        cab.setMinTardanzaMenorAcum(split.getMinTardanzaMenorAcum());
+        cab.setMinTardanzaExcesoMes(split.getMinTardanzaExcesoMes());
+        cab.setTotalMinTardanza(split.getMinTardanzaDiaria() + split.getMinTardanzaMenorAcum());
+        cab.setDescuentoTardanzaDiaria(split.getDescuentoDiaria());
+        cab.setDescuentoTardanzaMensual(split.getDescuentoMensual());
+        cab.setDescuentoTardanza(split.getDescuentoTotal());
+    }
+
+    /** Jornada vigente del empleado vía su régimen en INDECI_EMPLEADO_PLANILLA. */
+    private JornadaRegimen jornadaDeEmpleado(Long empleadoId) {
+        if (empleadoId == null) {
+            return null;
+        }
+        Long regimenId = empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
+                .map(EmpleadoPlanilla::getRegimenLaboralId)
+                .orElse(null);
+        if (regimenId == null) {
+            return null;
+        }
+        return jornadaRegimenRepository.findByRegimenLaboralId(regimenId).orElse(null);
     }
 
     private AsistenciaDiaDto aDiaDto(AsistenciaDetalle det) {
@@ -536,20 +590,32 @@ public class AsistenciaService {
         cab.setRemuneracionBase(dto.getRemuneracionBase());
         cab.setDiasLaborados(agregados.getDiasLaborados());
         cab.setDiasFalta(agregados.getDiasFalta());
-        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
-        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
         cab.setDescuentoFalta(agregados.getDescuentoFalta());
         cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
         cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
         cab.setObservacion(dto.getObservacion());
         cab.setEstado(normalizarEstado(dto.getEstado()));
 
+        // Fix 3 — tardanza con el modelo de dos niveles (no pisar D1/D2 con single-tier).
+        aplicarDescuentoTardanzaDosNiveles(cab, dias, remun);
+
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
+
+        // Fix 2 — preservar las marcas del reloj: la edición manual envía los días
+        // sin marcas (el GET no las devuelve), así que se conservan desde el detalle
+        // existente por día antes de reemplazarlo.
+        Map<LocalDate, AsistenciaDetalle> previoPorDia =
+                detalleRepository.findByCabeceraIdOrderByDia(guardada.getId()).stream()
+                        .collect(Collectors.toMap(
+                                AsistenciaDetalle::getDia, d -> d, (a, b) -> a));
 
         // ----- Reemplazar el detalle -----
         detalleRepository.deleteByCabeceraId(guardada.getId());
+        // Fix 1 — forzar el DELETE antes de los INSERT: sin esto Hibernate inserta
+        // primero y choca con INDECI_ASIST_DET_UK (CABECERA_ID, DIA) → ORA-00001.
+        detalleRepository.flush();
 
-        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias));
+        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias, previoPorDia));
 
         auditoriaContext.setDetalle(
                 "Asistencia guardada empleado " + dto.getEmpleadoId()
@@ -660,8 +726,22 @@ public class AsistenciaService {
     }
 
     private List<AsistenciaDetalle> mapearDetalles(Long cabeceraId, List<AsistenciaDiaDto> dias) {
+        return mapearDetalles(cabeceraId, dias, java.util.Map.of());
+    }
+
+    /**
+     * Mapea los días a detalle. Los campos del DTO mandan; los datos del reloj
+     * (marcas, hora esperada, horas trabajadas/extra) que NO llegan en el DTO se
+     * conservan desde el detalle previo del mismo día ({@code previoPorDia}) — así
+     * la edición manual no borra las marcas importadas (de las que depende Recalcular).
+     */
+    private List<AsistenciaDetalle> mapearDetalles(
+            Long cabeceraId,
+            List<AsistenciaDiaDto> dias,
+            Map<LocalDate, AsistenciaDetalle> previoPorDia) {
         List<AsistenciaDetalle> detalles = new ArrayList<>();
         for (AsistenciaDiaDto d : dias) {
+            AsistenciaDetalle prev = previoPorDia.get(d.getDia());
             AsistenciaDetalle det = new AsistenciaDetalle();
             det.setCabeceraId(cabeceraId);
             det.setDia(d.getDia());
@@ -669,23 +749,40 @@ public class AsistenciaService {
             det.setMinutosTardanza(
                     d.getMinutosTardanza() != null ? Math.max(0, d.getMinutosTardanza()) : 0);
             det.setObservacion(d.getObservacion());
-            det.setMarcaEntrada(d.getMarcaEntrada());
-            det.setMarcaSalida(d.getMarcaSalida());
-            det.setMarca3(d.getMarca3());
-            det.setMarca4(d.getMarca4());
-            det.setHoraEntradaEsperada(d.getHoraEntradaEsperada());
-            det.setMinutosSalidaAnticipada(
-                    d.getMinutosSalidaAnticipada() != null ? d.getMinutosSalidaAnticipada() : 0);
-            det.setHorasTrabajadasMin(d.getHorasTrabajadasMin() != null ? d.getHorasTrabajadasMin() : 0);
-            det.setHorasExtra25Min(d.getHorasExtra25Min() != null ? d.getHorasExtra25Min() : 0);
-            det.setHorasExtra35Min(d.getHorasExtra35Min() != null ? d.getHorasExtra35Min() : 0);
-            det.setHorasExtra100Min(d.getHorasExtra100Min() != null ? d.getHorasExtra100Min() : 0);
-            det.setHorasExtraTotalMin(d.getHorasExtraTotalMin() != null ? d.getHorasExtraTotalMin() : 0);
-            det.setDiaSemana(d.getDiaSemana());
-            det.setOrigen(d.getOrigen() != null ? d.getOrigen() : "MANUAL");
+            det.setMarcaEntrada(coalesce(d.getMarcaEntrada(), prev != null ? prev.getMarcaEntrada() : null));
+            det.setMarcaSalida(coalesce(d.getMarcaSalida(), prev != null ? prev.getMarcaSalida() : null));
+            det.setMarca3(coalesce(d.getMarca3(), prev != null ? prev.getMarca3() : null));
+            det.setMarca4(coalesce(d.getMarca4(), prev != null ? prev.getMarca4() : null));
+            det.setHoraEntradaEsperada(
+                    coalesce(d.getHoraEntradaEsperada(), prev != null ? prev.getHoraEntradaEsperada() : null));
+            det.setMinutosSalidaAnticipada(coalesceInt(d.getMinutosSalidaAnticipada(),
+                    prev != null ? prev.getMinutosSalidaAnticipada() : null));
+            det.setHorasTrabajadasMin(coalesceInt(d.getHorasTrabajadasMin(),
+                    prev != null ? prev.getHorasTrabajadasMin() : null));
+            det.setHorasExtra25Min(coalesceInt(d.getHorasExtra25Min(),
+                    prev != null ? prev.getHorasExtra25Min() : null));
+            det.setHorasExtra35Min(coalesceInt(d.getHorasExtra35Min(),
+                    prev != null ? prev.getHorasExtra35Min() : null));
+            det.setHorasExtra100Min(coalesceInt(d.getHorasExtra100Min(),
+                    prev != null ? prev.getHorasExtra100Min() : null));
+            det.setHorasExtraTotalMin(coalesceInt(d.getHorasExtraTotalMin(),
+                    prev != null ? prev.getHorasExtraTotalMin() : null));
+            det.setDiaSemana(coalesce(d.getDiaSemana(), prev != null ? prev.getDiaSemana() : null));
+            det.setOrigen(d.getOrigen() != null ? d.getOrigen()
+                    : (prev != null && prev.getOrigen() != null ? prev.getOrigen() : "MANUAL"));
             detalles.add(det);
         }
         return detalles;
+    }
+
+    private static String coalesce(String a, String b) {
+        return a != null ? a : b;
+    }
+
+    /** Valor del DTO si llega; si no, el del detalle previo; si tampoco, 0. */
+    private static int coalesceInt(Integer dto, Integer prev) {
+        if (dto != null) return dto;
+        return prev != null ? prev : 0;
     }
 
     // ==========================================
@@ -705,6 +802,16 @@ public class AsistenciaService {
         dto.setTotalMinTardanza(cab.getTotalMinTardanza());
         dto.setDescuentoTardanza(cab.getDescuentoTardanza());
         dto.setDescuentoFalta(cab.getDescuentoFalta());
+        // V010_95 — agregados del modelo de dos niveles + umbral vigente del régimen.
+        dto.setMinTardanzaDiaria(cab.getMinTardanzaDiaria());
+        dto.setMinTardanzaMenorAcum(cab.getMinTardanzaMenorAcum());
+        dto.setMinTardanzaExcesoMes(cab.getMinTardanzaExcesoMes());
+        dto.setDescuentoTardanzaDiaria(cab.getDescuentoTardanzaDiaria());
+        dto.setDescuentoTardanzaMensual(cab.getDescuentoTardanzaMensual());
+        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        dto.setUmbralTardanzaDiariaMin(
+                jornada != null && jornada.getUmbralTardanzaDiariaMin() != null
+                        ? jornada.getUmbralTardanzaDiariaMin() : 10);
         dto.setEstado(cab.getEstado());
         dto.setObservacion(cab.getObservacion());
 

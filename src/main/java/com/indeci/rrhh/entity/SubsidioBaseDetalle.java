@@ -39,6 +39,14 @@ public class SubsidioBaseDetalle {
     @Column(name = "INCIDENCIAS_JSON")
     private String incidenciasJson;
 
+    /** Etiqueta de trazabilidad del mes: NORMAL | LSGR | FALTA | REINTEGRO | PARCIAL. */
+    @Column(name = "INCIDENCIA", length = 20)
+    private String incidencia;
+
+    /** 'S' si la fila fue ingresada/ajustada manualmente por RR. HH. */
+    @Column(name = "ES_MANUAL", length = 1)
+    private String esManual;
+
     @Column(name = "FUENTE_MOVIMIENTO_ID")
     private Long fuenteMovimientoId;
 }

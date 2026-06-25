@@ -1226,6 +1226,40 @@ class GeneradorPlanillaServiceTest {
         return r;
     }
 
+    // ================================================================
+    // SPEC_CONCEPTOS_PLANILLA §12 / P3 — snapshot histórico en el detalle
+    // ================================================================
+
+    /**
+     * {@code grabarDetalle} debe congelar código/nombre/tipo del concepto en el
+     * detalle (snapshot), sin alterar el monto. Se invoca el método privado por
+     * reflexión (mismo patrón que el resto de tests del motor con
+     * {@link ReflectionTestUtils}).
+     */
+    @Test
+    void grabarDetalle_persiste_snapshot_codigo_nombre_tipo() {
+        ConceptoPlanilla concepto = conceptoMef(
+                777L, "00777", "GRATIFICACION", "REMUNERATIVO");
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> captor =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+
+        MovimientoPlanillaDetalle det = ReflectionTestUtils.invokeMethod(
+                service, "grabarDetalle",
+                100L, concepto, new BigDecimal("1234.56"), "obs");
+
+        verify(detalleRepository).save(captor.capture());
+        MovimientoPlanillaDetalle saved = captor.getValue();
+
+        assertThat(saved.getConceptoCodigo()).isEqualTo("00777");
+        assertThat(saved.getConceptoNombre()).isEqualTo("GRATIFICACION");
+        assertThat(saved.getConceptoTipo()).isEqualTo("REMUNERATIVO");
+        // El monto no se altera por el snapshot.
+        assertThat(saved.getMonto()).isEqualTo(1234.56);
+        assertThat(saved.getConceptoPlanillaId()).isEqualTo(777L);
+        assertThat(det).isSameAs(saved);
+    }
+
     private ConceptoPlanilla conceptoMef(Long id, String codigoMef, String nombre, String tipoConcepto) {
         ConceptoPlanilla c = new ConceptoPlanilla();
         c.setId(id);

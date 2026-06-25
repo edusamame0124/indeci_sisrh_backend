@@ -79,6 +79,9 @@ private final TipoLicenciaRepository tipoLicenciaRepository;
 private final TipoVacacionRepository tipoVacacionRepository;
 private final TtModalidadRepository ttModalidadRepository;
 
+private final NivelInstruccionRepository
+nivelInstruccionRepository;
+
 private final TtEstadoCumplimientoRepository ttEstadoCumplimientoRepository;
 
 private final TtConformidadRepository ttConformidadRepository;
@@ -355,6 +358,13 @@ private final TtConformidadRepository ttConformidadRepository;
     listarConformidades() {
 
         return ttConformidadRepository
+                .findByActivoOrderByNombreAsc(1);
+    }
+    
+    public List<NivelInstruccion>
+    listarNivelesInstruccion() {
+
+        return nivelInstruccionRepository
                 .findByActivoOrderByNombreAsc(1);
     }
     

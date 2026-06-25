@@ -52,11 +52,15 @@ public class MovimientoPlanillaDetalleService {
                 .stream()
                 .map(det -> {
 
+                    // SPEC_CONCEPTOS_PLANILLA P3 — preferir el snapshot histórico del
+                    // detalle; el concepto vivo es solo fallback para filas previas a
+                    // V010_99 (snapshot null). Si el concepto fue anulado/eliminado, el
+                    // snapshot evita romper la lista.
                     ConceptoPlanilla concepto =
                             conceptoRepository
                                     .findById(
                                             det.getConceptoPlanillaId())
-                                    .orElseThrow();
+                                    .orElse(null);
 
                     MovimientoPlanillaDetalleResponseDto dto =
                             new MovimientoPlanillaDetalleResponseDto();
@@ -64,17 +68,22 @@ public class MovimientoPlanillaDetalleService {
                     dto.setId(det.getId());
 
                     dto.setConceptoPlanillaId(
-                            concepto.getId());
+                            det.getConceptoPlanillaId());
 
                     dto.setCodigoConcepto(
-                            concepto.getCodigo());
+                            preferirSnapshot(
+                                    det.getConceptoCodigo(),
+                                    concepto != null ? concepto.getCodigo() : null));
 
                     dto.setConcepto(
-                            concepto.getNombre());
+                            preferirSnapshot(
+                                    det.getConceptoNombre(),
+                                    concepto != null ? concepto.getNombre() : null));
 
                     dto.setTipoConcepto(
-                            concepto.getTipo());
-                    
+                            preferirSnapshot(
+                                    det.getConceptoTipo(),
+                                    concepto != null ? concepto.getTipo() : null));
 
                     dto.setMonto(
                             det.getMonto());
@@ -84,10 +93,17 @@ public class MovimientoPlanillaDetalleService {
 
                     dto.setObservacion(
                             det.getObservacion());
-                    
 
                     return dto;
 
                 }).toList();
+    }
+
+    /**
+     * Devuelve el valor del snapshot histórico si está presente; si no
+     * (fila anterior a V010_99), cae al valor vivo del concepto.
+     */
+    private static String preferirSnapshot(String snapshot, String vivo) {
+        return (snapshot != null && !snapshot.isBlank()) ? snapshot : vivo;
     }
 }

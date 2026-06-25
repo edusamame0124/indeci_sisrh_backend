@@ -11,7 +11,9 @@ import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
@@ -48,6 +50,8 @@ class AsistenciaServiceDiariaTest {
     @Mock private BaseAsistenciaResolver baseResolver;
     @Mock private SolicitudRrhhRepository solicitudRrhhRepository;
     @Mock private TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
+    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
 
     @InjectMocks private AsistenciaService service;
 

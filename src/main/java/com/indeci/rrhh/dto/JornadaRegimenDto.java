@@ -21,5 +21,8 @@ public class JornadaRegimenDto {
     private String refrigerioFin;
     private Integer toleranciaIngresoMin;
     private Integer toleranciaAlmuerzoMin;
+    // V010_95 — reglas de descuento por tardanza (Descuento 1 / Descuento 2).
+    private Integer umbralTardanzaDiariaMin;
+    private Integer topeTardanzaMensualMin;
     private BigDecimal jornadaHoras;
 }

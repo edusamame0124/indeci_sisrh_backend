@@ -88,25 +88,39 @@ class AsistenciaImportServiceValidarCabecerasTest {
         importacion.setPeriodo("2026-06");
 
         AsistenciaCabecera cab = cabecera("PREVALIDADA");
+        cab.setId(500L);
         cab.setEmpleadoId(42L);
-        cab.setTotalMinTardanza(45);
         cab.setDiasFalta(1);
         cab.setDescuentoTardanza(0.0); // estaba en 0 porque la base era 0 al importar
         cab.setDescuentoFalta(0.0);
 
         when(importacionRepository.findById(77L)).thenReturn(Optional.of(importacion));
         when(cabeceraRepository.findByImportacionIdAndActivo(77L, 1)).thenReturn(List.of(cab));
+
+        // Jornada + un día de 45 min (bruto) → Descuento 1 (45 > umbral 10).
+        EmpleadoPlanilla ep = new EmpleadoPlanilla();
+        ep.setRegimenLaboralId(7L);
+        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(42L, 1))
+                .thenReturn(Optional.of(ep));
+        JornadaRegimen jornada = new JornadaRegimen();
+        jornada.setHoraIngreso("08:00");
+        when(jornadaRegimenRepository.findByRegimenLaboralId(7L)).thenReturn(Optional.of(jornada));
+        AsistenciaDetalle d = new AsistenciaDetalle();
+        d.setTipoDia("LABORAL");
+        d.setMarcaEntrada("08:45"); // 45 min bruto
+        when(detalleRepository.findByCabeceraIdOrderByDia(500L)).thenReturn(List.of(d));
+
         BaseAsistenciaResult base = new BaseAsistenciaResult();
         base.setRemuneracionBase(3000.0);
         when(baseResolver.resolver(42L)).thenReturn(base);
 
         service.validarCabeceras(77L);
 
-        // Misma fórmula que el preview y que consumirá el motor M05.
         assertThat(cab.getEstado()).isEqualTo("VALIDADA");
         assertThat(cab.getRemuneracionBase()).isEqualTo(3000.0);
-        assertThat(cab.getDescuentoTardanza()).isEqualTo(9.38);  // ROUND((3000*45)/14400,2)
-        assertThat(cab.getDescuentoFalta()).isEqualTo(100.0);    // ROUND(3000/30,2)
+        assertThat(cab.getDescuentoTardanza()).isEqualTo(9.38);       // 45 min D1: ROUND(3000*45/14400,2)
+        assertThat(cab.getDescuentoTardanzaDiaria()).isEqualTo(9.38);
+        assertThat(cab.getDescuentoFalta()).isEqualTo(100.0);         // ROUND(3000/30,2)
     }
 
     @Test
@@ -123,17 +137,17 @@ class AsistenciaImportServiceValidarCabecerasTest {
         when(importacionRepository.findById(77L)).thenReturn(Optional.of(importacion));
         when(cabeceraRepository.findByImportacionIdAndActivo(77L, 1)).thenReturn(List.of(cab));
 
-        // Régimen del empleado → jornada CAS: ingreso 08:30, tolerancia 10.
+        // Régimen del empleado → jornada CAS: ingreso 08:30 (umbral/tope/jornada
+        // por defecto 10/60/8). Modelo dos niveles: NO se resta tolerancia.
         EmpleadoPlanilla ep = new EmpleadoPlanilla();
         ep.setRegimenLaboralId(7L);
         when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(42L, 1))
                 .thenReturn(Optional.of(ep));
         JornadaRegimen jornada = new JornadaRegimen();
         jornada.setHoraIngreso("08:30");
-        jornada.setToleranciaIngresoMin(10);
         when(jornadaRegimenRepository.findByRegimenLaboralId(7L)).thenReturn(Optional.of(jornada));
 
-        // Día LABORAL con Marca1 = 08:50 → 08:50 − 08:30 − 10 = 10 min.
+        // Día LABORAL con Marca1 = 08:50 → 08:50 − 08:30 = 20 min (bruto, sin tolerancia).
         AsistenciaDetalle d = new AsistenciaDetalle();
         d.setTipoDia("LABORAL");
         d.setMarcaEntrada("08:50");
@@ -145,11 +159,13 @@ class AsistenciaImportServiceValidarCabecerasTest {
 
         service.validarCabeceras(77L);
 
-        assertThat(d.getMinutosTardanza()).isEqualTo(10);
+        assertThat(d.getMinutosTardanza()).isEqualTo(20);
         assertThat(d.getTipoDia()).isEqualTo("TARDANZA");
-        assertThat(cab.getTotalMinTardanza()).isEqualTo(10);
-        // ROUND((3000*10)/(30*8*60), 2) = 2.08
-        assertThat(cab.getDescuentoTardanza()).isEqualTo(2.08);
+        assertThat(cab.getTotalMinTardanza()).isEqualTo(20);
+        // 20 min > umbral 10 → Descuento 1. ROUND((3000*20)/(30*8*60), 2) = 4.17
+        assertThat(cab.getMinTardanzaDiaria()).isEqualTo(20);
+        assertThat(cab.getDescuentoTardanza()).isEqualTo(4.17);
+        assertThat(cab.getDescuentoTardanzaDiaria()).isEqualTo(4.17);
     }
 
     private AsistenciaCabecera cabecera(String estado) {

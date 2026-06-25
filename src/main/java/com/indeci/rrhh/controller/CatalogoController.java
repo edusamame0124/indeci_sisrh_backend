@@ -47,6 +47,7 @@ import com.indeci.rrhh.entity.GradoAcademico;
 import com.indeci.rrhh.entity.Sede;
 import com.indeci.rrhh.entity.Oficina;
 import com.indeci.rrhh.entity.Cargo;
+import com.indeci.rrhh.entity.NivelInstruccion;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -405,6 +406,17 @@ public class CatalogoController {
                 "Conformidades",
                 catalogoService
                         .listarConformidades());
+    }
+    
+    @GetMapping("/niveles-instruccion")
+    public ApiResponse<List<NivelInstruccion>>
+    listarNivelesInstruccion() {
+
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService
+                        .listarNivelesInstruccion());
     }
     
     

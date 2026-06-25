@@ -1509,6 +1509,11 @@ public class GeneradorPlanillaService {
         MovimientoPlanillaDetalle det = new MovimientoPlanillaDetalle();
         det.setMovimientoPlanillaId(movimientoId);
         det.setConceptoPlanillaId(concepto.getId());
+        // SPEC_CONCEPTOS_PLANILLA P3 — snapshot histórico (solo aditivo, no cambia
+        // el monto): congela código/nombre/tipo del concepto al grabar el detalle.
+        det.setConceptoCodigo(concepto.getCodigo());
+        det.setConceptoNombre(concepto.getNombre());
+        det.setConceptoTipo(concepto.getTipoConcepto());
         det.setMonto(monto.setScale(2, RoundingMode.HALF_UP).doubleValue());
         det.setCantidad(1.0);
         det.setObservacion(observacion);

@@ -7,4 +7,6 @@ public record SubsidioBaseDetalleDto(
         BigDecimal remuneracionReal,
         BigDecimal topeAplicado,
         BigDecimal baseComputable,
+        String incidencia,
+        String esManual,
         Long fuenteMovimientoId) {}

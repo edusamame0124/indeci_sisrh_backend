@@ -27,9 +27,9 @@ public class SolicitudRrhhDto {
 	
 	
 	//VALORES REQUERIDOS PARA LACTANCIA
-	private LocalDate fechaNacimientoHijo;
+	private LocalDate fechaNacimientoHijo; //si
 
-	private LocalDate fechaFinPostnatal;
+	private LocalDate fechaFinPostnatal; //ya no por que se calcula con la fecha de nacimiento
 
 	private Integer minutosIngreso;
 
