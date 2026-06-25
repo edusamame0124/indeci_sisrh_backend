@@ -992,12 +992,13 @@ public class SolicitudRrhhService {
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
 
-        if (!"008".equals(tipo.getCodigo())) {
+        if (!"008".equals(tipo.getCodigo())
+                && !"009".equals(tipo.getCodigo())) {
             return;
         }
 
         dto.setFechaInicio(dto.getFechaNacimientoHijo());
-        dto.setFechaFin(dto.getFechaNacimientoHijo());
+        dto.setFechaFin(dto.getFechaNacimientoHijo().plusYears(1));
     }
     private void validarSustento(
             TipoSolicitudRrhh tipo,
