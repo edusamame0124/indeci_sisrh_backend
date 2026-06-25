@@ -35,7 +35,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/rrhh/asistencia")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+//@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class AsistenciaController {
 
     private final AsistenciaService service;
@@ -57,7 +57,7 @@ public class AsistenciaController {
     public ApiResponse<Page<AsistenciaDiariaRowDto>> misAsistencias(
             @RequestParam LocalDate fechaInicio,
             @RequestParam LocalDate fechaFin,
-            @PageableDefault(size = 10) Pageable pageable) {
+            @PageableDefault(size = 100) Pageable pageable) {
 
         return new ApiResponse<>(
                 "OK",

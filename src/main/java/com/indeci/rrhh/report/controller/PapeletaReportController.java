@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/rrhh/reportes")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+//@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class PapeletaReportController {
 
     private final PapeletaReportService

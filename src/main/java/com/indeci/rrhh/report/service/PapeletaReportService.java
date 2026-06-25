@@ -422,7 +422,7 @@ public String generarPdf(
                         		empleado.getId(),1)
                         .orElseThrow(() ->
                                 new NegocioException(
-                                        "Empleado no encontrado"));
+                                        "Empleado no encontrado Planilla"));
         
         Persona persona =
         		personaRepository

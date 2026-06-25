@@ -1180,15 +1180,18 @@ public class SolicitudRrhhService {
                         "La fecha de nacimiento del hijo es obligatoria");
             }
         	
+        	
+
+            entity.setFechaNacimientoHijo(
+                    dto.getFechaNacimientoHijo());
+
+            entity.setFechaFinPostnatal(
+                    dto.getFechaNacimientoHijo()
+                            .plusYears(1));
+        	
         }
         
 
-        entity.setFechaNacimientoHijo(
-                dto.getFechaNacimientoHijo());
-
-        entity.setFechaFinPostnatal(
-                dto.getFechaNacimientoHijo()
-                        .plusYears(1));
 
      
 
