@@ -45,6 +45,7 @@ class ConceptoPlanillaServiceTest {
 
     @Mock private ConceptoPlanillaRepository repository;
     @Mock private ConceptoRtpsRepository rtpsRepository;
+    @Mock private com.indeci.rrhh.repository.CatalogoConceptoMgrhRepository catalogoMgrhRepository;
     @Mock private ConceptoTipoInternoRepository tipoInternoRepository;
     @Mock private MovimientoPlanillaDetalleRepository movimientoDetalleRepository;
     @Mock private ConceptoPlanillaTipoRepository conceptoPlanillaTipoRepository;
@@ -460,18 +461,34 @@ class ConceptoPlanillaServiceTest {
                 .containsExactlyInAnyOrder("CAS", "CAS_ADIC");
     }
 
-    // ---- guardar con planillaTipos vacío → NegocioException, no persiste ----
+    // ---- guardar con planillaTipos vacío → VÁLIDO: concepto "No se incluye en planilla
+    //      de pago" (solo configuración/cálculo/control). Persiste sin asociaciones. ----
     @Test
-    void guardar_sin_planillaTipos_lanza_NegocioException() {
+    void guardar_sin_planillaTipos_persiste_sin_asociaciones() {
         ConceptoPlanillaDto dto = new ConceptoPlanillaDto();
-        dto.setNombre("CONCEPTO SIN PLANILLA");
+        dto.setCodigo("CFG01");
+        dto.setNombre("CONCEPTO SOLO CONFIG");
+        dto.setIncluyeEnPlanilla("N"); // No se incluye en planilla de pago.
+        dto.setPlanillaTipos(List.of());
+
+        service.guardar(dto);
+
+        verify(repository).save(any(ConceptoPlanilla.class));
+        verify(conceptoPlanillaTipoRepository, never()).save(any());
+    }
+
+    // ---- guardar "S" (se incluye en planilla) sin planillas → NegocioException ----
+    @Test
+    void guardar_incluido_sin_planillaTipos_lanza_NegocioException() {
+        ConceptoPlanillaDto dto = new ConceptoPlanillaDto();
+        dto.setNombre("CONCEPTO PAGABLE");
+        dto.setIncluyeEnPlanilla("S");
         dto.setPlanillaTipos(List.of());
 
         assertThatThrownBy(() -> service.guardar(dto))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("al menos una planilla");
         verify(repository, never()).save(any());
-        verify(conceptoPlanillaTipoRepository, never()).save(any());
     }
 
     // ---- crearNuevaVersion copia las asociaciones de la versión origen ----
@@ -505,6 +522,93 @@ class ConceptoPlanillaServiceTest {
                 .containsExactlyInAnyOrder("CAS", "CAS_TEMP");
         assertThat(captor.getAllValues())
                 .allMatch(a -> Long.valueOf(99L).equals(a.getConceptoPlanillaId()));
+    }
+
+    // ================================================================
+    // SPEC_HOMOLOGACION_MGRH §C.2 — homologación MGRH/MEF (FK nullable)
+    // ================================================================
+
+    // ---- guardar con catalogoConceptoMgrhId → persiste la FK ----
+    @Test
+    void guardar_con_catalogoConceptoMgrhId_persiste_la_fk() {
+        when(repository.nextCodigoCorrelativo()).thenReturn(9L);
+
+        ConceptoPlanillaDto dto = new ConceptoPlanillaDto();
+        dto.setNombre("CONCEPTO HOMOLOGADO");
+        dto.setPlanillaTipos(unTipoPlanilla());
+        dto.setCatalogoConceptoMgrhId(555L);
+
+        service.guardar(dto);
+
+        ArgumentCaptor<ConceptoPlanilla> captor = ArgumentCaptor.forClass(ConceptoPlanilla.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getCatalogoConceptoMgrhId()).isEqualTo(555L);
+    }
+
+    // ---- toResponse: FK null → PENDIENTE, sin resumen ----
+    @Test
+    void response_sin_homologacion_es_PENDIENTE() {
+        ConceptoPlanilla c = concepto("ACTIVO");
+        c.setCatalogoConceptoMgrhId(null);
+        when(repository.findByActivo(1)).thenReturn(List.of(c));
+
+        ConceptoPlanillaResponseDto dto = service.listar().get(0);
+
+        assertThat(dto.getEstadoHomologacionMgrh()).isEqualTo("PENDIENTE");
+        assertThat(dto.getCatalogoConceptoMgrhId()).isNull();
+        assertThat(dto.getMgrhResumen()).isNull();
+    }
+
+    // ---- toResponse: FK con valor → HOMOLOGADO + resumen read-only ----
+    @Test
+    void response_con_homologacion_es_HOMOLOGADO_con_resumen() {
+        ConceptoPlanilla c = concepto("ACTIVO");
+        c.setCatalogoConceptoMgrhId(555L);
+        when(repository.findByActivo(1)).thenReturn(List.of(c));
+
+        com.indeci.rrhh.entity.CatalogoConceptoMgrh mgrh =
+                new com.indeci.rrhh.entity.CatalogoConceptoMgrh();
+        mgrh.setId(555L);
+        mgrh.setTipo("INGRESOS");
+        mgrh.setCodigoConceptoMgrh("0001");
+        mgrh.setDescripcionNorma("DS.051-91 Bonif.Dif.");
+        when(catalogoMgrhRepository.findById(555L)).thenReturn(Optional.of(mgrh));
+
+        ConceptoPlanillaResponseDto dto = service.listar().get(0);
+
+        assertThat(dto.getEstadoHomologacionMgrh()).isEqualTo("HOMOLOGADO");
+        assertThat(dto.getCatalogoConceptoMgrhId()).isEqualTo(555L);
+        assertThat(dto.getMgrhResumen()).isNotNull();
+        assertThat(dto.getMgrhResumen().getCodigoConceptoMgrh()).isEqualTo("0001");
+        assertThat(dto.getMgrhResumen().getTipo()).isEqualTo("INGRESOS");
+    }
+
+    // ---- crearNuevaVersion copia el FK MGRH a la nueva versión ----
+    @Test
+    void crearNuevaVersion_copia_la_homologacion_mgrh() {
+        ConceptoPlanilla v1 = versionada("0703X", 1, "ACTIVO",
+                LocalDate.of(2026, 1, 1), null);
+        v1.setCatalogoConceptoMgrhId(777L);
+        when(repository.findById(ID)).thenReturn(Optional.of(v1));
+        when(repository.findByCodigoOrderByVersionDesc("0703X")).thenReturn(List.of(v1));
+        when(repository.save(any(ConceptoPlanilla.class)))
+                .thenAnswer(inv -> {
+                    ConceptoPlanilla c = inv.getArgument(0);
+                    if (c.getId() == null) {
+                        c.setId(99L);
+                    }
+                    return c;
+                });
+
+        LocalDate nuevaVig = LocalDate.of(2026, 7, 1);
+        service.crearNuevaVersion(ID, nuevaVig);
+
+        ArgumentCaptor<ConceptoPlanilla> captor = ArgumentCaptor.forClass(ConceptoPlanilla.class);
+        verify(repository, org.mockito.Mockito.atLeast(2)).save(captor.capture());
+        ConceptoPlanilla nueva = captor.getAllValues().stream()
+                .filter(c -> nuevaVig.equals(c.getFechaVigIni()))
+                .findFirst().orElseThrow();
+        assertThat(nueva.getCatalogoConceptoMgrhId()).isEqualTo(777L);
     }
 
     private ConceptoPlanillaTipo asociacion(String codigo) {

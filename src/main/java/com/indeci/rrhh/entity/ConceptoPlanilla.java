@@ -155,4 +155,29 @@ public class ConceptoPlanilla {
      */
     @Column(name = "MODO_CALCULO")
     private String modoCalculo;
+
+    // ============================================================
+    // SPEC_HOMOLOGACION_MGRH §C.2 (V010_103) — homologación MGRH/MEF
+    // ============================================================
+
+    /**
+     * Homologación con el Catálogo Único de Conceptos MGRH/MEF: FK NULLABLE única a
+     * {@code INDECI_CATALOGO_CONCEPTO_MGRH(ID)}. {@code null} = Pendiente de
+     * homologación; con valor = Homologado. NO obligatorio: no bloquea crear/editar/
+     * activar. Solo referencia; el motor no la consume.
+     */
+    @Column(name = "CATALOGO_CONCEPTO_MGRH_ID")
+    private Long catalogoConceptoMgrhId;
+
+    /** Observación interna de la homologación MGRH (opcional, libre). */
+    @Column(name = "OBSERVACION_HOMOLOGACION_MGRH")
+    private String observacionHomologacionMgrh;
+
+    /**
+     * ¿El concepto se incluye en una planilla de pago institucional?
+     * {@code 'S'} = sí (≥1 planilla asociada); {@code 'N'} = solo configuración /
+     * cálculo / control (0 planillas). Pregunta de la pestaña Aplicabilidad.
+     */
+    @Column(name = "INCLUYE_EN_PLANILLA")
+    private String incluyeEnPlanilla;
 }

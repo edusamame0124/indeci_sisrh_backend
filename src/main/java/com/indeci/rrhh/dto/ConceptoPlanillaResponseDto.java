@@ -102,4 +102,36 @@ public class ConceptoPlanillaResponseDto {
      * concepto aún no declara ninguno (conceptos legacy previos a Fase A).
      */
     private List<String> planillaTipos;
+
+    // ============================================================
+    // SPEC_HOMOLOGACION_MGRH §C.2 (V010_103) — homologación MGRH/MEF
+    // ============================================================
+
+    /** FK al Catálogo MGRH/MEF homologado. {@code null} si Pendiente. */
+    private Long catalogoConceptoMgrhId;
+
+    /** Observación interna de la homologación MGRH (opcional). */
+    private String observacionHomologacionMgrh;
+
+    /** ¿Se incluye en planilla de pago? 'S' (≥1 planilla) / 'N' (solo config/cálculo/control). */
+    private String incluyeEnPlanilla;
+
+    /** Estado derivado: "HOMOLOGADO" si la FK no es null; si no, "PENDIENTE". */
+    private String estadoHomologacionMgrh;
+
+    /**
+     * Resumen read-only del concepto MGRH homologado (tipo/código/descripción de la
+     * norma) para mostrar el chip/detalle sin una segunda llamada. {@code null} si
+     * el concepto está Pendiente.
+     */
+    private MgrhResumen mgrhResumen;
+
+    /** Resumen mínimo del concepto MGRH homologado (display). */
+    @Data
+    public static class MgrhResumen {
+        private Long id;
+        private String tipo;
+        private String codigoConceptoMgrh;
+        private String descripcionNorma;
+    }
 }

@@ -9,10 +9,12 @@ import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.ConceptoHistorialDto;
 import com.indeci.rrhh.dto.ConceptoPlanillaDto;
 import com.indeci.rrhh.dto.ConceptoPlanillaResponseDto;
+import com.indeci.rrhh.entity.CatalogoConceptoMgrh;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.ConceptoPlanillaTipo;
 import com.indeci.rrhh.entity.ConceptoRtps;
 import com.indeci.rrhh.entity.ConceptoTipoInterno;
+import com.indeci.rrhh.repository.CatalogoConceptoMgrhRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaTipoRepository;
 import com.indeci.rrhh.repository.ConceptoRtpsRepository;
@@ -65,8 +67,13 @@ public class ConceptoPlanillaService {
     /** §14 / P4 — modo de cálculo por defecto cuando el request no lo envía. */
     static final String MODO_CALCULO_DEFECTO = "RESULTADO_MOTOR";
 
+    /** SPEC_HOMOLOGACION_MGRH — estados derivados de la homologación. */
+    static final String HOMOLOGADO = "HOMOLOGADO";
+    static final String PENDIENTE  = "PENDIENTE";
+
     private final ConceptoPlanillaRepository repository;
     private final ConceptoRtpsRepository rtpsRepository;
+    private final CatalogoConceptoMgrhRepository catalogoMgrhRepository;
     private final ConceptoTipoInternoRepository tipoInternoRepository;
     private final MovimientoPlanillaDetalleRepository movimientoDetalleRepository;
     private final ConceptoPlanillaTipoRepository conceptoPlanillaTipoRepository;
@@ -78,12 +85,12 @@ public class ConceptoPlanillaService {
     // CREAR
     // ============================
 
+    @Transactional
     @Auditable(accion = "CREAR_CONCEPTO_PLANILLA")
     public void guardar(ConceptoPlanillaDto dto) {
 
-        // §15 / Fase A — el concepto debe declarar ≥1 tipo de planilla. Se valida
-        // ANTES de persistir para no crear conceptos sin asociación.
-        validarPlanillaTipos(dto.getPlanillaTipos());
+        // §15 / Fase A — valida la aplicabilidad a planilla (si "se incluye", exige ≥1).
+        validarAplicabilidadPlanilla(dto);
 
         ConceptoPlanilla entity = new ConceptoPlanilla();
 
@@ -198,6 +205,7 @@ public class ConceptoPlanillaService {
     // ACTUALIZAR
     // ============================
 
+    @Transactional
     @Auditable(accion = "ACTUALIZAR_CONCEPTO_PLANILLA")
     public void actualizar(Long id, ConceptoPlanillaDto dto) {
 
@@ -208,8 +216,8 @@ public class ConceptoPlanillaService {
             throw new ConceptoEnPlanillaCerradaException();
         }
 
-        // §15 / Fase A — el concepto debe seguir declarando ≥1 tipo de planilla.
-        validarPlanillaTipos(dto.getPlanillaTipos());
+        // §15 / Fase A — valida la aplicabilidad a planilla (si "se incluye", exige ≥1).
+        validarAplicabilidadPlanilla(dto);
 
         aplicarCampos(entity, dto);
         // estado/activo NO se tocan aquí: el flujo de estado va por las transiciones.
@@ -226,6 +234,7 @@ public class ConceptoPlanillaService {
     // ELIMINAR (baja lógica)
     // ============================
 
+    @Transactional
     @Auditable(accion = "ELIMINAR_CONCEPTO_PLANILLA")
     public void eliminar(Long id) {
         ConceptoPlanilla entity = obtener(id);
@@ -240,11 +249,13 @@ public class ConceptoPlanillaService {
     //   PLA_APPROVE : EN_REVISION -> ACTIVO ; ACTIVO -> CERRADO ; * -> ANULADO
     // ============================
 
+    @Transactional
     @Auditable(accion = "ENVIAR_REVISION_CONCEPTO_PLANILLA")
     public void enviarRevision(Long id) {
         transicionar(id, EN_REVISION, BORRADOR);
     }
 
+    @Transactional
     @Auditable(accion = "ACTIVAR_CONCEPTO_PLANILLA")
     public void activar(Long id) {
         // SPEC_CONCEPTOS_PLANILLA P3 — supersede: antes de activar esta versión,
@@ -282,6 +293,7 @@ public class ConceptoPlanillaService {
         transicionar(id, CERRADO, ACTIVO);
     }
 
+    @Transactional
     @Auditable(accion = "ANULAR_CONCEPTO_PLANILLA")
     public void anular(Long id) {
         // Anulable desde BORRADOR | EN_REVISION | ACTIVO (no desde CERRADO/ANULADO).
@@ -471,6 +483,10 @@ public class ConceptoPlanillaService {
         c.setEsProrrateable(src.getEsProrrateable());
         // §14 / P4 — la nueva versión hereda el modo de cálculo del predecesor.
         c.setModoCalculo(src.getModoCalculo());
+        // SPEC_HOMOLOGACION_MGRH §C.2 — la nueva versión COPIA la homologación MGRH.
+        c.setCatalogoConceptoMgrhId(src.getCatalogoConceptoMgrhId());
+        c.setObservacionHomologacionMgrh(src.getObservacionHomologacionMgrh());
+        c.setIncluyeEnPlanilla(src.getIncluyeEnPlanilla());
         return c;
     }
 
@@ -651,6 +667,13 @@ public class ConceptoPlanillaService {
         // null/blank -> 'RESULTADO_MOTOR' (default, alineado con la BD).
         e.setModoCalculo(esBlank(dto.getModoCalculo())
                 ? MODO_CALCULO_DEFECTO : dto.getModoCalculo());
+
+        // SPEC_HOMOLOGACION_MGRH §C.2 — homologación MGRH/MEF (FK nullable, opcional).
+        // No obligatoria: null deja el concepto Pendiente; no bloquea crear/editar/activar.
+        e.setCatalogoConceptoMgrhId(dto.getCatalogoConceptoMgrhId());
+        e.setObservacionHomologacionMgrh(dto.getObservacionHomologacionMgrh());
+        // §15 — ¿se incluye en planilla de pago? Normaliza a 'S' | 'N' (default 'S').
+        e.setIncluyeEnPlanilla(normalizaIncluye(dto.getIncluyeEnPlanilla()));
     }
 
     private ConceptoPlanillaResponseDto toResponse(ConceptoPlanilla e) {
@@ -703,7 +726,30 @@ public class ConceptoPlanillaService {
                             .toList());
         }
 
+        // SPEC_HOMOLOGACION_MGRH §C.2 — homologación MGRH/MEF: FK + estado derivado
+        // (HOMOLOGADO/PENDIENTE) + resumen read-only para el chip/detalle sin segunda llamada.
+        Long mgrhId = e.getCatalogoConceptoMgrhId();
+        dto.setCatalogoConceptoMgrhId(mgrhId);
+        dto.setObservacionHomologacionMgrh(e.getObservacionHomologacionMgrh());
+        dto.setIncluyeEnPlanilla(e.getIncluyeEnPlanilla());
+        dto.setEstadoHomologacionMgrh(mgrhId != null ? HOMOLOGADO : PENDIENTE);
+        if (mgrhId != null) {
+            catalogoMgrhRepository.findById(mgrhId)
+                    .map(this::toMgrhResumen)
+                    .ifPresent(dto::setMgrhResumen);
+        }
+
         return dto;
+    }
+
+    /** Resumen mínimo del concepto MGRH homologado (display). */
+    private ConceptoPlanillaResponseDto.MgrhResumen toMgrhResumen(CatalogoConceptoMgrh m) {
+        ConceptoPlanillaResponseDto.MgrhResumen r = new ConceptoPlanillaResponseDto.MgrhResumen();
+        r.setId(m.getId());
+        r.setTipo(m.getTipo());
+        r.setCodigoConceptoMgrh(m.getCodigoConceptoMgrh());
+        r.setDescripcionNorma(m.getDescripcionNorma());
+        return r;
     }
 
     // ============================
@@ -711,23 +757,39 @@ public class ConceptoPlanillaService {
     // ============================
 
     /**
-     * Valida que el concepto declare AL MENOS UN tipo de planilla y que cada código
-     * exista en el catálogo activo {@code INDECI_PLANILLA_TIPO} (la FK también lo
-     * garantiza; esta validación da un mensaje claro antes de tocar la BD).
+     * Valida la aplicabilidad a planilla según "¿se incluye en planilla de pago?":
+     * si SÍ (default), exige ≥1 tipo de planilla; si NO, admite 0 (solo configuración
+     * / cálculo / control). En ambos casos valida que cada código exista en el catálogo
+     * activo {@code INDECI_PLANILLA_TIPO} (la FK también lo garantiza; el mensaje claro
+     * se da antes de tocar la BD).
      */
-    private void validarPlanillaTipos(List<String> planillaTipos) {
-        if (planillaTipos == null || planillaTipos.isEmpty()) {
+    private void validarAplicabilidadPlanilla(ConceptoPlanillaDto dto) {
+        List<String> planillaTipos = dto.getPlanillaTipos();
+        // "S" (default) exige ≥1 planilla; "N" (solo config/cálculo/control) admite 0.
+        if (seIncluyeEnPlanilla(dto.getIncluyeEnPlanilla())
+                && (planillaTipos == null || planillaTipos.isEmpty())) {
             throw new NegocioException("Debe asociar al menos una planilla.");
         }
-        for (String codigo : planillaTipos) {
-            if (esBlank(codigo)) {
-                throw new NegocioException("Debe asociar al menos una planilla.");
-            }
-            if (!planillaTipoRepository.existsById(codigo)) {
-                throw new NegocioException(
-                        "Tipo de planilla no válido: " + codigo + ".");
+        if (planillaTipos != null) {
+            for (String codigo : planillaTipos) {
+                if (esBlank(codigo)) {
+                    throw new NegocioException("Código de tipo de planilla en blanco.");
+                }
+                if (!planillaTipoRepository.existsById(codigo)) {
+                    throw new NegocioException("Tipo de planilla no válido: " + codigo + ".");
+                }
             }
         }
+    }
+
+    /** {@code true} salvo que el flag sea explícitamente 'N' (default = incluido en planilla). */
+    private static boolean seIncluyeEnPlanilla(String incluye) {
+        return !"N".equalsIgnoreCase(incluye == null ? "" : incluye.trim());
+    }
+
+    /** Normaliza el flag "¿se incluye en planilla?" a 'S' | 'N' (default 'S'). */
+    private static String normalizaIncluye(String incluye) {
+        return seIncluyeEnPlanilla(incluye) ? "S" : "N";
     }
 
     /**

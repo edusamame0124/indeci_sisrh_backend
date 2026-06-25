@@ -75,4 +75,17 @@ public class ConceptoPlanillaDto {
      * declarar AL MENOS UNO; un payload vacío/nulo se rechaza con NegocioException.
      */
     private List<String> planillaTipos;
+
+    /**
+     * SPEC_HOMOLOGACION_MGRH §C.2 — homologación con el Catálogo MGRH/MEF.
+     * OPCIONAL (nullable): {@code null} = Pendiente de homologación; con valor =
+     * Homologado. No obligatorio, no bloquea crear/editar/activar.
+     */
+    private Long catalogoConceptoMgrhId;
+
+    /** Observación interna de la homologación MGRH (opcional). */
+    private String observacionHomologacionMgrh;
+
+    /** ¿Se incluye en planilla de pago? 'S' (≥1 planilla) / 'N' (solo config/cálculo/control). */
+    private String incluyeEnPlanilla;
 }
