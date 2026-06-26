@@ -12,4 +12,7 @@ public interface PlanillaTipoRepository extends JpaRepository<PlanillaTipo, Stri
 
     /** Catálogo activo ordenado por {@code ORDEN} (para el multiselect del wizard). */
     List<PlanillaTipo> findByActivoOrderByOrden(Integer activo);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(p.orden) FROM PlanillaTipo p")
+    Integer findMaxOrden();
 }

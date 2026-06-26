@@ -60,6 +60,12 @@ public class EmpleadoPlanilla {
     @Column(name = "CONDICION_LABORAL_ID")
     private Long condicionLaboralId;
 
+    @Column(name = "TIPO_PERSONA_MEF_ID")
+    private Long tipoPersonaMefId;
+
+    @Column(name = "REGISTRO_PLAZA_AIRHSP")
+    private String registroPlazaAirhsp;
+
     @Column(name = "NUMERO_CONTRATO")
     private String numeroContrato;
 

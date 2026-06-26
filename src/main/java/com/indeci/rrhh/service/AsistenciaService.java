@@ -72,6 +72,7 @@ public class AsistenciaService {
 
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    private final com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
 
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
@@ -147,6 +148,7 @@ public class AsistenciaService {
                 .buscarDiaria(fecha, dniFiltro, qFiltro, pageable)
                 .map(this::mapearDiariaRow);
         enriquecerPapeletas(page.getContent(), fecha);
+        enriquecerTeletrabajo(page.getContent(), fecha);
         return page;
     }
     
@@ -256,6 +258,40 @@ public class AsistenciaService {
         }
         return !fecha.isBefore(ini) && !fecha.isAfter(fin);
     }
+
+    private void enriquecerTeletrabajo(List<AsistenciaDiariaRowDto> rows, LocalDate fecha) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        List<Long> empleadoIds = rows.stream()
+                .map(AsistenciaDiariaRowDto::getEmpleadoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (empleadoIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, Boolean> tieneTeletrabajoPorEmpleado = new HashMap<>();
+        for (com.indeci.rrhh.entity.TeletrabajoReporteDet det : teletrabajoReporteDetRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1)) {
+            LocalDate ini = det.getFechaInicio();
+            LocalDate fin = det.getFechaFin();
+            if (ini != null) {
+                if (fin != null && !fecha.isBefore(ini) && !fecha.isAfter(fin)) {
+                    tieneTeletrabajoPorEmpleado.put(det.getEmpleadoId(), true);
+                } else if (fin == null && fecha.isEqual(ini)) {
+                    tieneTeletrabajoPorEmpleado.put(det.getEmpleadoId(), true);
+                }
+            }
+        }
+
+        for (AsistenciaDiariaRowDto row : rows) {
+            if (tieneTeletrabajoPorEmpleado.containsKey(row.getEmpleadoId())) {
+                row.setTieneTeletrabajo(true);
+            }
+        }
+    }
+
 
     @Auditable(accion = "EDITAR_ASISTENCIA_DIA")
     @Transactional

@@ -15,6 +15,7 @@ import com.indeci.rrhh.repository.TipoEventoRepository;
 import com.indeci.rrhh.service.support.DistribucionMensualCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -104,6 +105,7 @@ class EventoPeriodoServiceTest {
     // ===================== CASOS FELICES =====================
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_maternidad_98dias_deriva_periodo_y_distribucion() {
         LocalDate inicio = LocalDate.of(2026, 5, 1);
         LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
@@ -123,6 +125,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_maternidad_128_multimes_persiste_tramos() {
         LocalDate inicio = LocalDate.of(2026, 5, 1);
         LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 128);
@@ -137,6 +140,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_normaliza_periodo_con_guion_a_canonico() {
         LocalDate inicio = LocalDate.of(2026, 5, 1);
         LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
@@ -167,6 +171,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void actualizar_excluye_propio_id_del_check_solape() {
         EmpleadoEvento existente = new EmpleadoEvento();
         existente.setId(200L);
@@ -264,6 +269,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_sin_fechas_lanza() {
         EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD, null, null);
 
@@ -300,7 +306,8 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
-    void crear_maternidad_sin_adjunto_lanza_porque_requiereAdjunto_S() {
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
+    void crear_maternidad_sin_adjunto_lanza_porque_requiereAdjunto_SI() {
         LocalDate inicio = LocalDate.of(2026, 5, 1);
         LocalDate fin = DistribucionMensualCalculator.calcularFechaFin(inicio, 98);
         EventoPeriodoDto dto = dtoMaternidadCompleto(inicio, fin, 98, null);
@@ -311,6 +318,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_maternidad_sin_campos_normativos_lanza() {
         EventoPeriodoDto dto = baseDto(TIPO_MATERNIDAD,
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 8, 6));
@@ -322,6 +330,7 @@ class EventoPeriodoServiceTest {
     }
 
     @Test
+    @Disabled("FASE 4 - Subsidios retirados de eventos")
     void crear_solapado_y_tipo_no_permite_lanza() {
         EmpleadoEvento existente = new EmpleadoEvento();
         existente.setId(300L);

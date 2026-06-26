@@ -13,6 +13,7 @@ public class PlanillaTipoDto {
 
     private String codigo;
     private String nombre;
+    private String descripcion;
     private Integer orden;
     private Integer activo;
 }

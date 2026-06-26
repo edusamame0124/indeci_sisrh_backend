@@ -52,6 +52,7 @@ class AsistenciaServiceDiariaTest {
     @Mock private TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
     @Mock private JornadaRegimenRepository jornadaRegimenRepository;
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock private com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
 
     @InjectMocks private AsistenciaService service;
 

@@ -47,4 +47,7 @@ public class AsistenciaDiariaRowDto {
     private String papeletaMotivoRechazo;
     private String papeletaDecisionUsuario;
     private LocalDateTime papeletaDecisionFecha;
+
+    // ---- Teletrabajo ----
+    private boolean tieneTeletrabajo;
 }

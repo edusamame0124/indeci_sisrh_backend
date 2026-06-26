@@ -687,87 +687,23 @@ class GeneradorPlanillaServiceTest {
     }
 
     // ==================================================================
-    // FASE 4 — Subsidio (maternidad/enfermedad) → neto del trabajador
-    // ==================================================================
-
-    /**
-     * Evento de subsidio con AFECTA_DIAS_LABORADOS='S': el sueldo ya se
-     * prorrateó por los días de descanso, así que el subsidio_total_100 entra
-     * como ingreso NO remunerativo y suma al neto (rellena el hueco).
-     */
     @Test
-    void subsidio_con_afecta_dias_S_suma_al_neto() {
+    void subsidios_desde_liquidacion_suman_al_neto() {
         when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(3000.0);
-        mockSubsidioEvento("ENFERMEDAD", "S", new BigDecimal("1333.33"));
+        
+        when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(new BigDecimal("1333.33"));
 
         service.generar(EMPLEADO_ID, PERIODO);
 
-        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
-                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
-        verify(detalleRepository, atLeastOnce()).save(capt.capture());
-        assertThat(detallePorConcepto(capt, 7916L).getMonto())
-                .isCloseTo(1333.33, within(0.01));
-
-        // remunerativo 3000 + subsidio_total_100 1333.33 = 4333.33
+        // remunerativo 3000 + subsidio 1333.33 = 4333.33
         MovimientoPlanilla cab = capturarCabeceraFinal();
         assertThat(cab.getTotalIngresos()).isCloseTo(4333.33, within(0.01));
     }
-
-    /**
-     * Evento de subsidio con AFECTA_DIAS_LABORADOS='N': el sueldo NO se redujo,
-     * así que el subsidio NO suma al neto (guard anti-doble-pago). Solo queda en
-     * trazabilidad (calcularYRegistrar). No se graba línea de subsidio.
-     */
-    @Test
-    void subsidio_con_afecta_dias_N_no_suma_al_neto() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
-        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.empty());
-        mockSueldo(3000.0);
-        mockSubsidioEvento("ENFERMEDAD", "N", new BigDecimal("1333.33"));
-
-        service.generar(EMPLEADO_ID, PERIODO);
-
-        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
-                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
-        verify(detalleRepository, atLeastOnce()).save(capt.capture());
-        assertThat(capt.getAllValues())
-                .noneMatch(d -> Long.valueOf(7916L).equals(d.getConceptoPlanillaId()));
-
-        MovimientoPlanilla cab = capturarCabeceraFinal();
-        assertThat(cab.getTotalIngresos()).isCloseTo(3000.00, within(0.01));
-    }
-
-    /** Configura un evento de subsidio del período + el cálculo mockeado. */
-    private void mockSubsidioEvento(String tipoSubsidio, String afectaDias, BigDecimal total100) {
-        TipoEvento tipo = new TipoEvento();
-        tipo.setNombre("Descanso médico");
-        tipo.setGeneraSubsidio("S");
-        tipo.setAfectaDiasLaborados(afectaDias);
-        EmpleadoEvento ev = new EmpleadoEvento();
-        ev.setId(8001L);
-        ev.setEmpleadoId(EMPLEADO_ID);
-        ev.setTipoEvento(tipo);
-        when(empleadoEventoRepository.findSubsidiosParaMotor(eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
-                .thenReturn(List.of(ev));
-
-        SubsidioCalculadoDto dto = new SubsidioCalculadoDto(
-                true, tipoSubsidio, 8, 0, 0, 8, "0916", "2073",
-                new BigDecimal("166.67"), total100,
-                BigDecimal.ZERO, BigDecimal.ZERO,
-                new BigDecimal("500.00"), total100.subtract(new BigDecimal("500.00")));
-        when(subsidioCalculadorService.calcularYRegistrar(any(), any(), any(), any(), any()))
-                .thenReturn(dto);
-        when(conceptoRepository.findByCodigoAndActivo("SUBSIDIO_ENFERMEDAD", 1))
-                .thenReturn(Optional.of(conceptoMef(
-                        7916L, "NA_0916", "Subsidio enfermedad", "NO_REMUNERATIVO")));
-    }
-
     // ==================================================================
     // CASO 12 (3d): ESTADO_NETO = BIEN cuando el neto supera el umbral 50%
     // ==================================================================
@@ -1952,16 +1888,16 @@ class GeneradorPlanillaServiceTest {
         // Mejora 2026-06-03: el catálogo usa 'CAS', los conceptos '1057' → equivalentes.
         assertThat(GeneradorPlanillaService.regimenAplicaConcepto("1057", "CAS")).isTrue();
         assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "CAS")).isTrue();
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("SERVIR", "CAS")).isFalse();
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "CAS")).isFalse();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("SERVIR", "CAS")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "CAS")).isTrue();
     }
 
     @Test
     void regimenAplicaConcepto_valor_unico_no_coincide() {
-        // DS 311 solo 728 → empleado 276 NO acepta.
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "276")).isFalse();
-        // Asignación familiar régimen 728 (Ley 25129) → empleado CAS NO acepta.
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "1057")).isFalse();
+        // DS 311 solo 728 → empleado 276 acepta porque quitamos el filtro.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "276")).isTrue();
+        // Asignación familiar régimen 728 (Ley 25129) → empleado CAS acepta porque quitamos el filtro.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728", "1057")).isTrue();
     }
 
     @Test
@@ -1973,9 +1909,9 @@ class GeneradorPlanillaServiceTest {
 
     @Test
     void regimenAplicaConcepto_CSV_rechaza_si_token_ausente() {
-        // DS 327 → '728,1057' rechaza al régimen 276 (excluido por MUC).
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "276")).isFalse();
-        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "SERVIR")).isFalse();
+        // DS 327 → '728,1057' acepta al régimen 276 porque quitamos el filtro.
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "276")).isTrue();
+        assertThat(GeneradorPlanillaService.regimenAplicaConcepto("728,1057", "SERVIR")).isTrue();
     }
 
     @Test
@@ -2018,8 +1954,8 @@ class GeneradorPlanillaServiceTest {
     }
 
     @Test
-    void flag_on_motor_lanza_excepcion_si_regimen_no_aplica() {
-        // Con flag, el motor v3 valida y bloquea.
+    void flag_on_motor_no_lanza_excepcion_si_regimen_no_aplica() {
+        // Con flag, el motor v3 no bloquea (especialista libre de elegir).
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
         when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
@@ -2032,10 +1968,8 @@ class GeneradorPlanillaServiceTest {
         when(conceptoRepository.findById(CONCEPTO_SUELDO_ID)).thenReturn(Optional.of(c));
         mockSueldo(3000.0);
 
-        assertThatThrownBy(() -> service.generar(EMPLEADO_ID, PERIODO))
-                .isInstanceOf(com.indeci.exception.ConceptoRegimenNoAplicableException.class)
-                .hasMessageContaining("11214")
-                .hasMessageContaining("276");
+        // No lanza excepción porque quitamos el filtro.
+        service.generar(EMPLEADO_ID, PERIODO);
     }
 
     @Test

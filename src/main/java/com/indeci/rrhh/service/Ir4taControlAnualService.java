@@ -11,16 +11,22 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
+import com.indeci.rrhh.dto.ir4ta.Ir4taAcumuladoDetalleDto;
 import com.indeci.rrhh.dto.ir4ta.Ir4taControlAnualDto;
 import com.indeci.rrhh.dto.ir4ta.Ir4taReinicioInputDto;
+import com.indeci.rrhh.entity.CalculoSnapshot;
 import com.indeci.rrhh.entity.Ir4taConfigAnual;
 import com.indeci.rrhh.entity.Ir4taControlAnual;
 import com.indeci.rrhh.repository.CalculoSnapshotRepository;
 import com.indeci.rrhh.repository.Ir4taControlAnualRepository;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
 
@@ -59,6 +65,7 @@ public class Ir4taControlAnualService {
     private final Ir4taConfigService configService;
     private final Suspension4taService suspension4taService;
     private final AuditoriaContext auditoriaContext;
+    private final ObjectMapper objectMapper;
 
     // ======================================================================
     // DECISIÓN DEL MOTOR (efecto lateral: monitorea y persiste; defensivo)
@@ -212,6 +219,34 @@ public class Ir4taControlAnualService {
             dto.setEstadoControl(aplica ? EST_VIGENTE : "-");
         }
         return dto;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Ir4taAcumuladoDetalleDto> obtenerDetalleAcumulado(Long empleadoId, int anioFiscal) {
+        List<CalculoSnapshot> snapshots = snapshotRepo.findIr4taCasVigentesPorAnio(empleadoId, anioPrefijo(anioFiscal));
+        return snapshots.stream().map(s -> {
+            Ir4taAcumuladoDetalleDto dto = new Ir4taAcumuladoDetalleDto();
+            dto.setPeriodo(s.getPeriodo());
+            
+            BigDecimal baseAfecta = s.getBaseCalculo() != null ? s.getBaseCalculo() : BigDecimal.ZERO;
+            dto.setBaseAfecta(baseAfecta);
+            
+            BigDecimal ingresosBrutos = baseAfecta;
+            if (s.getParametrosJson() != null && !s.getParametrosJson().isEmpty()) {
+                try {
+                    JsonNode root = objectMapper.readTree(s.getParametrosJson());
+                    if (root.has("baseImponible") && !root.get("baseImponible").isNull()) {
+                        ingresosBrutos = new BigDecimal(root.get("baseImponible").asText());
+                    }
+                } catch (Exception e) {
+                    log.warn("No se pudo parsear parametrosJson para snapshot {}", s.getId());
+                }
+            }
+            dto.setIngresosBrutos(ingresosBrutos);
+            dto.setDeducciones(ingresosBrutos.subtract(baseAfecta));
+            
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     // ======================================================================

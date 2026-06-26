@@ -60,4 +60,8 @@ public class EmpleadoPlanillaDto {
     private Long tipoContratoId;
 
     private Long condicionLaboralId;
+
+    private Long tipoPersonaMefId;
+
+    private String registroPlazaAirhsp;
 }

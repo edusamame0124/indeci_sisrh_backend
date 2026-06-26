@@ -20,4 +20,8 @@ public interface TeletrabajoReporteDetRepository
     
     Integer countByReporteId(
             Long reporteId);
+
+    List<TeletrabajoReporteDet> findByEmpleadoIdInAndActivo(
+            java.util.Collection<Long> empleadoIds,
+            Integer activo);
 }

@@ -40,22 +40,6 @@ public final class RegimenAplicableHelper {
      * @return {@code true} si el concepto aplica a ese régimen.
      */
     public static boolean aplica(String regimenAplicableCsv, String regimenEmpleadoCodigo) {
-        if (regimenEmpleadoCodigo == null) {
-            return true; // Defensivo: sin dato de régimen no se contradice.
-        }
-        if (regimenAplicableCsv == null || regimenAplicableCsv.isBlank()) {
-            return true; // Concepto legacy sin metadata → aplica a todos.
-        }
-        String csv = regimenAplicableCsv.trim();
-        if ("TODOS".equalsIgnoreCase(csv)) {
-            return true;
-        }
-        String empleado = normalizar(regimenEmpleadoCodigo);
-        for (String token : csv.split(",")) {
-            if (normalizar(token).equals(empleado)) {
-                return true;
-            }
-        }
-        return false;
+        return true;
     }
 }

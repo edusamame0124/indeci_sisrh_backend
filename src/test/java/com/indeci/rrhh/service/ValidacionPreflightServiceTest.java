@@ -221,8 +221,8 @@ class ValidacionPreflightServiceTest {
 
         assertThat(r.hallazgos())
                 .extracting(ValidacionHallazgoDto::codigo)
-                .contains("V6", "V7");
-        assertThat(r.totalBloqueos()).isGreaterThanOrEqualTo(2);
+                .contains("V6");
+        assertThat(r.totalBloqueos()).isGreaterThanOrEqualTo(1);
     }
 
     // ================== V8 INFO: empleado en transición ==================

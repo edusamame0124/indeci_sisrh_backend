@@ -61,4 +61,16 @@ public interface CalculoSnapshotRepository
             @Param("empleadoId") Long empleadoId,
             @Param("anioPrefijo") String anioPrefijo,
             @Param("periodoExcluyenteDesde") String periodoExcluyenteDesde);
+
+    @Query("""
+        SELECT s FROM CalculoSnapshot s
+        WHERE s.empleadoId = :empleadoId
+          AND s.regla = 'IR4TA_CAS'
+          AND s.activo = 1
+          AND s.periodo LIKE :anioPrefijo
+        ORDER BY s.periodo ASC
+        """)
+    List<CalculoSnapshot> findIr4taCasVigentesPorAnio(
+            @Param("empleadoId") Long empleadoId,
+            @Param("anioPrefijo") String anioPrefijo);
 }

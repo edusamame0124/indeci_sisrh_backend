@@ -198,16 +198,19 @@ class EmpleadoConceptoServiceTest {
     }
 
     @Test
-    void guardar_concepto_de_otro_regimen_es_rechazado() {
-        // Guard normativo: concepto SERVIR asignado a empleado CAS → no aplica.
+    void guardar_concepto_de_otro_regimen_se_permite() {
+        // Con la flexibilización de reglas, el concepto se guarda exitosamente
+        // aunque haya discrepancia de régimen laboral.
         ConceptoPlanilla c = concepto("00504", "REMUNERATIVO", "Incremento DS X");
         c.setRegimenAplicable("SERVIR");
         stubConcepto(c);
         stubRegimenEmpleado("CAS");
+        when(repository.existsByEmpleadoIdAndConceptoPlanillaIdAndActivo(
+                EMPLEADO_ID, CONCEPTO_ID, 1)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.guardar(dto(100.0)))
-                .isInstanceOf(ConceptoRegimenNoAplicableException.class);
-        verify(repository, never()).save(any());
+        service.guardar(dto(100.0));
+
+        verify(repository).save(any(EmpleadoConcepto.class));
     }
 
     @Test

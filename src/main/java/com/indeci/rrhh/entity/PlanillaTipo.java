@@ -1,5 +1,7 @@
 package com.indeci.rrhh.entity;
 
+import java.time.LocalDateTime;
+
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -31,4 +33,19 @@ public class PlanillaTipo {
 
     @Column(name = "ACTIVO")
     private Integer activo;
+
+    @Column(name = "DESCRIPCION")
+    private String descripcion;
+
+    @Column(name = "CREADO_POR", updatable = false)
+    private String creadoPor;
+
+    @Column(name = "CREADO_EN", updatable = false)
+    private LocalDateTime creadoEn;
+
+    @Column(name = "MODIFICADO_POR")
+    private String modificadoPor;
+
+    @Column(name = "MODIFICADO_EN")
+    private LocalDateTime modificadoEn;
 }

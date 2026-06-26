@@ -16,15 +16,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.Suspension4taRequestDto;
 import com.indeci.rrhh.dto.Suspension4taResponseDto;
+import com.indeci.rrhh.dto.ir4ta.Ir4taAcumuladoDetalleDto;
 import com.indeci.rrhh.dto.ir4ta.Ir4taControlAnualDto;
 import com.indeci.rrhh.dto.ir4ta.Ir4taReinicioInputDto;
 import com.indeci.rrhh.service.Ir4taControlAnualService;
+import com.indeci.rrhh.service.Suspension4taImportService;
 import com.indeci.rrhh.service.Suspension4taService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
+import org.springframework.web.multipart.MultipartFile;
+import com.indeci.rrhh.dto.Suspension4taImportReportDto;
 
 import lombok.RequiredArgsConstructor;
 
@@ -40,6 +43,7 @@ public class Suspension4taController {
 
     private final Suspension4taService service;
     private final Ir4taControlAnualService controlAnualService;
+    private final Suspension4taImportService importService;
 
     @GetMapping("/{empleadoId}")
     public ApiResponse<List<Suspension4taResponseDto>> listar(@PathVariable Long empleadoId) {
@@ -56,6 +60,15 @@ public class Suspension4taController {
             @RequestParam int anio) {
         return new ApiResponse<>("OK", "Control anual de suspensión 4ta",
                 controlAnualService.obtenerControl(empleadoId, anio));
+    }
+
+    /** Lista el detalle (ingresos, descuentos, base afecta) de cada mes acumulado. */
+    @GetMapping("/{empleadoId}/control-anual/detalle-acumulado")
+    public ApiResponse<List<Ir4taAcumuladoDetalleDto>> detalleAcumulado(
+            @PathVariable Long empleadoId,
+            @RequestParam int anio) {
+        return new ApiResponse<>("OK", "Detalle del acumulado IR4TA",
+                controlAnualService.obtenerDetalleAcumulado(empleadoId, anio));
     }
 
     /** Flag manual de RR.HH.: qué tope aplica al trabajador (GENERAL_CAS|DIRECTOR_SIMILAR). */
@@ -103,5 +116,11 @@ public class Suspension4taController {
     public ApiResponse<Void> anular(@PathVariable Long id) {
         service.anular(id);
         return new ApiResponse<>("OK", "Constancia de suspensión 4ta anulada", null);
+    }
+
+    @PostMapping("/importar")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Suspension4taImportReportDto> importar(@RequestParam("file") MultipartFile file) {
+        return new ApiResponse<>("OK", "Archivo procesado", importService.importarCsv(file));
     }
 }

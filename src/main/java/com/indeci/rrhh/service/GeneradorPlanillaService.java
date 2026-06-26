@@ -442,8 +442,13 @@ public class GeneradorPlanillaService {
             // restarlo dos veces (condición RRHH). Si en el futuro el diferencial
             // se sumara a la base, este valor deberá poblarse — el test lo protege.
             BigDecimal montoNoAfectoIr4ta = BigDecimal.ZERO;
-            BigDecimal baseIr4ta = baseImponiblePens
+            // REGLA RRHH (2026-06-26): Se usa estrictamente el Sueldo Básico de la configuración
+            // de planilla (Módulo de Vinculación), sin sumar reintegros ni otros conceptos.
+            // El descuento de asistencia (tardanzas + faltas) reduce esta base exclusiva para IR4ta.
+            BigDecimal sueldoBasicoVinculacion = toBigDecimal(planilla.getSueldoBasico());
+            BigDecimal baseIr4ta = sueldoBasicoVinculacion
                     .subtract(montoNoAfectoIr4ta)
+                    .subtract(descuentoAsistencia)
                     .max(BigDecimal.ZERO);
 
             // B2 — Control anual del tope de suspensión: monitorea acumulado y, si
@@ -466,7 +471,7 @@ public class GeneradorPlanillaService {
                 String obs = String.format(
                         "IR4ta CAS NORMAL | base=%s | noAfecto=%s | baseFinal=%s | tasa=8%% | "
                                 + "tributoSUNAT=3042 | constancia=%s | periodo=%s",
-                        baseImponiblePens.setScale(2, RoundingMode.HALF_UP),
+                        sueldoBasicoVinculacion.setScale(2, RoundingMode.HALF_UP),
                         montoNoAfectoIr4ta.setScale(2, RoundingMode.HALF_UP),
                         baseIr4ta.setScale(2, RoundingMode.HALF_UP),
                         suspension.nroConstancia() == null ? "-" : suspension.nroConstancia(),
@@ -478,7 +483,7 @@ public class GeneradorPlanillaService {
             // FASE 2 — Snapshot IR4ta CAS: deja trazable cómo se obtuvo (o por
             // qué no se retuvo: inafecto / suspensión vigente). Solo añadido.
             registrarSnapshotIr4ta(empleadoId, periodo, movimiento.getId(), anioFiscal,
-                    baseImponiblePens, baseIr4ta, ir4taCas, suspension);
+                    sueldoBasicoVinculacion, baseIr4ta, ir4taCas, suspension);
         }
 
         // 9. ESSALUD empleador con mínimo + split EPS + tope 45% UIT solo CAS (F1.6).

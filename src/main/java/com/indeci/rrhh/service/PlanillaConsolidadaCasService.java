@@ -93,8 +93,10 @@ public class PlanillaConsolidadaCasService {
     private static final String SIS_MASVIDA    = "715";
     private static final String SIS_SANMIGUEL  = "727";
     private static final String SIS_SERFINCO   = "726";
-    private static final String SIS_RIMAC      = "714";
+    private static final String SIS_RIMAC      = "704";
     private static final String SIS_COPAGO_EPS = "725";
+    private static final String SIS_BANCOM     = "736";
+    private static final String SIS_CUOTA_SINDICAL = "737";
 
     private final MovimientoPlanillaRepository        movimientoRepo;
     private final MovimientoPlanillaDetalleRepository detalleRepo;
@@ -451,6 +453,8 @@ public class PlanillaConsolidadaCasService {
         r.setCoopSerfinco(porSisper.get(SIS_SERFINCO));
         r.setRimacSeguros(porSisper.get(SIS_RIMAC));
         r.setCopagoEpsDescuento(porSisper.get(SIS_COPAGO_EPS));
+        r.setBancom(porSisper.get(SIS_BANCOM));
+        r.setCuotaSindical(porSisper.get(SIS_CUOTA_SINDICAL));
         r.setTotalDescuentosTerceros(sumaValores(porSisper));
 
         // BLOQUE 15 — Totales / Neto

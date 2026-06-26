@@ -48,37 +48,41 @@ class PlanillaTipoServiceTest {
                 .containsExactly("CAS", "CAS TEMPORAL", "CAS ADICIONAL");
     }
 
-    // ---- crear con código duplicado → NegocioException ----
+    // ---- crear con nombre que genera código duplicado → NegocioException ----
     @Test
     void crear_rechaza_codigo_duplicado() {
         when(repository.existsById("CAS")).thenReturn(true);
 
         PlanillaTipoDto dto = new PlanillaTipoDto();
-        dto.setCodigo("CAS");
         dto.setNombre("CAS");
 
         assertThatThrownBy(() -> service.crear(dto))
                 .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("Ya existe");
+                .hasMessageContaining("Ya existe un tipo de planilla con código autogenerado CAS");
         verify(repository, never()).save(any());
     }
 
-    // ---- crear válido → ACTIVO=1 por defecto ----
+    // ---- crear válido → ACTIVO=1 por defecto, orden automático ----
     @Test
-    void crear_persiste_con_activo_por_defecto() {
+    void crear_persiste_con_activo_y_orden_por_defecto() {
         when(repository.existsById("CAS_EXTRA")).thenReturn(false);
+        when(repository.findMaxOrden()).thenReturn(30);
 
         PlanillaTipoDto dto = new PlanillaTipoDto();
-        dto.setCodigo("CAS_EXTRA");
         dto.setNombre("CAS EXTRA");
-        dto.setOrden(40);
+        dto.setDescripcion("Una descripción");
 
         service.crear(dto);
 
         ArgumentCaptor<PlanillaTipo> captor = ArgumentCaptor.forClass(PlanillaTipo.class);
         verify(repository).save(captor.capture());
-        assertThat(captor.getValue().getActivo()).isEqualTo(1);
-        assertThat(captor.getValue().getNombre()).isEqualTo("CAS EXTRA");
+        
+        PlanillaTipo guardado = captor.getValue();
+        assertThat(guardado.getCodigo()).isEqualTo("CAS_EXTRA");
+        assertThat(guardado.getNombre()).isEqualTo("CAS EXTRA");
+        assertThat(guardado.getDescripcion()).isEqualTo("Una descripción");
+        assertThat(guardado.getOrden()).isEqualTo(31);
+        assertThat(guardado.getActivo()).isEqualTo(1);
     }
 
     // ---- eliminar = baja lógica ----
