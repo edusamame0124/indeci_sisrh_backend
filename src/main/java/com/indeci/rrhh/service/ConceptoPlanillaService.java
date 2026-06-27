@@ -798,6 +798,7 @@ public class ConceptoPlanillaService {
      */
     private void reemplazarPlanillaTipos(Long conceptoId, List<String> planillaTipos) {
         conceptoPlanillaTipoRepository.deleteByConceptoPlanillaId(conceptoId);
+        conceptoPlanillaTipoRepository.flush();
         guardarAsociaciones(conceptoId, planillaTipos);
     }
 

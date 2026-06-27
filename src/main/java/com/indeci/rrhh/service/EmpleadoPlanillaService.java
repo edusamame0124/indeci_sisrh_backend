@@ -75,6 +75,8 @@ public class EmpleadoPlanillaService {
         entity.setRegimenLaboralId(dto.getRegimenLaboralId());
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
+        entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
+        entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
         entity.setActivo(1);
         entity.setFechaInicio(LocalDate.now());
         entity.setCreatedAt(LocalDateTime.now());
@@ -107,6 +109,8 @@ public class EmpleadoPlanillaService {
                     dto.setRegimenLaboralId(e.getRegimenLaboralId());
                     dto.setTipoContratoId(e.getTipoContratoId());
                     dto.setCondicionLaboralId(e.getCondicionLaboralId());
+                    dto.setTipoPersonaMefId(e.getTipoPersonaMefId());
+                    dto.setRegistroPlazaAirhsp(e.getRegistroPlazaAirhsp());
 
                     // Etiquetas resueltas para el listado.
                     if (e.getRegimenLaboralId() != null) {
@@ -197,6 +201,8 @@ public class EmpleadoPlanillaService {
         entity.setRegimenLaboralId(dto.getRegimenLaboralId());
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
+        entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
+        entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
 
         repository.save(entity);
 

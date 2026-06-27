@@ -19,6 +19,12 @@ public class EmpleadoPuestoResponseDto {
 
     private Long oficinaId;
 
+    private Long sedeId;
+
+    private Long dependenciaId;
+    
+    private Long estructuraOrganicaId;
+
     private Long jefeId;
 
     private Integer activo;

@@ -47,6 +47,10 @@ public class EmpleadoPlanillaResponseDto {
 
     private Long condicionLaboralId;
 
+    private Long tipoPersonaMefId;
+
+    private String registroPlazaAirhsp;
+
     // Etiquetas resueltas para mostrar en el listado (no requieren catálogos en UI).
     private String regimenLaboral;   // código (ej. CAS, 728)
 

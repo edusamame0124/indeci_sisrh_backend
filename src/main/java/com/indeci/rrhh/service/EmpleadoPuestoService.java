@@ -93,10 +93,9 @@ public class EmpleadoPuestoService {
         nuevo.setCargoId(dto.getCargoId());
         nuevo.setNivelId(dto.getNivelId());
    
+        nuevo.setSedeId(dto.getSedeId());
         nuevo.setOficinaId(dto.getOficinaId());
- 
-
-   
+        nuevo.setDependenciaId(dto.getDependenciaId());
         nuevo.setJefeId(dto.getJefeId());
         nuevo.setActivo(1);
         nuevo.setFechaInicio(LocalDate.now());
@@ -140,8 +139,9 @@ public class EmpleadoPuestoService {
         entity.setCargoId(dto.getCargoId());
         entity.setNivelId(dto.getNivelId());
       
+        entity.setSedeId(dto.getSedeId());
         entity.setOficinaId(dto.getOficinaId());
-     
+        entity.setDependenciaId(dto.getDependenciaId());
     
         entity.setJefeId(dto.getJefeId());
 
@@ -220,14 +220,23 @@ public class EmpleadoPuestoService {
                     
 
                     	    if (oficina.getEstructuraOrganica() != null) {
-
+                    	        dto.setEstructuraOrganicaId(oficina.getEstructuraOrganica().getId());
                     	        dto.setEstructuraOrganica(
                     	                oficina
                     	                        .getEstructuraOrganica()
                     	                        .getNombre());
                     	    }
                     	}
-                        
+                    }
+                    
+                    dto.setSedeId(e.getSedeId());
+                    if (e.getSede() != null) {
+                        dto.setSede(e.getSede().getNombre());
+                    }
+                    
+                    dto.setDependenciaId(e.getDependenciaId());
+                    if (e.getDependencia() != null) {
+                        dto.setDependencia(e.getDependencia().getNombre());
                     }
                     dto.setJefeId(e.getJefeId());
                     if (e.getJefeId() != null) {

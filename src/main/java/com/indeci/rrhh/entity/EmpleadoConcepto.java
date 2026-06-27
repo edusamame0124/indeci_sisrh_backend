@@ -46,4 +46,36 @@ public class EmpleadoConcepto {
 
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
+
+    // --- Campos de Descuento Judicial ---
+    
+    @Column(name = "JUDICIAL_TIPO_CALCULO")
+    private String tipoCalculoJudicial; // 'MONTO_FIJO' o 'PORCENTAJE'
+
+    @Column(name = "JUDICIAL_BASE_CALCULO")
+    private String baseCalculoJudicial;
+
+    @Column(name = "JUDICIAL_NRO_EXPEDIENTE")
+    private String nroExpediente;
+
+    @Column(name = "JUDICIAL_NRO_OFICIO")
+    private String nroOficio;
+
+    @Column(name = "JUDICIAL_JUZGADO")
+    private String juzgadoEmisor;
+
+    @Column(name = "JUDICIAL_BENEF_TIPO_DOC")
+    private String tipoDocBeneficiario;
+
+    @Column(name = "JUDICIAL_BENEF_NRO_DOC")
+    private String nroDocBeneficiario;
+
+    @Column(name = "JUDICIAL_BENEF_NOMBRE")
+    private String nombreBeneficiario;
+
+    @Column(name = "JUDICIAL_ENTIDAD_BANCARIA")
+    private String entidadBancaria;
+
+    @Column(name = "JUDICIAL_CUENTA_BANCARIA")
+    private String cuentaBancaria;
 }
