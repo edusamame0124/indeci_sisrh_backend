@@ -40,6 +40,7 @@ import com.indeci.rrhh.entity.TipoVacacion;
 import com.indeci.rrhh.entity.TtConformidad;
 import com.indeci.rrhh.entity.TtEstadoCumplimiento;
 import com.indeci.rrhh.entity.TtModalidad;
+import com.indeci.rrhh.entity.ModalidadCas;
 import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import com.indeci.rrhh.service.CatalogoService;
 import com.indeci.rrhh.entity.Profesion;
@@ -419,5 +420,11 @@ public class CatalogoController {
                         .listarNivelesInstruccion());
     }
     
-    
+    @GetMapping("/modalidades-cas")
+    public ApiResponse<List<ModalidadCas>> listarModalidadesCas() {
+        return new ApiResponse<>(
+                "OK",
+                "Listado correcto",
+                catalogoService.listarModalidadesCas());
+    }
 }

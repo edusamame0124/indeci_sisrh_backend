@@ -61,4 +61,43 @@ public class MovimientoPlanilla {
 
     @Column(name = "ONP_PARAM_VIGENCIA_ID")
     private Long onpParamVigenciaId;
+    
+    // ============================================================
+    // Spec 011 / Aislamiento de Pagos (Contratos Múltiples)
+    // ============================================================
+    
+    @Column(name = "EMPLEADO_PUESTO_ID")
+    private Long empleadoPuestoId;
+
+    @Column(name = "TIPO_PLANILLA")
+    private String tipoPlanilla;
+
+    @Column(name = "FECHA_INICIO_PAGO")
+    private java.time.LocalDate fechaInicioPago;
+
+    @Column(name = "FECHA_FIN_PAGO")
+    private java.time.LocalDate fechaFinPago;
+
+    @Column(name = "LOTE_ID")
+    private Long loteId;
+
+    // ============================================================
+    // Spec 012 / Fase 4 — Snapshots inmutables de metadata
+    // ============================================================
+    
+    @Column(name = "REGIMEN_LABORAL_SNAPSHOT")
+    private String regimenLaboralSnapshot;
+
+    @Column(name = "NIVEL_REMUNERATIVO_SNAPSHOT")
+    private String nivelRemunerativoSnapshot;
+
+    @Column(name = "CUENTA_BANCARIA_SNAPSHOT")
+    private String cuentaBancariaSnapshot;
+
+    @Column(name = "MODALIDAD_SNAPSHOT")
+    private String modalidadSnapshot;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "LOTE_ID", insertable = false, updatable = false)
+    private PlanillaLote lote;
 }

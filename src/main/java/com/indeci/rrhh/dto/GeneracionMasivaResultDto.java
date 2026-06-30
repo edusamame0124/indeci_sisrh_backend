@@ -21,4 +21,7 @@ public class GeneracionMasivaResultDto {
 
     /** Empleados que fallaron, con el motivo. */
     private List<GeneracionFallidaDto> fallidos;
+
+    /** IDs de los empleados cuya planilla se generó correctamente. */
+    private List<Long> exitososIds;
 }

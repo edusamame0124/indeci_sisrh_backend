@@ -6,9 +6,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.GeneracionMasivaResultDto;
+import com.indeci.rrhh.dto.GenerarPlanillaCabeceraDto;
 import com.indeci.rrhh.dto.ResumenPlanillaDto;
 import com.indeci.rrhh.service.GeneradorPlanillaService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
@@ -34,11 +36,11 @@ public class GeneradorPlanillaController {
         return new ApiResponse<>("OK", "Planilla generada", null);
     }
 
-    @PostMapping("/masivo/{periodo}")
+    @PostMapping("/masivo")
     @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
-    public ApiResponse<GeneracionMasivaResultDto> generarMasivo(@PathVariable String periodo) {
+    public ApiResponse<GeneracionMasivaResultDto> generarMasivo(@RequestBody GenerarPlanillaCabeceraDto request) {
 
-        GeneracionMasivaResultDto resultado = service.generarTodoPeriodo(periodo);
+        GeneracionMasivaResultDto resultado = service.generarTodoPeriodo(request);
 
         return new ApiResponse<>(
                 "OK",

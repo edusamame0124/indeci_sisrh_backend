@@ -1,0 +1,12 @@
+-- V011_04__add_concepto_planilla_lote.sql
+
+BEGIN
+   EXECUTE IMMEDIATE 'ALTER TABLE GESTIONRRHH.INDECI_PLANILLA_LOTE ADD CONCEPTO_PLANILLA VARCHAR2(20)';
+EXCEPTION
+   WHEN OTHERS THEN
+      -- Error 1430 indica que la columna ya existe
+      IF SQLCODE != -1430 THEN
+         RAISE;
+      END IF;
+END;
+/

@@ -49,6 +49,8 @@ class MovimientoPlanillaServiceTest {
     @Mock private EmpleadoRepository empleadoRepository;
     @Mock private PersonaRepository personaRepository;
     @Mock private RegimenLaboralRepository regimenLaboralRepository;
+    @Mock private com.indeci.rrhh.repository.EmpleadoPensionRepository pensionRepository;
+    @Mock private com.indeci.rrhh.repository.RegimenPensionarioRepository regimenPensionarioRepository;
     @Mock private ConceptoPlanillaRepository conceptoRepository;
     @Mock private AuditoriaContext auditoriaContext;
 

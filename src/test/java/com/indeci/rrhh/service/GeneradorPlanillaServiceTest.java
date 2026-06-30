@@ -32,6 +32,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 /**
  * Spec 010 — Tests del motor refactor.
@@ -72,7 +73,9 @@ class GeneradorPlanillaServiceTest {
     @Mock private OnpParametroVigenciaRepository onpVigenciaRepository;
     @Mock private Ir4taConfigService ir4taConfigService;
     @Mock private Ir4taControlAnualService ir4taControlAnualService;
-
+    @Mock private PlanillaLoteRepository planillaLoteRepository;
+    @Mock private com.indeci.rrhh.service.strategy.CalculadorConceptoFactory calculadorConceptoFactory;
+    @Mock private com.indeci.rrhh.service.support.MovimientoPlanillaSnapshotFactory snapshotFactory;
     private GeneradorPlanillaService service;
 
     private static final Long EMPLEADO_ID = 41L;
@@ -117,7 +120,10 @@ class GeneradorPlanillaServiceTest {
                 subsidioCalculadorService,
                 subsidioPlanillaIntegracionService,
                 afpVigenciaRepository,
-                onpVigenciaRepository);
+                onpVigenciaRepository,
+                planillaLoteRepository,
+                calculadorConceptoFactory,
+                snapshotFactory);
         // El proxy @Lazy `self` no se inyecta en test unitario: apuntarlo al
         // propio servicio para poder ejercitar generarTodoPeriodo.
         ReflectionTestUtils.setField(service, "self", service);
@@ -143,6 +149,11 @@ class GeneradorPlanillaServiceTest {
         when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(any(), any()))
                 .thenReturn(BigDecimal.ZERO);
 
+        com.indeci.rrhh.service.strategy.CalculadorHaberesGeneralStrategy strategyHaberes = 
+            new com.indeci.rrhh.service.strategy.CalculadorHaberesGeneralStrategy(suspension4taService, ir4taControlAnualService);
+        lenient().when(calculadorConceptoFactory.obtenerEstrategia(any(), any()))
+                .thenReturn(strategyHaberes);
+
         // No hay movimiento anterior
         when(movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
                 .thenReturn(Optional.empty());
@@ -153,6 +164,12 @@ class GeneradorPlanillaServiceTest {
                     MovimientoPlanilla m = inv.getArgument(0);
                     if (m.getId() == null) m.setId(100L);
                     return m;
+                });
+        lenient().when(planillaLoteRepository.save(any(PlanillaLote.class)))
+                .thenAnswer(inv -> {
+                    PlanillaLote l = inv.getArgument(0);
+                    if (l.getId() == null) l.setId(999L);
+                    return l;
                 });
         when(detalleRepository.save(any(MovimientoPlanillaDetalle.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -1025,10 +1042,14 @@ class GeneradorPlanillaServiceTest {
         p1.setEmpleadoId(41L);
         EmpleadoPlanilla p2 = new EmpleadoPlanilla();
         p2.setEmpleadoId(99L);
-        when(planillaRepository.findByActivo(1)).thenReturn(List.of(p1, p2));
+        when(planillaRepository.findEmpleadosParaGeneracion(1L, null, null, null)).thenReturn(List.of(p1, p2));
         // Sin findFirstByEmpleadoIdAndActivo → ambos generan "sin configuración".
 
-        var r = service.generarTodoPeriodo(PERIODO);
+        var request = new com.indeci.rrhh.dto.GenerarPlanillaCabeceraDto();
+        request.setPeriodo(PERIODO);
+        request.setRegimenLaboralId(1L);
+
+        var r = service.generarTodoPeriodo(request);
 
         assertThat(r.getTotal()).isEqualTo(2);
         assertThat(r.getExitosos()).isZero();
@@ -1045,14 +1066,18 @@ class GeneradorPlanillaServiceTest {
         EmpleadoPlanilla p1 = planilla(3000.0, REG_276, 0); // emp 41 — completo
         EmpleadoPlanilla p2 = new EmpleadoPlanilla();
         p2.setEmpleadoId(99L);                              // emp 99 — sin config
-        when(planillaRepository.findByActivo(1)).thenReturn(List.of(p1, p2));
+        when(planillaRepository.findEmpleadosParaGeneracion(1L, null, null, null)).thenReturn(List.of(p1, p2));
         when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(p1));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(3000.0);
 
-        var r = service.generarTodoPeriodo(PERIODO);
+        var request = new com.indeci.rrhh.dto.GenerarPlanillaCabeceraDto();
+        request.setPeriodo(PERIODO);
+        request.setRegimenLaboralId(1L);
+
+        var r = service.generarTodoPeriodo(request);
 
         assertThat(r.getTotal()).isEqualTo(2);
         assertThat(r.getExitosos()).isEqualTo(1);

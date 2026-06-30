@@ -12,9 +12,22 @@ public interface MovimientoPlanillaRepository
         extends JpaRepository<MovimientoPlanilla, Long> {
 
     Optional<MovimientoPlanilla>
-    findByEmpleadoIdAndPeriodoAndActivo(
+    findFirstByEmpleadoIdAndPeriodoAndActivoOrderByIdDesc(
             Long empleadoId,
             String periodo,
+            Integer activo);
+
+    default Optional<MovimientoPlanilla> findByEmpleadoIdAndPeriodoAndActivo(
+            Long empleadoId, String periodo, Integer activo) {
+        return findFirstByEmpleadoIdAndPeriodoAndActivoOrderByIdDesc(empleadoId, periodo, activo);
+    }
+
+    Optional<MovimientoPlanilla>
+    findByEmpleadoIdAndPeriodoAndTipoPlanillaAndEmpleadoPuestoIdAndActivo(
+            Long empleadoId,
+            String periodo,
+            String tipoPlanilla,
+            Long empleadoPuestoId,
             Integer activo);
 
     List<MovimientoPlanilla>

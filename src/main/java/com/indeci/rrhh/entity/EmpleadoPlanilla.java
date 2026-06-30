@@ -45,6 +45,9 @@ public class EmpleadoPlanilla {
     @Column(name = "FECHA_INICIO")
     private LocalDate fechaInicio;
 
+    @Column(name = "FECHA_INICIO_CONTRATO")
+    private LocalDate fechaInicioContrato;
+
     @Column(name = "FECHA_FIN")
     private LocalDate fechaFin;
 
@@ -59,6 +62,9 @@ public class EmpleadoPlanilla {
 
     @Column(name = "CONDICION_LABORAL_ID")
     private Long condicionLaboralId;
+
+    @Column(name = "MODALIDAD_CAS_ID")
+    private Long modalidadCasId;
 
     @Column(name = "TIPO_PERSONA_MEF_ID")
     private Long tipoPersonaMefId;

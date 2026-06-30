@@ -47,6 +47,8 @@ public class EmpleadoPlanillaResponseDto {
 
     private Long condicionLaboralId;
 
+    private Long modalidadCasId;
+
     private Long tipoPersonaMefId;
 
     private String registroPlazaAirhsp;
@@ -57,6 +59,14 @@ public class EmpleadoPlanillaResponseDto {
     private String tipoContrato;     // nombre
 
     private String condicionLaboral; // nombre
+
+    private String modalidadCas;     // nombre
+
+    // =====================================
+    // FECHAS
+    // =====================================
+
+    private java.time.LocalDate fechaInicioContrato;
 
     // =====================================
     // ESTADO

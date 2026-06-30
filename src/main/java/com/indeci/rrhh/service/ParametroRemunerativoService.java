@@ -142,7 +142,7 @@ public class ParametroRemunerativoService {
      *   <li>{@code "YYYY-MM"} — formato amigable de UI/tests (ej. "2026-05").</li>
      * </ul>
      */
-    static LocalDate periodoToFechaInicio(String periodo) {
+    public static LocalDate periodoToFechaInicio(String periodo) {
         if (periodo == null) {
             throw new NegocioException("Período inválido (esperado YYYYMM o YYYY-MM): null");
         }

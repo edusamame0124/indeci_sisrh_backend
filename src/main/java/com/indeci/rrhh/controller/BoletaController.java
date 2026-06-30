@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @PreAuthorize(SisrhSecurityExpressions.PLA_READ)
 public class BoletaController {
-
     private final BoletaPdfService boletaPdfService;
+    private final com.indeci.rrhh.service.BoletaDataService boletaDataService;
 
     /** Descarga la boleta de pago del empleado/período en PDF. */
     @GetMapping("/{empleadoId}/{periodo}/pdf")
@@ -40,5 +40,15 @@ public class BoletaController {
                 .build());
 
         return ResponseEntity.ok().headers(headers).body(pdf);
+    }
+
+    /** FASE 4 - Descarga la boleta de pago del empleado/período en JSON para la UI Angular. */
+    @GetMapping("/{empleadoId}/{periodo}/data")
+    public ResponseEntity<com.indeci.rrhh.dto.BoletaPagoResponseDto> obtenerDataBoleta(
+            @PathVariable Long empleadoId,
+            @PathVariable String periodo) {
+        
+        com.indeci.rrhh.dto.BoletaPagoResponseDto dto = boletaDataService.obtenerBoletaData(empleadoId, periodo);
+        return ResponseEntity.ok(dto);
     }
 }

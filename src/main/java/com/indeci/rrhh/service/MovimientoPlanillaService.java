@@ -9,10 +9,12 @@ import com.indeci.rrhh.dto.ResumenMetaEmpleadoDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.EmpleadoPension;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.RegimenLaboral;
+import com.indeci.rrhh.entity.RegimenPensionario;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -20,6 +22,9 @@ import com.indeci.rrhh.repository.MovimientoPlanillaDetalleRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.RegimenLaboralRepository;
+import com.indeci.rrhh.repository.EmpleadoPensionRepository;
+import com.indeci.rrhh.repository.RegimenPensionarioRepository;
+import java.time.temporal.ChronoUnit;
 
 import lombok.RequiredArgsConstructor;
 
@@ -56,8 +61,11 @@ public class MovimientoPlanillaService {
 
     private final RegimenLaboralRepository regimenLaboralRepository;
 
-    private final ConceptoPlanillaRepository
-            conceptoRepository;
+    private final ConceptoPlanillaRepository conceptoRepository;
+
+    private final EmpleadoPensionRepository pensionRepository;
+
+    private final RegimenPensionarioRepository regimenPensionarioRepository;
 
     private final AuditoriaContext auditoriaContext;
 
@@ -177,13 +185,39 @@ public class MovimientoPlanillaService {
                         Function.identity(),
                         (a, b) -> a));
 
+        // 🔹 Nuevo: Cargar pensiones y regímenes pensionarios
+        List<EmpleadoPension> pensionesList = pensionRepository
+                .findByEmpleadoIdInAndActivo(empleadoIds, 1);
+        
+        Map<Long, EmpleadoPension> pensionesPorEmpleado = pensionesList.stream()
+                .collect(Collectors.toMap(
+                        EmpleadoPension::getEmpleadoId,
+                        Function.identity(),
+                        (a, b) -> a)); // Tomar el primero si hay duplicados activos
+                        
+        List<Long> regPensionIds = pensionesList.stream()
+                .map(EmpleadoPension::getRegimenPensionarioId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+                
+        Map<Long, RegimenPensionario> regimenesPensionariosPorId = regimenPensionarioRepository
+                .findAllById(regPensionIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        RegimenPensionario::getId,
+                        Function.identity(),
+                        (a, b) -> a));
+
         return movimientos.stream()
                 .map(mov -> mapearMovimiento(
                         mov,
                         empleadosPorId,
                         personasPorId,
                         planillasPorEmpleado,
-                        regimenesPorId))
+                        regimenesPorId,
+                        pensionesPorEmpleado,
+                        regimenesPensionariosPorId))
                 .toList();
     }
 
@@ -192,7 +226,9 @@ public class MovimientoPlanillaService {
                      Map<Long, Empleado> empleadosPorId,
                      Map<Long, Persona> personasPorId,
                      Map<Long, EmpleadoPlanilla> planillasPorEmpleado,
-                     Map<Long, RegimenLaboral> regimenesPorId) {
+                     Map<Long, RegimenLaboral> regimenesPorId,
+                     Map<Long, EmpleadoPension> pensionesPorEmpleado,
+                     Map<Long, RegimenPensionario> regimenesPensionariosPorId) {
 
         MovimientoPlanillaResponseDto dto = new MovimientoPlanillaResponseDto();
         dto.setId(mov.getId());
@@ -206,6 +242,15 @@ public class MovimientoPlanillaService {
         dto.setActivo(mov.getActivo());
         dto.setNeto50pctMinimo(mov.getNeto50pctMinimo());
         dto.setEstadoNeto(mov.getEstadoNeto());
+        dto.setLoteId(mov.getLoteId());
+
+        // Calcular días
+        if (mov.getFechaInicioPago() != null && mov.getFechaFinPago() != null) {
+            long days = ChronoUnit.DAYS.between(mov.getFechaInicioPago(), mov.getFechaFinPago()) + 1;
+            dto.setDias((int) days);
+        } else {
+            dto.setDias(30); // Estándar si no hay prorrateo
+        }
 
         Empleado empleado = empleadosPorId.get(mov.getEmpleadoId());
         if (empleado != null) {
@@ -222,6 +267,14 @@ public class MovimientoPlanillaService {
             if (regimen != null) {
                 dto.setRegimenLaboralCodigo(regimen.getCodigo());
                 dto.setRegimenLaboralNombre(regimen.getNombre());
+            }
+        }
+        
+        EmpleadoPension pension = pensionesPorEmpleado.get(mov.getEmpleadoId());
+        if (pension != null) {
+            RegimenPensionario rp = regimenesPensionariosPorId.get(pension.getRegimenPensionarioId());
+            if (rp != null) {
+                dto.setRegimenPensionario(rp.getNombre());
             }
         }
 

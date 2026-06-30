@@ -76,7 +76,9 @@ class JwtProviderSistemasClaimTest {
 
         assertThat(claims.get("sistemas")).isNull();
         assertThat(claims.getSubject()).isEqualTo("anibal");
-        assertThat(claims.get("roles", List.class)).containsExactly("RRHH_JEFE");
+        @SuppressWarnings("unchecked")
+        List<String> roles = claims.get("roles", List.class);
+        assertThat(roles).containsExactly("RRHH_JEFE");
         assertThat(claims.get("newPassOk")).isEqualTo(true);
     }
 

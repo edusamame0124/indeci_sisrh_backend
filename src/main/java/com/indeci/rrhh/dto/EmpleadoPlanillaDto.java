@@ -61,7 +61,15 @@ public class EmpleadoPlanillaDto {
 
     private Long condicionLaboralId;
 
+    private Long modalidadCasId;
+
     private Long tipoPersonaMefId;
 
     private String registroPlazaAirhsp;
+
+    // =====================================
+    // FECHAS
+    // =====================================
+
+    private java.time.LocalDate fechaInicioContrato;
 }

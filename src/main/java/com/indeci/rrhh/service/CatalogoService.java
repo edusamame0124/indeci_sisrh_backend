@@ -57,6 +57,8 @@ public class CatalogoService {
     private final AirhspVigenciaRepository airhspVigenciaRepository;
 
     private final RegimenLaboralRepository regimenLaboralRepository;
+    
+    private final ModalidadCasRepository modalidadCasRepository;
 
     private final TipoContratoRepository tipoContratoRepository;
 
@@ -344,7 +346,7 @@ private final TtConformidadRepository ttConformidadRepository;
     listarModalidadesTeletrabajo() {
 
         return ttModalidadRepository
-                .findByActivoOrderByNombreAsc(1);
+                .findAll();
     }
     
     public List<TtEstadoCumplimiento>
@@ -368,4 +370,7 @@ private final TtConformidadRepository ttConformidadRepository;
                 .findByActivoOrderByNombreAsc(1);
     }
     
+    public List<ModalidadCas> listarModalidadesCas() {
+        return modalidadCasRepository.findAllActivos();
+    }
 }

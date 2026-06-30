@@ -30,6 +30,7 @@ import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.repository.TipoContratoRepository;
 import com.indeci.rrhh.repository.CondicionLaboralRepository;
+import com.indeci.rrhh.repository.ModalidadCasRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -46,6 +47,7 @@ public class EmpleadoPlanillaService {
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final TipoContratoRepository tipoContratoRepository;
     private final CondicionLaboralRepository condicionLaboralRepository;
+    private final ModalidadCasRepository modalidadCasRepository;
     private final EmpleadoRepository empleadoRepository;
     private final PersonaRepository personaRepository;
     private final IncrementosDsCalculoService incrementosDsCalculoService;
@@ -75,8 +77,10 @@ public class EmpleadoPlanillaService {
         entity.setRegimenLaboralId(dto.getRegimenLaboralId());
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
+        entity.setModalidadCasId(dto.getModalidadCasId());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
+        entity.setFechaInicioContrato(dto.getFechaInicioContrato());
         entity.setActivo(1);
         entity.setFechaInicio(LocalDate.now());
         entity.setCreatedAt(LocalDateTime.now());
@@ -109,8 +113,10 @@ public class EmpleadoPlanillaService {
                     dto.setRegimenLaboralId(e.getRegimenLaboralId());
                     dto.setTipoContratoId(e.getTipoContratoId());
                     dto.setCondicionLaboralId(e.getCondicionLaboralId());
+                    dto.setModalidadCasId(e.getModalidadCasId());
                     dto.setTipoPersonaMefId(e.getTipoPersonaMefId());
                     dto.setRegistroPlazaAirhsp(e.getRegistroPlazaAirhsp());
+                    dto.setFechaInicioContrato(e.getFechaInicioContrato());
 
                     // Etiquetas resueltas para el listado.
                     if (e.getRegimenLaboralId() != null) {
@@ -124,6 +130,10 @@ public class EmpleadoPlanillaService {
                     if (e.getCondicionLaboralId() != null) {
                         condicionLaboralRepository.findById(e.getCondicionLaboralId())
                                 .ifPresent(cl -> dto.setCondicionLaboral(cl.getNombre()));
+                    }
+                    if (e.getModalidadCasId() != null) {
+                        modalidadCasRepository.findById(e.getModalidadCasId())
+                                .ifPresent(mc -> dto.setModalidadCas(mc.getNombre()));
                     }
 
                     return dto;
@@ -201,8 +211,10 @@ public class EmpleadoPlanillaService {
         entity.setRegimenLaboralId(dto.getRegimenLaboralId());
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
+        entity.setModalidadCasId(dto.getModalidadCasId());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
+        entity.setFechaInicioContrato(dto.getFechaInicioContrato());
 
         repository.save(entity);
 

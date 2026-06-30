@@ -5,6 +5,7 @@ import com.indeci.exception.ConceptoSinCodigoMefException;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.GeneracionFallidaDto;
 import com.indeci.rrhh.dto.GeneracionMasivaResultDto;
+import com.indeci.rrhh.dto.GenerarPlanillaCabeceraDto;
 import com.indeci.rrhh.dto.ResumenPlanillaDto;
 import com.indeci.rrhh.dto.SubsidioCalculadoDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
@@ -213,6 +214,15 @@ public class GeneradorPlanillaService {
     /** B2 — Vigencias previsionales para trazabilidad en INDECI_MOVIMIENTO_PLANILLA. */
     private final AfpParametroVigenciaRepository afpVigenciaRepository;
     private final OnpParametroVigenciaRepository onpVigenciaRepository;
+    
+    /** HU-02 - Maestro de Lotes para vincular automáticamente planillas Ordinarias. */
+    private final PlanillaLoteRepository planillaLoteRepository;
+
+    /** HU-03 - Refactor de Motor V3: Enrutador de Estrategias. */
+    private final com.indeci.rrhh.service.strategy.CalculadorConceptoFactory calculadorConceptoFactory;
+
+    /** Fase 4 - Inmutabilidad (Boleta Snapshot). */
+    private final com.indeci.rrhh.service.support.MovimientoPlanillaSnapshotFactory snapshotFactory;
 
     /**
      * Self-reference para que {@link #generarTodoPeriodo(String)} invoque
@@ -232,6 +242,7 @@ public class GeneradorPlanillaService {
      */
     @Value("${motor.v3.prorrateo.enabled:false}")
     private boolean motorV3ProrrateoEnabled;
+    public boolean isMotorV3ProrrateoEnabled() { return motorV3ProrrateoEnabled; }
 
     /**
      * FASE 4 — Calcula + registra los subsidios del período y devuelve el
@@ -261,7 +272,7 @@ public class GeneradorPlanillaService {
      * P0-F0: flujo por eventos retirado. Los subsidios se imputan vía liquidaciones
      * del módulo dedicado ({@code INDECI_SUBSIDIO_LIQUIDACION}, F2).
      */
-    private BigDecimal registrarSubsidiosEventos(
+    public BigDecimal registrarSubsidiosEventos(
             Long empleadoId,
             String periodo,
             MovimientoPlanilla movimiento,
@@ -298,6 +309,18 @@ public class GeneradorPlanillaService {
 
     @Transactional
     public void generar(Long empleadoId, String periodo) {
+        generarConOverride(empleadoId, periodo, null, null, "ORDINARIA", null, null, null);
+    }
+
+    @Transactional
+    public void generarConOverride(Long empleadoId, String periodo, BigDecimal overrideSueldoBasico) {
+        generarConOverride(empleadoId, periodo, overrideSueldoBasico, null, "ORDINARIA", null, null, null);
+    }
+
+    @Transactional
+    public void generarConOverride(Long empleadoId, String periodo, BigDecimal overrideSueldoBasico,
+                                   Long empleadoPuestoId, String tipoPlanilla,
+                                   LocalDate fechaInicioPago, LocalDate fechaFinPago, Long loteId) {
 
         // 1. Validar periodo
         PeriodoPlanilla periodoPlanilla = periodoRepository
@@ -321,194 +344,63 @@ public class GeneradorPlanillaService {
         Empleado empleado = empleadoRepository.findById(empleadoId).orElse(null);
 
         int anioFiscal = anioDePeriodo(periodo);
+        String actualTipoPlanilla = tipoPlanilla != null ? tipoPlanilla : "ORDINARIA";
+        
+        // ====================================================================
+        // HU-02: Auto-resolver Lote si viene nulo (ej. Planilla Ordinaria)
+        // ====================================================================
+        Long resolvedLoteId = loteId;
+        if (resolvedLoteId == null && "ORDINARIA".equals(actualTipoPlanilla)) {
+            String regimen = planilla.getRegimenLaboral() != null ? planilla.getRegimenLaboral().getCodigo() : "DESC";
+            PlanillaLote lote = planillaLoteRepository
+                    .findByPeriodoAndRegimenLaboralCodigoAndTipoPlanillaAndCorrelativo(periodo, regimen, "ORDINARIA", 1)
+                    .orElseGet(() -> {
+                        PlanillaLote nuevoLote = new PlanillaLote();
+                        nuevoLote.setPeriodo(periodo);
+                        nuevoLote.setRegimenLaboralCodigo(regimen);
+                        nuevoLote.setTipoPlanilla("ORDINARIA");
+                        nuevoLote.setCorrelativo(1);
+                        nuevoLote.setEstado("GENERADO");
+                        return planillaLoteRepository.save(nuevoLote);
+                    });
+            resolvedLoteId = lote.getId();
+        }
 
-        // 4. Borrar movimiento anterior + crear cabecera
-        borrarMovimientoAnterior(empleadoId, periodo);
-        MovimientoPlanilla movimiento = crearCabecera(empleadoId, periodo);
+        // 4) Generación de Movimiento (Cabecera)
+        borrarMovimientoAnterior(empleadoId, periodo, actualTipoPlanilla, empleadoPuestoId);
+        MovimientoPlanilla movimiento = crearCabecera(empleadoId, periodo, actualTipoPlanilla, empleadoPuestoId, fechaInicioPago, fechaFinPago, resolvedLoteId);
 
         // 4b. FASE 2 — Trazabilidad: descartar el snapshot anterior del par
         //     empleado/período para que quede un único conjunto vigente
         //     (reproducible) tras esta regeneración.
         calculoSnapshotService.desactivarPrevios(empleadoId, periodo);
 
-        BigDecimal totalIngresos    = BigDecimal.ZERO;
-        BigDecimal totalDescuentos  = BigDecimal.ZERO;
-        BigDecimal ingresosMensualesPermanentes = BigDecimal.ZERO;
-        BigDecimal baseImponiblePens = BigDecimal.ZERO;
-        BigDecimal baseImponibleEss  = BigDecimal.ZERO;
-        BigDecimal ir4taCas = BigDecimal.ZERO;
-
-        // 5. Conceptos remunerativos calculados por el motor
-        RemunerativosResult rem =
-                calcularRemunerativos(movimiento, planilla, empleado, anioFiscal);
-        totalIngresos     = totalIngresos.add(rem.totalRemunerativo);
-        ingresosMensualesPermanentes =
-                ingresosMensualesPermanentes.add(rem.totalRemunerativo);
-        baseImponiblePens = baseImponiblePens.add(rem.baseAportePension);
-        baseImponibleEss  = baseImponibleEss.add(rem.baseEssalud);
-
-        // 6. No remunerativos automáticos (Etapa 1: vacío. Aguinaldos/gratificaciones a Etapa 2)
-        // calcularNoRemunerativos(movimiento, planilla, periodo); // placeholder
-
-        // Régimen laboral (necesario para PASO 7 validación normativa F1.5b
-        // y PASO 9 tope EsSalud CAS F1.6). Se resuelve una sola vez.
-        String regimenLaboralCodigo =
-                resolverRegimenLaboralCodigo(planilla.getRegimenLaboralId());
-
-        // 7. Conceptos manuales (EmpleadoConcepto) — valida LEY-01 + F1.5b:
-        //    régimen aplicable del concepto + prorrateo por días laborados.
-        ManualesResult manuales =
-                aplicarConceptosManuales(movimiento, planilla, regimenLaboralCodigo, periodo);
-        totalIngresos     = totalIngresos.add(manuales.ingresos);
-        totalDescuentos   = totalDescuentos.add(manuales.descuentos);
-        ingresosMensualesPermanentes = ingresosMensualesPermanentes
-                .add(manuales.ingresosMensualesPermanentes);
-        baseImponiblePens = baseImponiblePens.add(manuales.baseAportePension);
-        baseImponibleEss  = baseImponibleEss.add(manuales.baseEssalud);
-
-        // 7.5. F1.5a Motor v3 — Reintegro por días (feature flag).
-        //      Conceptualmente es el PASO 5b del SPEC, pero en el motor actual
-        //      se aplica DESPUÉS del PASO 7 porque la base remunerativa real
-        //      vive en EmpleadoConcepto manuales (deuda técnica documentada).
-        //
-        //      Si motor.v3.prorrateo.enabled=true y existe INDECI_EMPLEADO_REINTEGRO
-        //      vigente para el período → prorratea totalIngresos por los días de
-        //      reintegro y suma el monto al total + bases (pensión/ESSALUD).
-        //
-        //      F1.5b conectará MONTO_CONTRATO real e incrementos DS prorrateados
-        //      vía flag ES_PRORRATEABLE en INDECI_CONCEPTO_PLANILLA, y grabará
-        //      detalle MEF independiente (RRHH debe dar CODIGO_MEF de "Reintegro CAS").
-        //      Hoy el monto queda embebido en totalIngresos sin línea propia en
-        //      boleta — el cálculo es correcto, la presentación es F1.5b.
-        if (motorV3ProrrateoEnabled) {
-            BigDecimal reintegro =
-                    calcularReintegro(empleadoId, periodo, totalIngresos);
-            if (reintegro.signum() > 0) {
-                totalIngresos     = totalIngresos.add(reintegro);
-                baseImponiblePens = baseImponiblePens.add(reintegro);
-                baseImponibleEss  = baseImponibleEss.add(reintegro);
+        String conceptoLote = "PLA_HABERES"; 
+        if (resolvedLoteId != null) {
+            PlanillaLote loteDB = planillaLoteRepository.findById(resolvedLoteId).orElse(null);
+            if (loteDB != null && loteDB.getConceptoPlanilla() != null) {
+                conceptoLote = loteDB.getConceptoPlanilla();
             }
         }
 
-        // 7c. P0-F0 — Subsidios vía liquidaciones del módulo dedicado (F2).
-        //     El flujo legacy por INDECI_EMPLEADO_EVENTO + generaSubsidio quedó retirado.
-        BigDecimal ingresoSubsidio =
-                registrarSubsidiosEventos(empleadoId, periodo, movimiento, planilla);
-        totalIngresos = totalIngresos.add(ingresoSubsidio);
+        com.indeci.rrhh.service.strategy.ContextoCalculoPlanilla contexto = com.indeci.rrhh.service.strategy.ContextoCalculoPlanilla.builder()
+                .empleadoId(empleadoId)
+                .periodo(periodo)
+                .regimenLaboralCodigo(planilla.getRegimenLaboral() != null ? planilla.getRegimenLaboral().getCodigo() : "DESC")
+                .anioFiscal(anioFiscal)
+                .planilla(planilla)
+                .empleado(empleado)
+                .movimiento(movimiento)
+                .periodoPlanilla(periodoPlanilla)
+                .pensionOpt(pensionOpt)
+                .overrideSueldoBasico(overrideSueldoBasico)
+                .motorLegacy(this)
+                .build();
 
-        // 7b. Descuento de asistencia (PASO 7) — tardanzas + faltas de la
-        //     asistencia VALIDADA del período (D.Leg. 276 Art. 24). No reduce
-        //     la base imponible: es una deducción sobre el bruto.
-        BigDecimal descuentoAsistencia =
-                calcularDescuentoAsistencia(movimiento, empleadoId, periodo);
-        totalDescuentos = totalDescuentos.add(descuentoAsistencia);
-
-        // 8. Aporte pensionario (ONP/AFP) — LEY-02: ESSALUD NUNCA aquí
-        // (regimenLaboralCodigo ya resuelto antes del PASO 7 para F1.5b)
-        BigDecimal aportePension = BigDecimal.ZERO;
-        if (pensionOpt.isPresent()) {
-            aportePension = calcularAportePensionario(
-                    movimiento, pensionOpt.get(), baseImponiblePens, anioFiscal);
-            totalDescuentos = totalDescuentos.add(aportePension);
-        }
-
-        // 8b. Retención 5ta categoría (BW) — LEY-03: solo régimen 728 y SERVIR
-        BigDecimal retencion5ta = calcular5taCategoria(
-                movimiento, planilla, baseImponiblePens, anioFiscal);
-        totalDescuentos = totalDescuentos.add(retencion5ta);
-
-        // 8c. FASE 1 — IR 4ta categoría SOLO régimen CAS (decisión RRHH C1).
-        //     LEY-03: CAS NO retiene 5ta; retiene 4ta al 8% cuando la base supera
-        //     el inafecto (1500) y NO tiene constancia SUNAT de suspensión vigente.
-        //
-        //     Criterio normativo (Directiva 0001-2021-EF/53.01 + SUNAT): IR4TA_CAS
-        //     es una RETENCIÓN TRIBUTARIA (tributo SUNAT 3042), no un concepto de
-        //     ingreso MEF/AIRHSP. Por eso el concepto se resuelve por CODIGO interno
-        //     (no por CODIGO_MEF) y la planilla NUNCA se bloquea por ausencia de
-        //     CODIGO_MEF (su valor técnico es 'NO_APLICA'). Ver V010_49.
-        //
-        //     La suspensión se lee de INDECI_SUSPENSION_4TA (V010_48) por la fecha
-        //     de devengue del período. Si IR4ta > 0 se graba SIEMPRE línea de
-        //     detalle trazable (ningún descuento sin línea). Se gatea por CAS
-        //     antes de consultar suspensión (evita consultas para otros regímenes).
-        if (motorV3ProrrateoEnabled && esRegimenCas(regimenLaboralCodigo)) {
-            LocalDate fechaDevengue =
-                    ParametroRemunerativoService.periodoToFechaInicio(periodo);
-            Suspension4taVigenteDto suspension =
-                    suspension4taService.consultarVigente(empleadoId, fechaDevengue);
-
-            // BK / pago diferencial: monto NO afecto a IR4ta. Hoy NO entra a
-            // baseImponiblePens, por lo que se mantiene 0 explícito para no
-            // restarlo dos veces (condición RRHH). Si en el futuro el diferencial
-            // se sumara a la base, este valor deberá poblarse — el test lo protege.
-            BigDecimal montoNoAfectoIr4ta = BigDecimal.ZERO;
-            // REGLA RRHH (2026-06-26): Se usa estrictamente el Sueldo Básico de la configuración
-            // de planilla (Módulo de Vinculación), sin sumar reintegros ni otros conceptos.
-            // El descuento de asistencia (tardanzas + faltas) reduce esta base exclusiva para IR4ta.
-            BigDecimal sueldoBasicoVinculacion = toBigDecimal(planilla.getSueldoBasico());
-            BigDecimal baseIr4ta = sueldoBasicoVinculacion
-                    .subtract(montoNoAfectoIr4ta)
-                    .subtract(descuentoAsistencia)
-                    .max(BigDecimal.ZERO);
-
-            // B2 — Control anual del tope de suspensión: monitorea acumulado y, si
-            //      RR.HH. confirmó el reinicio (o se habilitó retención automática),
-            //      indica retener pese a la constancia. Efecto lateral defensivo:
-            //      ante cualquier error mantiene el comportamiento actual.
-            boolean suspendeEfectiva = suspension.vigente();
-            Ir4taControlAnualService.MotorDecision controlTope =
-                    ir4taControlAnualService.evaluarEnMotor(
-                            empleadoId, anioFiscal, periodo, baseIr4ta,
-                            suspension.vigente(), null);
-            if (controlTope != null && controlTope.aplicarRetencionPeseASuspension()) {
-                suspendeEfectiva = false;
-            }
-
-            ir4taCas = calcular4taCategoriaCAS(
-                    baseIr4ta, regimenLaboralCodigo, anioFiscal, suspendeEfectiva);
-            if (ir4taCas.signum() > 0) {
-                ConceptoPlanilla conceptoIr4ta = conceptoIr4taCas();
-                String obs = String.format(
-                        "IR4ta CAS NORMAL | base=%s | noAfecto=%s | baseFinal=%s | tasa=8%% | "
-                                + "tributoSUNAT=3042 | constancia=%s | periodo=%s",
-                        sueldoBasicoVinculacion.setScale(2, RoundingMode.HALF_UP),
-                        montoNoAfectoIr4ta.setScale(2, RoundingMode.HALF_UP),
-                        baseIr4ta.setScale(2, RoundingMode.HALF_UP),
-                        suspension.nroConstancia() == null ? "-" : suspension.nroConstancia(),
-                        periodo);
-                grabarDetalle(movimiento.getId(), conceptoIr4ta, ir4taCas, obs);
-                totalDescuentos = totalDescuentos.add(ir4taCas);
-            }
-
-            // FASE 2 — Snapshot IR4ta CAS: deja trazable cómo se obtuvo (o por
-            // qué no se retuvo: inafecto / suspensión vigente). Solo añadido.
-            registrarSnapshotIr4ta(empleadoId, periodo, movimiento.getId(), anioFiscal,
-                    sueldoBasicoVinculacion, baseIr4ta, ir4taCas, suspension);
-        }
-
-        // 9. ESSALUD empleador con mínimo + split EPS + tope 45% UIT solo CAS (F1.6).
-        //    El copago EPS del trabajador (si tiene EPS) SÍ es descuento — se suma al total.
-        BigDecimal copagoEps = calcularEssaludEmpleador(
-                movimiento, empleado, baseImponibleEss, anioFiscal, regimenLaboralCodigo,
-                empleadoId, periodo);
-        totalDescuentos = totalDescuentos.add(copagoEps);
-
-        // 10. Totales, validación neto 50% (REGLA SERVIR-07) y persistencia
-        BigDecimal retencionRenta = retencion5ta.add(ir4taCas);
-        calcularTotalesYCUC(movimiento, totalIngresos, totalDescuentos,
-                ingresosMensualesPermanentes,
-                retencionRenta, aportePension, manuales.descuentoJudicial);
-
-        // 16. Conciliación AIRHSP automática (PASO 16): compara el monto del
-        //     sistema (remuneración bruta calculada) contra el AIRHSP_MONTO
-        //     registrado en el MEF. Lo consume la PANTALLA-06.
-        crearConciliacionAirhsp(movimiento, empleado, periodoPlanilla, totalIngresos);
-
-        // 17. FASE 2 — Snapshot GENERAL: contexto reproducible del cálculo
-        //     (base reconocida, régimen, UIT del año, totales). Solo añadido:
-        //     la trazabilidad nunca altera el resultado oficial.
-        registrarSnapshotGeneral(empleadoId, periodo, movimiento.getId(), anioFiscal,
-                planilla, regimenLaboralCodigo, totalIngresos, totalDescuentos);
+        com.indeci.rrhh.service.strategy.CalculadorConceptoStrategy estrategia = 
+                calculadorConceptoFactory.obtenerEstrategia(contexto.getRegimenLaboralCodigo(), conceptoLote);
+        
+        estrategia.ejecutarCalculo(contexto);
     }
 
     // ======================================================================
@@ -520,7 +412,7 @@ public class GeneradorPlanillaService {
      * básico de la configuración de planilla), el régimen, la UIT del año y los
      * totales, de modo que la pantalla de explicación tenga el marco general.
      */
-    private void registrarSnapshotGeneral(
+    public void registrarSnapshotGeneral(
             Long empleadoId, String periodo, Long movimientoId, int anioFiscal,
             EmpleadoPlanilla planilla, String regimenLaboralCodigo,
             BigDecimal totalIngresos, BigDecimal totalDescuentos) {
@@ -554,7 +446,7 @@ public class GeneradorPlanillaService {
      * por qué se retuvo o no: base afecta, inafecto, tasa y estado de la
      * constancia SUNAT de suspensión.
      */
-    private void registrarSnapshotIr4ta(
+    public void registrarSnapshotIr4ta(
             Long empleadoId, String periodo, Long movimientoId, int anioFiscal,
             BigDecimal baseImponible, BigDecimal baseAfecta, BigDecimal resultado,
             Suspension4taVigenteDto suspension) {
@@ -604,11 +496,12 @@ public class GeneradorPlanillaService {
     // PASO 5 — REMUNERATIVOS automáticos (asignación familiar)
     // ======================================================================
 
-    private RemunerativosResult calcularRemunerativos(
+    public RemunerativosResult calcularRemunerativos(
             MovimientoPlanilla movimiento,
             EmpleadoPlanilla planilla,
             Empleado empleado,
-            int anioFiscal) {
+            int anioFiscal,
+            BigDecimal overrideSueldoBasico) {
 
         RemunerativosResult result = new RemunerativosResult();
 
@@ -619,7 +512,7 @@ public class GeneradorPlanillaService {
         // Remuneración BASE desde Configuración de planilla (mejora 2026-06-03):
         // la base es EmpleadoPlanilla.sueldoBasico, NO un concepto manual. Se graba
         // con el concepto base del régimen (CAS/728/276/SERVIR) → línea trazable.
-        BigDecimal sueldoBasico = toBigDecimal(planilla.getSueldoBasico());
+        BigDecimal sueldoBasico = overrideSueldoBasico != null ? overrideSueldoBasico : toBigDecimal(planilla.getSueldoBasico());
         if (sueldoBasico.signum() > 0 && regimenCodigo != null) {
             String baseMef = baseMefDeRegimen(regimenCodigo, empleado);
             if (baseMef != null) {
@@ -689,7 +582,7 @@ public class GeneradorPlanillaService {
     // PASO 7 — CONCEPTOS MANUALES (con validación LEY-01)
     // ======================================================================
 
-    private ManualesResult aplicarConceptosManuales(
+    public ManualesResult aplicarConceptosManuales(
             MovimientoPlanilla movimiento,
             EmpleadoPlanilla planilla,
             String regimenLaboralCodigo,
@@ -856,7 +749,7 @@ public class GeneradorPlanillaService {
      *
      * @return suma de los descuentos de asistencia (descuento al trabajador).
      */
-    private BigDecimal calcularDescuentoAsistencia(
+    public BigDecimal calcularDescuentoAsistencia(
             MovimientoPlanilla movimiento, Long empleadoId, String periodo) {
 
         Optional<AsistenciaCabecera> asistOpt = asistenciaCabeceraRepository
@@ -897,7 +790,7 @@ public class GeneradorPlanillaService {
     // PASO 8 — APORTE PENSIONARIO (ONP / AFP)
     // ======================================================================
 
-    private BigDecimal calcularAportePensionario(
+    public BigDecimal calcularAportePensionario(
             MovimientoPlanilla movimiento,
             EmpleadoPension pension,
             BigDecimal baseImponible,
@@ -1019,7 +912,7 @@ public class GeneradorPlanillaService {
      *
      * @return la retención del mes (descuento al trabajador); ZERO si no aplica.
      */
-    private BigDecimal calcular5taCategoria(
+    public BigDecimal calcular5taCategoria(
             MovimientoPlanilla movimiento,
             EmpleadoPlanilla planilla,
             BigDecimal baseRemuneracion,
@@ -1289,7 +1182,7 @@ public class GeneradorPlanillaService {
      *
      * @return el copago EPS del trabajador (descuento). {@code ZERO} si no tiene EPS.
      */
-    private BigDecimal calcularEssaludEmpleador(
+    public BigDecimal calcularEssaludEmpleador(
             MovimientoPlanilla movimiento,
             Empleado empleado,
             BigDecimal baseImponible,
@@ -1396,7 +1289,7 @@ public class GeneradorPlanillaService {
      * "NETO NO VA" es una etiqueta). El bloqueo efectivo corresponde al flujo
      * de aprobación de planilla: no se aprueba con un movimiento en NETO_NO_VA.
      */
-    private void calcularTotalesYCUC(
+    public void calcularTotalesYCUC(
             MovimientoPlanilla movimiento,
             BigDecimal totalIngresos,
             BigDecimal totalDescuentos,
@@ -1443,17 +1336,23 @@ public class GeneradorPlanillaService {
     // HELPERS
     // ======================================================================
 
-    private void borrarMovimientoAnterior(Long empleadoId, String periodo) {
-        movimientoRepository
-                .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
-                .ifPresent(mov -> {
-                    // Borrar primero lo que apunta al movimiento (FK) antes del
-                    // movimiento mismo: detalle, conciliación AIRHSP y abono banco.
-                    detalleRepository.deleteByMovimientoPlanillaId(mov.getId());
-                    conciliacionRepository.deleteByMovimientoPlanillaId(mov.getId());
-                    abonoBancoRepository.deleteByMovimientoPlanillaId(mov.getId());
-                    movimientoRepository.delete(mov);
-                });
+    private void borrarMovimientoAnterior(Long empleadoId, String periodo, String tipoPlanilla, Long empleadoPuestoId) {
+        Optional<MovimientoPlanilla> opt;
+        if (tipoPlanilla == null || tipoPlanilla.equals("ORDINARIA")) {
+            opt = movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1);
+        } else {
+            opt = movimientoRepository.findByEmpleadoIdAndPeriodoAndTipoPlanillaAndEmpleadoPuestoIdAndActivo(
+                    empleadoId, periodo, tipoPlanilla, empleadoPuestoId, 1);
+        }
+
+        opt.ifPresent(mov -> {
+            // Borrar primero lo que apunta al movimiento (FK) antes del
+            // movimiento mismo: detalle, conciliación AIRHSP y abono banco.
+            detalleRepository.deleteByMovimientoPlanillaId(mov.getId());
+            conciliacionRepository.deleteByMovimientoPlanillaId(mov.getId());
+            abonoBancoRepository.deleteByMovimientoPlanillaId(mov.getId());
+            movimientoRepository.delete(mov);
+        });
     }
 
     // ======================================================================
@@ -1470,7 +1369,7 @@ public class GeneradorPlanillaService {
      *
      * <p>La columna DIFERENCIA es VIRTUAL en BD: no se setea desde Java.
      */
-    private void crearConciliacionAirhsp(
+    public void crearConciliacionAirhsp(
             MovimientoPlanilla movimiento,
             Empleado empleado,
             PeriodoPlanilla periodoPlanilla,
@@ -1494,10 +1393,16 @@ public class GeneradorPlanillaService {
         conciliacionRepository.save(conciliacion);
     }
 
-    private MovimientoPlanilla crearCabecera(Long empleadoId, String periodo) {
+    private MovimientoPlanilla crearCabecera(Long empleadoId, String periodo, String tipoPlanilla, 
+                                             Long empleadoPuestoId, LocalDate fechaInicioPago, LocalDate fechaFinPago, Long loteId) {
         MovimientoPlanilla movimiento = new MovimientoPlanilla();
         movimiento.setEmpleadoId(empleadoId);
         movimiento.setPeriodo(periodo);
+        movimiento.setTipoPlanilla(tipoPlanilla != null ? tipoPlanilla : "ORDINARIA");
+        movimiento.setEmpleadoPuestoId(empleadoPuestoId);
+        movimiento.setFechaInicioPago(fechaInicioPago);
+        movimiento.setFechaFinPago(fechaFinPago);
+        movimiento.setLoteId(loteId);
         movimiento.setObservacion("PLANILLA GENERADA");
         movimiento.setActivo(1);
         movimiento.setEstado("GENERADO");
@@ -1505,10 +1410,14 @@ public class GeneradorPlanillaService {
         movimiento.setTotalIngresos(0.0);
         movimiento.setTotalDescuentos(0.0);
         movimiento.setNetoPagar(0.0);
+        
+        // FASE 4 - Snapshot de inmutabilidad antes del primer save
+        snapshotFactory.capturarMetadata(movimiento);
+        
         return movimientoRepository.save(movimiento);
     }
 
-    private MovimientoPlanillaDetalle grabarDetalle(
+    public MovimientoPlanillaDetalle grabarDetalle(
             Long movimientoId, ConceptoPlanilla concepto,
             BigDecimal monto, String observacion) {
         MovimientoPlanillaDetalle det = new MovimientoPlanillaDetalle();
@@ -1540,14 +1449,14 @@ public class GeneradorPlanillaService {
      * Si el concepto no existe/está inactivo es un error técnico de configuración
      * (lo pre-detecta el preflight V14). Ejecutar seed V010_49.
      */
-    private ConceptoPlanilla conceptoIr4taCas() {
+    public ConceptoPlanilla conceptoIr4taCas() {
         return conceptoRepository.findByCodigoAndActivo(CODIGO_INTERNO_IR4TA_CAS, 1)
                 .orElseThrow(() -> new NegocioException(
                         "Concepto IR4TA_CAS no configurado o inactivo. "
                                 + "Ejecutar seed V010_49__concepto_ir4ta_cas_sunat_3042.sql."));
     }
 
-    private String resolverRegimenLaboralCodigo(Long regimenLaboralId) {
+    public String resolverRegimenLaboralCodigo(Long regimenLaboralId) {
         return regimenLaboralRepository.findById(regimenLaboralId)
                 .map(RegimenLaboral::getCodigo)
                 .orElse(null);
@@ -1579,7 +1488,7 @@ public class GeneradorPlanillaService {
         }
     }
 
-    private BigDecimal toBigDecimal(Double valor) {
+    public BigDecimal toBigDecimal(Double valor) {
         return valor == null ? BigDecimal.ZERO : BigDecimal.valueOf(valor);
     }
 
@@ -1614,15 +1523,22 @@ public class GeneradorPlanillaService {
      * fallidos (cada fallido con su empleadoId y la razón). Cada empleado se
      * genera en su propia transacción (vía el proxy {@code self}).
      */
-    public GeneracionMasivaResultDto generarTodoPeriodo(String periodo) {
-        List<EmpleadoPlanilla> empleados = planillaRepository.findByActivo(1);
+    public GeneracionMasivaResultDto generarTodoPeriodo(GenerarPlanillaCabeceraDto request) {
+        List<EmpleadoPlanilla> empleados = planillaRepository.findEmpleadosParaGeneracion(
+                request.getRegimenLaboralId(),
+                request.getTipoContratoId(),
+                request.getCondicionLaboralId(),
+                request.getModalidadCasId()
+        );
         List<GeneracionFallidaDto> fallidos = new ArrayList<>();
+        List<Long> exitososIds = new ArrayList<>();
         int exitosos = 0;
 
         for (EmpleadoPlanilla planilla : empleados) {
             try {
-                self.generar(planilla.getEmpleadoId(), periodo);
+                self.generar(planilla.getEmpleadoId(), request.getPeriodo());
                 exitosos++;
+                exitososIds.add(planilla.getEmpleadoId());
             } catch (Exception e) {
                 GeneracionFallidaDto fallida = new GeneracionFallidaDto();
                 fallida.setEmpleadoId(planilla.getEmpleadoId());
@@ -1635,6 +1551,7 @@ public class GeneradorPlanillaService {
         resultado.setTotal(empleados.size());
         resultado.setExitosos(exitosos);
         resultado.setFallidos(fallidos);
+        resultado.setExitososIds(exitososIds);
         return resultado;
     }
 
@@ -1658,19 +1575,19 @@ public class GeneradorPlanillaService {
     // ACCUMULATORS (clases internas, no Lombok para evitar overhead)
     // ======================================================================
 
-    private static final class RemunerativosResult {
-        BigDecimal totalRemunerativo = BigDecimal.ZERO;
-        BigDecimal baseAportePension = BigDecimal.ZERO;
-        BigDecimal baseEssalud       = BigDecimal.ZERO;
+    public static final class RemunerativosResult {
+        public BigDecimal totalRemunerativo = BigDecimal.ZERO;
+        public BigDecimal baseAportePension = BigDecimal.ZERO;
+        public BigDecimal baseEssalud       = BigDecimal.ZERO;
     }
 
-    private static final class ManualesResult {
-        BigDecimal ingresos          = BigDecimal.ZERO;
-        BigDecimal descuentos        = BigDecimal.ZERO;
-        BigDecimal ingresosMensualesPermanentes = BigDecimal.ZERO;
-        BigDecimal descuentoJudicial = BigDecimal.ZERO;
-        BigDecimal baseAportePension = BigDecimal.ZERO;
-        BigDecimal baseEssalud       = BigDecimal.ZERO;
+    public static final class ManualesResult {
+        public BigDecimal ingresos          = BigDecimal.ZERO;
+        public BigDecimal descuentos        = BigDecimal.ZERO;
+        public BigDecimal ingresosMensualesPermanentes = BigDecimal.ZERO;
+        public BigDecimal descuentoJudicial = BigDecimal.ZERO;
+        public BigDecimal baseAportePension = BigDecimal.ZERO;
+        public BigDecimal baseEssalud       = BigDecimal.ZERO;
     }
 
     // ======================================================================
@@ -1843,7 +1760,7 @@ public class GeneradorPlanillaService {
      * @return monto del reintegro, o {@link BigDecimal#ZERO} si no hay
      *         reintegro vigente para el período.
      */
-    BigDecimal calcularReintegro(Long empleadoId, String periodo, BigDecimal baseRemunerativa) {
+    public BigDecimal calcularReintegro(Long empleadoId, String periodo, BigDecimal baseRemunerativa) {
         return empleadoReintegroRepository
                 .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
                 .map(r -> prorratear(baseRemunerativa, r.getDiasReintegro()))
@@ -1960,7 +1877,7 @@ public class GeneradorPlanillaService {
      *                              de suspensión de retenciones SUNAT vigente.
      * @return monto de IR 4ta a retener, {@link BigDecimal#ZERO} si no aplica.
      */
-    BigDecimal calcular4taCategoriaCAS(
+    public BigDecimal calcular4taCategoriaCAS(
             BigDecimal baseImponible,
             String regimenLaboralCodigo,
             int anioFiscal,
@@ -2040,7 +1957,7 @@ public class GeneradorPlanillaService {
         return RegimenAplicableHelper.aplica(regimenAplicableCsv, regimenEmpleadoCodigo);
     }
 
-    private static boolean esRegimenCas(String regimenLaboralCodigo) {
+    public static boolean esRegimenCas(String regimenLaboralCodigo) {
         if (regimenLaboralCodigo == null) {
             return false;
         }
