@@ -71,6 +71,7 @@ class GeneradorPlanillaServiceTest {
     @Mock private com.indeci.rrhh.service.subsidio.SubsidioPlanillaIntegracionService subsidioPlanillaIntegracionService;
     @Mock private AfpParametroVigenciaRepository afpVigenciaRepository;
     @Mock private OnpParametroVigenciaRepository onpVigenciaRepository;
+    @Mock private TipoComisionAfpRepository tipoComisionAfpRepository;
     @Mock private Ir4taConfigService ir4taConfigService;
     @Mock private Ir4taControlAnualService ir4taControlAnualService;
     @Mock private PlanillaLoteRepository planillaLoteRepository;
@@ -121,6 +122,7 @@ class GeneradorPlanillaServiceTest {
                 subsidioPlanillaIntegracionService,
                 afpVigenciaRepository,
                 onpVigenciaRepository,
+                tipoComisionAfpRepository,
                 planillaLoteRepository,
                 calculadorConceptoFactory,
                 snapshotFactory);

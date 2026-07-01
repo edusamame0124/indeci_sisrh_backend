@@ -41,6 +41,14 @@ public class MovimientoPlanilla {
     @Column(name = "ESTADO")
     private String estado;
 
+    /**
+     * V012_03 — Días laborados netos del período (30 − faltas − eventos). Lo
+     * calcula y persiste el motor. Nullable: movimientos previos a V012_03 quedan
+     * en null y la lista/boleta caen al fallback 30 hasta regenerarse.
+     */
+    @Column(name = "DIAS_LABORADOS")
+    private Integer diasLaborados;
+
     // ============================================================
     // Spec 010 / V010_14 — Validación neto 50% (REGLA SERVIR-07, §5.4)
     // ============================================================

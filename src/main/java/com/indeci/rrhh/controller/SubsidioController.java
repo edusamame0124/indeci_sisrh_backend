@@ -27,10 +27,12 @@ import com.indeci.rrhh.dto.subsidio.SubsidioTimelineEventoDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioTramoResponseDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioTramoUpdateDto;
 import com.indeci.rrhh.dto.subsidio.SubsidioValidacionDto;
+import com.indeci.rrhh.dto.subsidio.SustentoDto;
 import com.indeci.rrhh.service.subsidio.SubsidioCasoService;
 import com.indeci.rrhh.service.subsidio.SubsidioLiquidacionService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -81,6 +83,14 @@ public class SubsidioController {
     public ApiResponse<SubsidioCasoResponseDto> cambiarEstado(
             @PathVariable Long id, @PathVariable String estado) {
         return new ApiResponse<>("OK", "Estado actualizado", casoService.cambiarEstado(id, estado));
+    }
+
+    @PostMapping("/casos/{id}/eliminar")
+    @PreAuthorize(SisrhSecurityExpressions.SUB_WRITE)
+    public ApiResponse<Void> eliminarCaso(
+            @PathVariable Long id, @RequestBody @Valid SustentoDto dto) {
+        casoService.anular(id, dto.sustento());
+        return new ApiResponse<>("OK", "Caso de subsidio eliminado", null);
     }
 
     @GetMapping("/casos/{id}/timeline")

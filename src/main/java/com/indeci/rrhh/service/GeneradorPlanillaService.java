@@ -17,6 +17,7 @@ import com.indeci.rrhh.entity.Ir4taConfigAnual;
 import java.time.LocalDate;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,6 +59,7 @@ import java.util.Set;
  *   - LEY-07: ESSALUD se graba como APORTE_EMPLEADOR y NO suma al neto
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class GeneradorPlanillaService {
 
@@ -157,6 +159,21 @@ public class GeneradorPlanillaService {
     private static final BigDecimal DOCE    = new BigDecimal("12");
     private static final BigDecimal SIETE   = new BigDecimal("7");
     private static final BigDecimal MEDIO   = new BigDecimal("0.5");
+    // Techos de plausibilidad para tasas AFP por-empleado (fracción). Un valor por
+    // encima de estos topes se considera dato mal digitado y se descarta a favor de
+    // la tasa oficial de la vigencia AFP (REGLA-02). Aporte ~10%, comisión flujo <2%,
+    // prima ~1.37%.
+    // TODO(auditoria-tasas-afp): el techo NO detecta un valor sucio que caiga dentro
+    // del rango plausible (ej. entre la tasa real y MAX). Hoy no hay ese caso (solo
+    // existen 0.78 —descartado— y 1.55 —legítimo—). Al crecer el volumen de empleados
+    // o AFPs, agregar validación/alerta que compare la tasa por-empleado contra la
+    // oficial y marque desviaciones significativas.
+    private static final BigDecimal MAX_TASA_APORTE_AFP   = new BigDecimal("0.15");
+    private static final BigDecimal MAX_TASA_COMISION_AFP = new BigDecimal("0.03");
+    private static final BigDecimal MAX_TASA_PRIMA_AFP    = new BigDecimal("0.05");
+
+    /** CODIGO en INDECI_TIPO_COMISION_AFP para el esquema comisión sobre saldo. */
+    private static final String TIPO_COMISION_MIXTA = "MIXTA";
     /** F1.3c — Divisor fijo del prorrateo mensual (días calendar SUNAT/MEF). */
     private static final BigDecimal TREINTA = new BigDecimal("30");
 
@@ -166,6 +183,9 @@ public class GeneradorPlanillaService {
      * El motor lee este valor hasta que F1.5 conecte el campo real.
      */
     private static final int DIAS_LAB_DEFAULT = 30;
+    /** V012_03 — Rango válido de días laborados a persistir (guard defensivo). */
+    private static final int DIAS_LAB_MIN = 0;
+    private static final int DIAS_LAB_MAX = 31;
 
     /**
      * F1.3b — Estado de Asistencia M04 que habilita lectura de días falta.
@@ -214,6 +234,7 @@ public class GeneradorPlanillaService {
     /** B2 — Vigencias previsionales para trazabilidad en INDECI_MOVIMIENTO_PLANILLA. */
     private final AfpParametroVigenciaRepository afpVigenciaRepository;
     private final OnpParametroVigenciaRepository onpVigenciaRepository;
+    private final TipoComisionAfpRepository tipoComisionAfpRepository;
     
     /** HU-02 - Maestro de Lotes para vincular automáticamente planillas Ordinarias. */
     private final PlanillaLoteRepository planillaLoteRepository;
@@ -833,47 +854,76 @@ public class GeneradorPlanillaService {
                 return BigDecimal.ZERO;
             }
 
-            // B2 — registrar la vigencia AFP usada para trazabilidad
-            afpVigenciaRepository.findVigenteByAfpAndPeriodo(
+            // REGLA-02 — Fuente oficial de tasas: la vigencia AFP del período
+            // (INDECI_AFP_PARAMETRO_VIGENCIA, cargada por SBS). El campo por-empleado
+            // solo se respeta como override si es plausible (>0 y ≤ techo); un valor
+            // fuera de rango (ej. comisión mal digitada 78%) se descarta y se usa la
+            // tasa oficial, evitando descuentos descomunales y netos negativos.
+            AfpParametroVigencia vig = afpVigenciaRepository.findVigenteByAfpAndPeriodo(
                     pension.getRegimenPensionarioId(), movimiento.getPeriodo())
-                    .ifPresent(v -> movimiento.setAfpParamVigenciaId(v.getId()));
+                    .orElse(null);
+            if (vig != null) {
+                movimiento.setAfpParamVigenciaId(vig.getId());
+            }
 
-            BigDecimal tasa = primeraTasaNoNula(
+            // Aporte obligatorio al fondo (≈10%).
+            BigDecimal tasaAporte = tasaAfpConOverride(
                     pension.getPorcentajeAporte(),
-                    () -> parametroService.obtenerValor("TASA_AFP_APORTE", anioFiscal, null));
-            BigDecimal aporte = baseImponible.multiply(tasa).setScale(2, RoundingMode.HALF_UP);
+                    vig != null ? vig.getAporteObligatorioPct() : null,
+                    () -> parametroService.obtenerValor("TASA_AFP_APORTE", anioFiscal, null),
+                    MAX_TASA_APORTE_AFP);
+            BigDecimal aporte = baseImponible.multiply(tasaAporte).setScale(2, RoundingMode.HALF_UP);
             grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_APORTE_AFP), aporte,
-                    "Aporte AFP " + porcentajeTexto(tasa));
+                    "Aporte AFP " + porcentajeTexto(tasaAporte));
             totalAporte = totalAporte.add(aporte);
 
-            // Comisión AFP: varía por AFP (§16.3). Solo si está cargada en
-            // EmpleadoPension. primeraTasaNoNula normaliza el % (ej. 1.5 -> 0.015).
-            BigDecimal comisionTasa = primeraTasaNoNula(
-                    pension.getPorcentajeComision(), () -> BigDecimal.ZERO);
-            if (comisionTasa.signum() > 0) {
-                BigDecimal monto = baseImponible.multiply(comisionTasa)
+            // Advertencia de dato sucio: comisión por-empleado presente pero fuera de
+            // rango (ej. 0.78 = 78% mal digitado). No rompe el cálculo —se descarta a
+            // favor de la tasa oficial— pero se registra para auditoría/limpieza.
+            BigDecimal comisionEmpleado = normalizarTasaEmpleado(pension.getPorcentajeComision());
+            if (comisionEmpleado != null && comisionEmpleado.signum() > 0
+                    && comisionEmpleado.compareTo(MAX_TASA_COMISION_AFP) > 0) {
+                log.warn("Comisión AFP por-empleado fuera de rango ({}) para EMPLEADO_ID={} "
+                        + "PERIODO={}. Se descarta y se usa la tasa oficial de la vigencia.",
+                        comisionEmpleado, pension.getEmpleadoId(), movimiento.getPeriodo());
+            }
+
+            // Comisión sobre flujo: varía por AFP (§16.3). Oficial desde la vigencia.
+            // En esquema MIXTA (comisión sobre saldo) el flujo mensual es 0%.
+            boolean esMixta = esComisionMixta(pension.getTipoComisionAfpId());
+            BigDecimal tasaComision = tasaComisionFlujo(
+                    esMixta,
+                    pension.getPorcentajeComision(),
+                    vig != null ? vig.getComisionFlujoPct() : null,
+                    () -> BigDecimal.ZERO,
+                    MAX_TASA_COMISION_AFP);
+            if (tasaComision.signum() > 0) {
+                BigDecimal monto = baseImponible.multiply(tasaComision)
                         .setScale(2, RoundingMode.HALF_UP);
                 grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_COMISION_AFP), monto,
-                        "Comisión AFP " + porcentajeTexto(comisionTasa));
+                        "Comisión AFP " + porcentajeTexto(tasaComision));
                 totalAporte = totalAporte.add(monto);
             }
 
             // Prima de seguro AFP CON TOPE (SPEC §5.6):
-            //   base  = MIN(baseImponible, TOPE_SEGURO_AFP)
-            //   prima = tasa cargada en EmpleadoPension o, si no, PRIMA_AFP global
-            //           (§16.3: la prima 1.37% es igual en todas las AFP).
-            BigDecimal primaTasa = primeraTasaNoNula(
+            //   base  = MIN(baseImponible, tope) — tope = remuneración máxima
+            //           asegurable de la vigencia (o TOPE_SEGURO_AFP como respaldo).
+            //   prima = tasa oficial de la vigencia (o PRIMA_AFP global de respaldo).
+            BigDecimal tasaPrima = tasaAfpConOverride(
                     pension.getPorcentajeSeguro(),
-                    () -> parametroService.obtenerValor("PRIMA_AFP", anioFiscal, null));
-            if (primaTasa.signum() > 0) {
-                BigDecimal tope = parametroService.obtenerValor(
-                        "TOPE_SEGURO_AFP", anioFiscal, null);
+                    vig != null ? vig.getPrimaSeguroPct() : null,
+                    () -> parametroService.obtenerValor("PRIMA_AFP", anioFiscal, null),
+                    MAX_TASA_PRIMA_AFP);
+            if (tasaPrima.signum() > 0) {
+                BigDecimal tope = (vig != null && vig.getRemuneracionMaximaAseg() != null)
+                        ? vig.getRemuneracionMaximaAseg()
+                        : parametroService.obtenerValor("TOPE_SEGURO_AFP", anioFiscal, null);
                 BigDecimal baseSeguro = baseImponible.min(tope);
-                BigDecimal montoSeguro = baseSeguro.multiply(primaTasa)
+                BigDecimal montoSeguro = baseSeguro.multiply(tasaPrima)
                         .setScale(2, RoundingMode.HALF_UP);
                 boolean conTope = baseImponible.compareTo(tope) > 0;
                 grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_SEGURO_AFP), montoSeguro,
-                        "Prima seguro AFP " + porcentajeTexto(primaTasa)
+                        "Prima seguro AFP " + porcentajeTexto(tasaPrima)
                                 + (conTope ? " (base topada)" : ""));
                 totalAporte = totalAporte.add(montoSeguro);
             }
@@ -1329,7 +1379,32 @@ public class GeneradorPlanillaService {
                     "NETO_NO_VA — neto " + neto.toPlainString()
                             + " es menor al mínimo 50% (" + umbral.toPlainString() + ")");
         }
+
+        // V012_03 — Persistir días laborados netos (30 − faltas − eventos) para que
+        // la lista y la boleta muestren el valor real en vez del 30 hardcodeado.
+        int diasLaborados = calcularDiasLaborados(
+                movimiento.getEmpleadoId(), movimiento.getPeriodo());
+        movimiento.setDiasLaborados(diasLaboradosSeguro(
+                diasLaborados, movimiento.getEmpleadoId(), movimiento.getPeriodo()));
+
         movimientoRepository.save(movimiento);
+    }
+
+    /**
+     * Guard de rango [0, 31] para los días laborados antes de persistir. Un valor
+     * fuera de rango indica un cálculo anómalo: no se persiste el valor calculado,
+     * se usa {@link #DIAS_LAB_DEFAULT} (30) y se registra una advertencia con el
+     * empleado y período afectados (mismo criterio que el override de tasa AFP
+     * fuera de rango).
+     */
+    static int diasLaboradosSeguro(int dias, Long empleadoId, String periodo) {
+        if (dias < DIAS_LAB_MIN || dias > DIAS_LAB_MAX) {
+            log.warn("Días laborados fuera de rango [{}, {}]: {} para EMPLEADO_ID={} "
+                    + "PERIODO={}. Se persiste {} por defecto.",
+                    DIAS_LAB_MIN, DIAS_LAB_MAX, dias, empleadoId, periodo, DIAS_LAB_DEFAULT);
+            return DIAS_LAB_DEFAULT;
+        }
+        return dias;
     }
 
     // ======================================================================
@@ -1493,15 +1568,78 @@ public class GeneradorPlanillaService {
     }
 
     private BigDecimal primeraTasaNoNula(Double explicita, java.util.function.Supplier<BigDecimal> fallback) {
-        if (explicita != null && explicita > 0) {
-            // Si el valor explícito viene como porcentaje (ej. 13.0), convertirlo a fracción
-            BigDecimal v = BigDecimal.valueOf(explicita);
-            if (v.compareTo(BigDecimal.ONE) > 0) {
-                return v.divide(CIEN, 6, RoundingMode.HALF_UP);
-            }
-            return v;
+        BigDecimal emp = normalizarTasaEmpleado(explicita);
+        return emp != null ? emp : fallback.get();
+    }
+
+    /**
+     * Normaliza una tasa por-empleado a fracción: si viene como porcentaje (&gt;1,
+     * ej. 13.0) la divide entre 100; si ya es fracción (≤1) la deja igual. Devuelve
+     * {@code null} si no hay valor positivo.
+     */
+    static BigDecimal normalizarTasaEmpleado(Double explicita) {
+        if (explicita == null || explicita <= 0) {
+            return null;
         }
-        return fallback.get();
+        BigDecimal v = BigDecimal.valueOf(explicita);
+        return v.compareTo(BigDecimal.ONE) > 0 ? v.divide(CIEN, 6, RoundingMode.HALF_UP) : v;
+    }
+
+    /**
+     * Resuelve la tasa AFP a aplicar (REGLA-02): prioriza el valor por-empleado
+     * solo si es un override plausible (&gt;0 y ≤ {@code maxFraccion}); de lo contrario
+     * usa la tasa oficial de la vigencia AFP; si no hay vigencia, cae al respaldo
+     * paramétrico. Blinda contra datos mal digitados (ej. comisión 78%).
+     *
+     * @param porcentajeEmpleado tasa cargada en INDECI_EMPLEADO_PENSION (puede ser null)
+     * @param oficialPct         tasa de la vigencia AFP como porcentaje (ej. 0.67) o null
+     * @param fallback           respaldo si no hay vigencia ni override válido
+     * @param maxFraccion        techo de plausibilidad para el override (fracción)
+     */
+    static BigDecimal tasaAfpConOverride(
+            Double porcentajeEmpleado, BigDecimal oficialPct,
+            java.util.function.Supplier<BigDecimal> fallback, BigDecimal maxFraccion) {
+        BigDecimal emp = normalizarTasaEmpleado(porcentajeEmpleado);
+        if (emp != null && emp.signum() > 0 && emp.compareTo(maxFraccion) <= 0) {
+            return emp;
+        }
+        BigDecimal oficial = pctAFraccion(oficialPct);
+        return oficial != null ? oficial : fallback.get();
+    }
+
+    /**
+     * Comisión sobre flujo aplicable en la planilla MENSUAL. En esquema MIXTA
+     * (comisión sobre saldo) el flujo mensual es 0%: la comisión anual sobre el saldo
+     * acumulado del fondo se cobra aparte, una vez al año, y queda fuera del alcance
+     * de la planilla mensual.
+     * TODO(afp-comision-saldo): implementar el cálculo anual de comisión sobre saldo
+     * para afiliados MIXTA (proceso separado, no mensual).
+     */
+    static BigDecimal tasaComisionFlujo(
+            boolean esMixta, Double porcentajeEmpleado, BigDecimal oficialPct,
+            java.util.function.Supplier<BigDecimal> fallback, BigDecimal maxFraccion) {
+        if (esMixta) {
+            return BigDecimal.ZERO;
+        }
+        return tasaAfpConOverride(porcentajeEmpleado, oficialPct, fallback, maxFraccion);
+    }
+
+    /** true si el tipo de comisión del afiliado es MIXTA (comisión sobre saldo). */
+    private boolean esComisionMixta(Long tipoComisionAfpId) {
+        if (tipoComisionAfpId == null) {
+            return false;
+        }
+        return tipoComisionAfpRepository.findById(tipoComisionAfpId)
+                .map(t -> TIPO_COMISION_MIXTA.equalsIgnoreCase(t.getCodigo()))
+                .orElse(false);
+    }
+
+    /** Convierte un porcentaje de vigencia (ej. 1.55 = 1.55%) a fracción (0.0155). */
+    static BigDecimal pctAFraccion(BigDecimal pct) {
+        if (pct == null || pct.signum() <= 0) {
+            return null;
+        }
+        return pct.divide(CIEN, 6, RoundingMode.HALF_UP);
     }
 
     private String porcentajeTexto(BigDecimal tasa) {

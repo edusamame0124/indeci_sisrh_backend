@@ -46,10 +46,13 @@ public class BoletaDataService {
         dto.setCuentaBancaria(mov.getCuentaBancariaSnapshot());
         dto.setModalidad(mov.getModalidadSnapshot());
         
-        // Días Laborados
-        Integer dias = 30; // fallback
-        // TODO: Mapear diasLaborados si existe en el modelo MovimientoPlanilla. Por ahora usamos 30.
-        dto.setDiasLaborados(dias);
+        // Días laborados netos (30 − faltas − eventos), persistidos por el motor
+        // (V012_03). Fallback a 30 SOLO para boletas de movimientos previos a V012_03
+        // con DIAS_LABORADOS NULL. Eliminar el fallback cuando ya no existan
+        // movimientos con DIAS_LABORADOS IS NULL en ningún período (todos regenerados):
+        //   SELECT COUNT(*) FROM INDECI_MOVIMIENTO_PLANILLA
+        //     WHERE DIAS_LABORADOS IS NULL AND ACTIVO = 1  →  0.
+        dto.setDiasLaborados(mov.getDiasLaborados() != null ? mov.getDiasLaborados() : 30);
 
         // Detalles
         List<MovimientoPlanillaDetalle> detalles = detalleRepository.findByMovimientoPlanillaId(mov.getId());

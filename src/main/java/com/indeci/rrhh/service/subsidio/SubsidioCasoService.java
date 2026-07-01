@@ -58,6 +58,15 @@ public class SubsidioCasoService {
             SubsidioEstados.CASO_BORRADOR,
             SubsidioEstados.CASO_PENDIENTE_VALIDACION,
             SubsidioEstados.CASO_CALCULADO);
+    // Un caso puede eliminarse (anulación lógica) solo mientras no haya impactado el
+    // pago: BORRADOR, PENDIENTE_VALIDACION y CALCULADO. Desde APLICADO_PLANILLA en
+    // adelante (EN_TRAMITE_ESSALUD, CERRADO) queda bloqueado por consistencia con la
+    // planilla. Constante propia —no ESTADOS_EDITABLES— porque "editable" y "anulable"
+    // son reglas distintas que podrían divergir.
+    private static final Set<String> ESTADOS_ANULABLES = Set.of(
+            SubsidioEstados.CASO_BORRADOR,
+            SubsidioEstados.CASO_PENDIENTE_VALIDACION,
+            SubsidioEstados.CASO_CALCULADO);
 
     private final SubsidioCasoRepository casoRepository;
     private final SubsidioCittRepository cittRepository;
@@ -170,6 +179,22 @@ public class SubsidioCasoService {
         casoRepository.save(caso);
         timelineService.registrar(id, "CAMBIO_ESTADO", "Estado → " + estado, id);
         return obtener(id);
+    }
+
+    @Transactional
+    public void anular(Long id, String sustento) {
+        SubsidioCaso caso = buscar(id);
+        if (!ESTADOS_ANULABLES.contains(caso.getEstado())) {
+            throw new NegocioException(
+                    "No se puede eliminar un caso de subsidio en estado " + caso.getEstado()
+                            + ": ya fue aplicado a la planilla o depende de ella");
+        }
+        caso.setActivo(0);
+        caso.setEstado("ANULADO");
+        caso.setModifiedAt(LocalDateTime.now());
+        caso.setModifiedBy(SecurityUtil.getUsername());
+        casoRepository.save(caso);
+        timelineService.registrar(id, "ELIMINACION", "Caso de subsidio anulado. Sustento: " + sustento, id);
     }
 
     @Transactional

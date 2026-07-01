@@ -24,7 +24,6 @@ import com.indeci.rrhh.repository.PersonaRepository;
 import com.indeci.rrhh.repository.RegimenLaboralRepository;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
 import com.indeci.rrhh.repository.RegimenPensionarioRepository;
-import java.time.temporal.ChronoUnit;
 
 import lombok.RequiredArgsConstructor;
 
@@ -244,13 +243,13 @@ public class MovimientoPlanillaService {
         dto.setEstadoNeto(mov.getEstadoNeto());
         dto.setLoteId(mov.getLoteId());
 
-        // Calcular días
-        if (mov.getFechaInicioPago() != null && mov.getFechaFinPago() != null) {
-            long days = ChronoUnit.DAYS.between(mov.getFechaInicioPago(), mov.getFechaFinPago()) + 1;
-            dto.setDias((int) days);
-        } else {
-            dto.setDias(30); // Estándar si no hay prorrateo
-        }
+        // Días laborados netos (30 − faltas − eventos), persistidos por el motor
+        // (V012_03). Fallback a 30 SOLO para movimientos previos a V012_03 que aún
+        // tienen DIAS_LABORADOS NULL. Este fallback se puede eliminar cuando ya no
+        // existan movimientos con DIAS_LABORADOS IS NULL en ningún período (todos
+        // regenerados): SELECT COUNT(*) FROM INDECI_MOVIMIENTO_PLANILLA
+        //   WHERE DIAS_LABORADOS IS NULL AND ACTIVO = 1  →  0.
+        dto.setDias(mov.getDiasLaborados() != null ? mov.getDiasLaborados() : 30);
 
         Empleado empleado = empleadosPorId.get(mov.getEmpleadoId());
         if (empleado != null) {
