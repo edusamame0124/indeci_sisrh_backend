@@ -49,6 +49,11 @@ public class EmpleadoPlanillaResponseDto {
 
     private Long modalidadCasId;
 
+    /** Ley 30057 (V012_07). */
+    private String grupoServidorCivil;
+
+    private Integer esConfianza;
+
     private Long tipoPersonaMefId;
 
     private String registroPlazaAirhsp;
@@ -68,9 +73,36 @@ public class EmpleadoPlanillaResponseDto {
 
     private java.time.LocalDate fechaInicioContrato;
 
+    /** Fecha fin contractual (término previsto del vínculo). */
+    private java.time.LocalDate fechaFin;
+
+    // =====================================
+    // CESE (V012_04) — hechos que registra RR.HH.
+    // =====================================
+
+    private java.time.LocalDate fechaCese;
+
+    private String motivoCese;
+
+    private String documentoCese;
+
+    // Sustento de origen del vínculo (V012_08).
+    private String documentoOrigenTipo;
+
+    private String documentoOrigenNumero;
+
+    private java.time.LocalDate documentoOrigenFecha;
+
     // =====================================
     // ESTADO
     // =====================================
 
     private Integer activo;
+
+    /** Estado DERIVADO del vínculo (no editable): PROGRAMADO / VIGENTE /
+     *  VENCIDO_PENDIENTE_DE_REGULARIZACION / CESADO / ANULADO. */
+    private String estadoVinculo;
+
+    /** true si el cese es formal y completo (habilita generar LBS). */
+    private Boolean habilitaLbs;
 }

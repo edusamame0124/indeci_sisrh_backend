@@ -1,5 +1,6 @@
 package com.indeci.rrhh.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,12 +23,38 @@ public interface EmpleadoPlanillaRepository extends JpaRepository<EmpleadoPlanil
            "AND (:regimenLaboralId IS NULL OR p.regimenLaboralId = :regimenLaboralId) " +
            "AND (:tipoContratoId IS NULL OR p.tipoContratoId = :tipoContratoId) " +
            "AND (:condicionLaboralId IS NULL OR p.condicionLaboralId = :condicionLaboralId) " +
-           "AND (:modalidadCasId IS NULL OR p.modalidadCasId = :modalidadCasId)")
+           "AND (:modalidadCasId IS NULL OR p.modalidadCasId = :modalidadCasId) " +
+           // Fase 2 — solo vínculos cuyo rango traslapa el período generado.
+           "AND (COALESCE(p.fechaInicioContrato, p.fechaInicio) IS NULL " +
+           "     OR COALESCE(p.fechaInicioContrato, p.fechaInicio) <= :finPeriodo) " +
+           "AND (p.fechaCese IS NULL OR p.fechaCese >= :inicioPeriodo) " +
+           "AND (p.fechaFin  IS NULL OR p.fechaFin  >= :inicioPeriodo)")
     List<EmpleadoPlanilla> findEmpleadosParaGeneracion(
            @Param("regimenLaboralId") Long regimenLaboralId,
            @Param("tipoContratoId") Long tipoContratoId,
            @Param("condicionLaboralId") Long condicionLaboralId,
-           @Param("modalidadCasId") Long modalidadCasId);
+           @Param("modalidadCasId") Long modalidadCasId,
+           @Param("inicioPeriodo") LocalDate inicioPeriodo,
+           @Param("finPeriodo") LocalDate finPeriodo);
+
+    /**
+     * Fase 2 (vínculos secuenciales) — vínculo(s) activo(s) cuyo rango
+     * {@code [inicio, cese/fin]} traslapa el período. Reemplaza la selección por
+     * "el activo más reciente": con rotación CAS pueden coexistir dos activos
+     * (uno CESADO + el nuevo) y cada período debe tomar el que le corresponde.
+     * Orden determinístico: el de inicio más reciente primero.
+     */
+    @Query("SELECT p FROM EmpleadoPlanilla p " +
+           "WHERE p.empleadoId = :empleadoId AND p.activo = 1 " +
+           "AND (COALESCE(p.fechaInicioContrato, p.fechaInicio) IS NULL " +
+           "     OR COALESCE(p.fechaInicioContrato, p.fechaInicio) <= :finPeriodo) " +
+           "AND (p.fechaCese IS NULL OR p.fechaCese >= :inicioPeriodo) " +
+           "AND (p.fechaFin  IS NULL OR p.fechaFin  >= :inicioPeriodo) " +
+           "ORDER BY COALESCE(p.fechaInicioContrato, p.fechaInicio) DESC, p.id DESC")
+    List<EmpleadoPlanilla> findVinculosVigentesEnPeriodo(
+           @Param("empleadoId") Long empleadoId,
+           @Param("inicioPeriodo") LocalDate inicioPeriodo,
+           @Param("finPeriodo") LocalDate finPeriodo);
 
     @Query(value = """
             SELECT *

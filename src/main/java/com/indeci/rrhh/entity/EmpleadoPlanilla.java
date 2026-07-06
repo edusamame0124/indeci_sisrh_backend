@@ -66,6 +66,14 @@ public class EmpleadoPlanilla {
     @Column(name = "MODALIDAD_CAS_ID")
     private Long modalidadCasId;
 
+    /** V012_07 — Ley 30057: Funcionario/Directivo/Carrera/Actividades complementarias. */
+    @Column(name = "GRUPO_SERVIDOR_CIVIL")
+    private String grupoServidorCivil;
+
+    /** V012_07 — condición de confianza (1=Sí, 0=No). No es un grupo aparte. */
+    @Column(name = "ES_CONFIANZA")
+    private Integer esConfianza;
+
     @Column(name = "TIPO_PERSONA_MEF_ID")
     private Long tipoPersonaMefId;
 
@@ -81,6 +89,25 @@ public class EmpleadoPlanilla {
     @Column(name = "FECHA_CESE")
     private LocalDate fechaCese;
 
+    /** V012_04 — hecho registrado por RR.HH.; alimenta la derivación del estado. */
+    @Column(name = "MOTIVO_CESE")
+    private String motivoCese;
+
+    /** V012_04 — documento que sustenta el cese (resolución/carta/memorando). */
+    @Column(name = "DOCUMENTO_CESE")
+    private String documentoCese;
+
+    /** V012_08 — sustento de origen del vínculo (contrato/resolución/adenda/designación). */
+    @Column(name = "DOCUMENTO_ORIGEN_TIPO")
+    private String documentoOrigenTipo;
+
+    @Column(name = "DOCUMENTO_ORIGEN_NUMERO")
+    private String documentoOrigenNumero;
+
+    @Column(name = "DOCUMENTO_ORIGEN_FECHA")
+    private LocalDate documentoOrigenFecha;
+
+    /** Legacy. El estado canónico del vínculo se DERIVA (ver VinculoEstadoResolver). */
     @Column(name = "ESTADO_LABORAL")
     private String estadoLaboral;
 

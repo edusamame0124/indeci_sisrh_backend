@@ -79,6 +79,10 @@ public class CalculadorHaberesGeneralStrategy implements CalculadorConceptoStrat
                 motor.registrarSubsidiosEventos(contexto.getEmpleadoId(), contexto.getPeriodo(), contexto.getMovimiento(), contexto.getPlanilla());
         totalIngresos = totalIngresos.add(ingresoSubsidio);
 
+        // Nota Track B: el AGUINALDO se genera en un PROCESO APARTE (tipo de planilla
+        // AGUINALDO), no dentro de la planilla regular. Reglas por régimen
+        // (SERVIR 100% / CAS % manual / 276 fijo) → ver AguinaldoService. Aquí no se graba.
+
         BigDecimal descuentoAsistencia =
                 motor.calcularDescuentoAsistencia(contexto.getMovimiento(), contexto.getEmpleadoId(), contexto.getPeriodo());
         totalDescuentos = totalDescuentos.add(descuentoAsistencia);
@@ -101,7 +105,15 @@ public class CalculadorHaberesGeneralStrategy implements CalculadorConceptoStrat
                     suspension4taService.consultarVigente(contexto.getEmpleadoId(), fechaDevengue);
 
             BigDecimal montoNoAfectoIr4ta = BigDecimal.ZERO;
-            BigDecimal sueldoBasicoVinculacion = contexto.getOverrideSueldoBasico() != null ? contexto.getOverrideSueldoBasico() : motor.toBigDecimal(contexto.getPlanilla().getSueldoBasico());
+            BigDecimal sueldoBasicoVinculacion = contexto.getOverrideSueldoBasico() != null
+                    ? contexto.getOverrideSueldoBasico()
+                    : motor.resolverBaseRemunerativa(contexto.getPlanilla(), contexto.getMovimiento().getPeriodo());
+            // Fase 3 / F1.9 — la base del IR4ta debe seguir el MISMO prorrateo que
+            // la remuneración pagada: días de vínculo (cese/alta) MENOS días de
+            // subsidio. Los subsidios de EsSalud son INAFECTOS al Impuesto a la
+            // Renta (Art. 18 TUO LIR) → jamás retener sobre el monto subsidiado.
+            sueldoBasicoVinculacion = motor.prorratearBaseTributariaPorVinculoYSubsidio(
+                    sueldoBasicoVinculacion, contexto.getPlanilla(), contexto.getMovimiento().getPeriodo());
             BigDecimal baseIr4ta = sueldoBasicoVinculacion
                     .subtract(montoNoAfectoIr4ta)
                     .subtract(descuentoAsistencia)

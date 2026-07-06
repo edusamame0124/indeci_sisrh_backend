@@ -37,6 +37,14 @@ public class SubsidioLiquidacion {
     @Column(name = "DIAS_LABORADOS")
     private Integer diasLaborados;
 
+    /**
+     * F1.8 — Días de subsidio (enfermedad/maternidad) que este tramo cubre en el
+     * período. El motor los consume vía {@code diasSubsidioMotor} para reducir el
+     * haber ordinario (regla Contraloría 1/30) sin acoplarse a {@code SubsidioTramo}.
+     */
+    @Column(name = "DIAS_SUBSIDIO")
+    private Integer diasSubsidio;
+
     @Column(name = "CONTRAPRESTACION_EQUIVALENTE", precision = 18, scale = 2)
     private BigDecimal contraprestacionEquivalente;
 

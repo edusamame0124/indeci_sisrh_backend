@@ -17,6 +17,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
@@ -72,6 +74,7 @@ class GeneradorPlanillaServiceTest {
     @Mock private AfpParametroVigenciaRepository afpVigenciaRepository;
     @Mock private OnpParametroVigenciaRepository onpVigenciaRepository;
     @Mock private TipoComisionAfpRepository tipoComisionAfpRepository;
+    @Mock private EmpleadoRemuneracionHistRepository remuneracionHistRepository;
     @Mock private Ir4taConfigService ir4taConfigService;
     @Mock private Ir4taControlAnualService ir4taControlAnualService;
     @Mock private PlanillaLoteRepository planillaLoteRepository;
@@ -123,6 +126,7 @@ class GeneradorPlanillaServiceTest {
                 afpVigenciaRepository,
                 onpVigenciaRepository,
                 tipoComisionAfpRepository,
+                remuneracionHistRepository,
                 planillaLoteRepository,
                 calculadorConceptoFactory,
                 snapshotFactory);
@@ -149,6 +153,10 @@ class GeneradorPlanillaServiceTest {
         // refactorizado lee el ingreso vía SubsidioPlanillaIntegracionService;
         // sin este stub el mock devuelve null y rompe totalIngresos.add(...).
         when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(any(), any()))
+                .thenReturn(BigDecimal.ZERO);
+        // F1.10 — el motor graba las líneas de subsidio y devuelve el total.
+        lenient().when(subsidioPlanillaIntegracionService
+                        .grabarSubsidioEnMovimientoMotor(any(), any(), any()))
                 .thenReturn(BigDecimal.ZERO);
 
         com.indeci.rrhh.service.strategy.CalculadorHaberesGeneralStrategy strategyHaberes = 
@@ -295,8 +303,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_276_ONP_calcula_aporte_13pct_y_essalud_empleador_9pct() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -324,8 +332,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_728_AFP_con_asig_familiar_aplica_aporte_comision_y_seguro() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(4000.0, REG_728, /*asigFam=*/1)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(4000.0, REG_728, /*asigFam=*/1)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, 0.016, 0.0174)));
         mockSueldo(4000.0);
@@ -366,8 +374,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_concepto_manual_sin_codigo_mef_lanza_excepcion() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
 
@@ -399,8 +407,8 @@ class GeneradorPlanillaServiceTest {
     @Test
     void caso_essalud_aplica_minimo_cuando_base_es_baja() {
         // sueldo 1000 → 1000 × 0.09 = 90 < 101.70 → essaludBase = mínimo 101.70
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(1000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(1000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(1000.0);
@@ -421,8 +429,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_essalud_con_eps_divide_675_empleador_y_225_copago() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(4000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(4000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         when(empleadoRepository.findById(EMPLEADO_ID))
@@ -453,8 +461,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_prima_afp_aplica_tope_cuando_base_supera_tope() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(15000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(15000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, null, null)));
         mockSueldo(15000.0);
@@ -481,8 +489,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_prima_afp_sin_recorte_cuando_base_bajo_tope() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, null, null)));
         mockSueldo(5000.0);
@@ -503,8 +511,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_5ta_728_renta_supera_7uit_retiene() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5000.0, REG_728, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5000.0, REG_728, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(5000.0);
@@ -531,8 +539,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_5ta_728_renta_bajo_7uit_no_retiene() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(2000.0, REG_728, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(2000.0, REG_728, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(2000.0);
@@ -552,8 +560,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_5ta_regimen_276_nunca_retiene() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(10000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(10000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(10000.0);
@@ -573,8 +581,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_5ta_escala_progresiva_multitramo() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(15000.0, REG_728, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(15000.0, REG_728, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(15000.0);
@@ -647,8 +655,8 @@ class GeneradorPlanillaServiceTest {
      */
     @Test
     void ir5ta_art40_aguinaldos_proyectados_elevan_base() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5000.0, REG_728, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5000.0, REG_728, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(5000.0);
@@ -672,8 +680,8 @@ class GeneradorPlanillaServiceTest {
     void ir5ta_cas_nunca_retiene() {
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("CAS")));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(20000.0, REG_CAS, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(20000.0, REG_CAS, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(20000.0);
@@ -708,13 +716,15 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void subsidios_desde_liquidacion_suman_al_neto() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(3000.0);
         
-        when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(EMPLEADO_ID, PERIODO))
+        // F1.10 — el motor graba las líneas de subsidio y devuelve el total (que suma al neto).
+        when(subsidioPlanillaIntegracionService
+                        .grabarSubsidioEnMovimientoMotor(eq(EMPLEADO_ID), eq(PERIODO), any()))
                 .thenReturn(new BigDecimal("1333.33"));
 
         service.generar(EMPLEADO_ID, PERIODO);
@@ -728,8 +738,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_estado_neto_bien_cuando_neto_supera_umbral() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -749,8 +759,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_estado_neto_no_va_cuando_descuento_voluntario_excede_umbral() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
 
@@ -779,8 +789,8 @@ class GeneradorPlanillaServiceTest {
     @Test
     void regla50_cas_resta_ir4ta_para_validar_neto() {
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
 
@@ -815,8 +825,8 @@ class GeneradorPlanillaServiceTest {
 
     @Test
     void regla50_resta_onp_y_descuento_judicial_real_para_validar_neto() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
 
@@ -854,8 +864,8 @@ class GeneradorPlanillaServiceTest {
 
     @Test
     void regla50_resta_aporte_afp_real_para_validar_neto() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_AFP_ID, null, null, null)));
 
@@ -901,8 +911,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_concepto_manual_auto_calculado_se_ignora_sin_duplicar() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
 
@@ -933,8 +943,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_asistencia_validada_aplica_descuento_tardanza_y_falta() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -965,8 +975,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_asistencia_borrador_no_aplica_descuento() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -995,8 +1005,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_paso16_conciliacion_airhsp_cuadra_nace_conciliado() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         when(empleadoRepository.findById(EMPLEADO_ID))
@@ -1019,8 +1029,8 @@ class GeneradorPlanillaServiceTest {
     // ==================================================================
     @Test
     void caso_paso16_conciliacion_airhsp_con_discrepancia_nace_pendiente() {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         when(empleadoRepository.findById(EMPLEADO_ID))
@@ -1044,7 +1054,7 @@ class GeneradorPlanillaServiceTest {
         p1.setEmpleadoId(41L);
         EmpleadoPlanilla p2 = new EmpleadoPlanilla();
         p2.setEmpleadoId(99L);
-        when(planillaRepository.findEmpleadosParaGeneracion(1L, null, null, null)).thenReturn(List.of(p1, p2));
+        when(planillaRepository.findEmpleadosParaGeneracion(eq(1L), isNull(), isNull(), isNull(), any(), any())).thenReturn(List.of(p1, p2));
         // Sin findFirstByEmpleadoIdAndActivo → ambos generan "sin configuración".
 
         var request = new com.indeci.rrhh.dto.GenerarPlanillaCabeceraDto();
@@ -1068,9 +1078,9 @@ class GeneradorPlanillaServiceTest {
         EmpleadoPlanilla p1 = planilla(3000.0, REG_276, 0); // emp 41 — completo
         EmpleadoPlanilla p2 = new EmpleadoPlanilla();
         p2.setEmpleadoId(99L);                              // emp 99 — sin config
-        when(planillaRepository.findEmpleadosParaGeneracion(1L, null, null, null)).thenReturn(List.of(p1, p2));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(p1));
+        when(planillaRepository.findEmpleadosParaGeneracion(eq(1L), isNull(), isNull(), isNull(), any(), any())).thenReturn(List.of(p1, p2));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(p1));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(3000.0);
@@ -1085,6 +1095,67 @@ class GeneradorPlanillaServiceTest {
         assertThat(r.getExitosos()).isEqualTo(1);
         assertThat(r.getFallidos()).hasSize(1);
         assertThat(r.getFallidos().get(0).getEmpleadoId()).isEqualTo(99L);
+    }
+
+    // ==================================================================
+    // FASE 2: selección del vínculo por traslape de período
+    // ==================================================================
+    @Test
+    void generar_falla_si_no_hay_vinculo_vigente_en_el_periodo() {
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.generar(EMPLEADO_ID, PERIODO))
+                .isInstanceOf(com.indeci.exception.NegocioException.class)
+                .hasMessageContaining("no tiene un vínculo vigente");
+    }
+
+    // ==================================================================
+    // FASE 3: prorrateo del mes de cese/alta (solo remuneración del cargo)
+    // ==================================================================
+    @Test
+    void diasVinculoEnPeriodo_mes_completo_devuelve_30() {
+        assertThat(service.diasVinculoEnPeriodo(planilla(3000.0, REG_276, 0), PERIODO))
+                .isEqualTo(30);
+    }
+
+    @Test
+    void diasVinculoEnPeriodo_cese_a_mitad_de_mes_cuenta_hasta_el_cese() {
+        EmpleadoPlanilla p = planilla(3000.0, REG_276, 0);
+        p.setFechaCese(LocalDate.of(2026, 5, 15));
+        assertThat(service.diasVinculoEnPeriodo(p, PERIODO)).isEqualTo(15);
+    }
+
+    @Test
+    void diasVinculoEnPeriodo_alta_a_mitad_de_mes_cuenta_desde_el_alta() {
+        EmpleadoPlanilla p = planilla(3000.0, REG_276, 0);
+        p.setFechaInicioContrato(LocalDate.of(2026, 5, 16));
+        assertThat(service.diasVinculoEnPeriodo(p, PERIODO)).isEqualTo(15);
+    }
+
+    @Test
+    void diasVinculoEnPeriodo_cese_el_ultimo_dia_es_mes_completo() {
+        EmpleadoPlanilla p = planilla(3000.0, REG_276, 0);
+        p.setFechaCese(LocalDate.of(2026, 5, 31));
+        assertThat(service.diasVinculoEnPeriodo(p, PERIODO)).isEqualTo(30);
+    }
+
+    @Test
+    void generar_con_cese_a_mitad_de_mes_prorratea_la_base_y_ajusta_dias() {
+        EmpleadoPlanilla cesado = planilla(3000.0, REG_276, 0);
+        cesado.setFechaCese(LocalDate.of(2026, 5, 15)); // cese 15/may
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(cesado));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        // Base prorrateada 3000 / 30 × 15 = 1500 (asig. familiar no aplica aquí).
+        assertThat(cabecera.getTotalIngresos()).isCloseTo(1500.00, within(0.01));
+        assertThat(cabecera.getDiasLaborados()).isEqualTo(15);
     }
 
     // ==================================================================
@@ -1199,6 +1270,122 @@ class GeneradorPlanillaServiceTest {
      * reflexión (mismo patrón que el resto de tests del motor con
      * {@link ReflectionTestUtils}).
      */
+    /**
+     * F1.8 — Fix Prorrateo de Treintavos por Subsidio.
+     *
+     * Escenario (Contraloría 1/30): CAS con S/ 3,000 de básico y 10 días de
+     * subsidio por maternidad (S/ 1,000 que paga EsSalud). El haber ordinario
+     * debe prorratearse a 20/30 días (= S/ 2,000); el subsidio es inafecto y
+     * NO entra a las bases imponibles del haber; el total del mes = S/ 3,000 y
+     * los días pagados nunca exceden 30.
+     */
+    @Test
+    void subsidio_prorratea_haber_a_treintavos_F1_8() {
+        EmpleadoPlanilla planilla = planilla(3000.0, REG_CAS, 0); // sin asig. familiar
+
+        MovimientoPlanilla mov = new MovimientoPlanilla();
+        mov.setId(100L);
+        mov.setEmpleadoId(EMPLEADO_ID);
+        mov.setPeriodo(PERIODO);
+
+        // Contrato de dominio del módulo de subsidios: 10 días aplicados + S/ 1,000.
+        when(subsidioPlanillaIntegracionService.diasSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(10);
+        when(subsidioPlanillaIntegracionService.ingresoSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(new BigDecimal("1000.00"));
+
+        // 1) Haber ordinario prorrateado en el motor: 3000 × 20/30 = 2000.
+        GeneradorPlanillaService.RemunerativosResult rem =
+                service.calcularRemunerativos(mov, planilla, empleadoConEps(),
+                        2026, new BigDecimal("3000.00"));
+        BigDecimal haberOrdinario = rem.totalRemunerativo;
+
+        // 2) Días laborados persistidos: 30 − 0 faltas − 0 eventos − 10 subsidio = 20.
+        int diasLaborados = service.calcularDiasLaborados(EMPLEADO_ID, PERIODO);
+
+        // 3) Subsidio (inafecto) que la estrategia suma al total (línea 80).
+        BigDecimal subsidio =
+                subsidioPlanillaIntegracionService.ingresoSubsidioMotor(EMPLEADO_ID, PERIODO);
+
+        // 4) Total de ingresos = haber + subsidio (misma suma que CalculadorHaberesGeneralStrategy).
+        BigDecimal totalIngresos = haberOrdinario.add(subsidio);
+
+        // 5) Días totales pagados = laborados + subsidio, nunca > 30.
+        int diasTotalPagados = diasLaborados + 10;
+
+        assertThat(diasLaborados).isEqualTo(20);
+        assertThat(haberOrdinario).isEqualByComparingTo("2000.00");
+        assertThat(subsidio).isEqualByComparingTo("1000.00");
+        assertThat(totalIngresos).isEqualByComparingTo("3000.00");
+        assertThat(diasTotalPagados).isEqualTo(30);
+        // Inafectación: el subsidio nunca se sumó a las bases imponibles del haber.
+        assertThat(rem.baseAportePension).isLessThanOrEqualTo(haberOrdinario);
+        assertThat(rem.baseEssalud).isLessThanOrEqualTo(haberOrdinario);
+    }
+
+    /**
+     * F1.9 — Fix Base Imponible IR 4ta CAS por Subsidio (Art. 18 TUO LIR).
+     *
+     * Los subsidios de EsSalud son INAFECTOS al Impuesto a la Renta: la base
+     * tributaria de IR 4ta CAS debe excluir los días subsidiados. CAS con base
+     * S/ 3,000 y 10 días de subsidio → base tributaria = 3000 × 20/30 = 2000;
+     * el monto subsidiado (S/ 1,000) NUNCA entra a la base gravable → no hay
+     * sobre-retención de impuesto sobre el monto inafecto.
+     */
+    @Test
+    void ir4ta_cas_no_grava_monto_subsidiado_F1_9() {
+        EmpleadoPlanilla planilla = planilla(3000.0, REG_CAS, 0);
+
+        // Con 10 días de subsidio: base tributaria = 3000 × 20/30 = 2000.
+        when(subsidioPlanillaIntegracionService.diasSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(10);
+        BigDecimal baseConSubsidio = service.prorratearBaseTributariaPorVinculoYSubsidio(
+                new BigDecimal("3000.00"), planilla, PERIODO);
+
+        // Sin subsidio: base tributaria = 3000 (mes completo, cero regresión).
+        when(subsidioPlanillaIntegracionService.diasSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(0);
+        BigDecimal baseSinSubsidio = service.prorratearBaseTributariaPorVinculoYSubsidio(
+                new BigDecimal("3000.00"), planilla, PERIODO);
+
+        assertThat(baseConSubsidio).isEqualByComparingTo("2000.00");
+        assertThat(baseSinSubsidio).isEqualByComparingTo("3000.00");
+        // El monto subsidiado (S/ 1,000) queda FUERA de la base gravable de IR 4ta.
+        assertThat(baseSinSubsidio.subtract(baseConSubsidio)).isEqualByComparingTo("1000.00");
+    }
+
+    /**
+     * F1.9b — La base gravable de IR 5ta categoría (728/SERVIR) YA excluye el
+     * subsidio, transitivamente por F1.8: el subsidio (a) nunca se suma a la
+     * base imponible (es inafecto) y (b) la base remunerativa que alimenta la
+     * 5ta ya viene prorrateada por los días de subsidio. NO requiere inyectar
+     * el contrato de nuevo (hacerlo sería doble reducción → sub-retención).
+     *
+     * Prueba: 728 con S/ 3,000 y 10 días de subsidio → base imponible de 5ta
+     * (rem.baseAportePension, que alimenta baseImponiblePens) = 2,000; el monto
+     * subsidiado (S/ 1,000) jamás entra a la base gravable.
+     */
+    @Test
+    void ir5ta_728_base_gravable_ya_excluye_subsidio_F1_9b() {
+        EmpleadoPlanilla planilla = planilla(3000.0, REG_728, 0);
+        MovimientoPlanilla mov = new MovimientoPlanilla();
+        mov.setId(100L);
+        mov.setEmpleadoId(EMPLEADO_ID);
+        mov.setPeriodo(PERIODO);
+
+        when(subsidioPlanillaIntegracionService.diasSubsidioMotor(EMPLEADO_ID, PERIODO))
+                .thenReturn(10);
+
+        GeneradorPlanillaService.RemunerativosResult rem =
+                service.calcularRemunerativos(mov, planilla, empleadoConEps(),
+                        2026, new BigDecimal("3000.00"));
+
+        // Base gravable de 5ta = prorrateada por subsidio (2000), nunca incluye
+        // el monto subsidiado (si lo incluyera sería ≥ 3000).
+        assertThat(rem.baseAportePension).isEqualByComparingTo("2000.00");
+        assertThat(rem.baseAportePension).isLessThan(new BigDecimal("3000.00"));
+    }
+
     @Test
     void grabarDetalle_persiste_snapshot_codigo_nombre_tipo() {
         ConceptoPlanilla concepto = conceptoMef(
@@ -1269,8 +1456,8 @@ class GeneradorPlanillaServiceTest {
     }
 
     private void assertRegimenPensionarioSinAporte(Long regimenPensionarioId) {
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(regimenPensionarioId, null, null, null)));
 
@@ -1482,8 +1669,8 @@ class GeneradorPlanillaServiceTest {
         // Default: flag OFF. Aunque haya un reintegro en BD el motor lo ignora.
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", false);
 
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -1499,8 +1686,8 @@ class GeneradorPlanillaServiceTest {
     void flag_on_motor_consulta_repo_reintegro_y_no_suma_si_no_hay() {
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
 
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -1525,8 +1712,8 @@ class GeneradorPlanillaServiceTest {
     void flag_on_con_reintegro_15_dias_suma_mitad_del_sueldo_a_totalIngresos() {
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
 
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         mockSueldo(3000.0);
@@ -1766,8 +1953,8 @@ class GeneradorPlanillaServiceTest {
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("CAS")));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(5364.19);
@@ -1801,14 +1988,48 @@ class GeneradorPlanillaServiceTest {
         assertThat(cab.getTotalDescuentos()).isCloseTo(429.14, within(0.01));
     }
 
+    /**
+     * Caveat cerrado — CAS que cesa a mitad de mes: la base del IR4ta se prorratea
+     * igual que la remuneración pagada. Base 5364.19 → 15/30 = 2682.10; IR4ta 8% =
+     * 214.57 (no 429.14 del mes completo). Evita sobre-retener impuesto.
+     */
+    @Test
+    void ir4ta_cas_con_cese_a_mitad_de_mes_prorratea_la_base_del_impuesto() {
+        ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
+        when(regimenLaboralRepository.findById(REG_CAS))
+                .thenReturn(Optional.of(regimenLaboral("CAS")));
+        EmpleadoPlanilla cesado = planilla(5364.19, REG_CAS, /*asigFam=*/0);
+        cesado.setFechaCese(LocalDate.of(2026, 5, 15)); // cese 15/may → 15/30
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(cesado));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        mockSueldo(5364.19);
+        when(parametroService.obtenerValorOpcional(eq("BASE_INAFECTA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("1500")));
+        when(parametroService.obtenerValorOpcional(eq("TASA_IR4TA"), anyInt(), any()))
+                .thenReturn(Optional.of(new BigDecimal("0.08")));
+        when(suspension4taService.consultarVigente(eq(EMPLEADO_ID), any()))
+                .thenReturn(Suspension4taVigenteDto.noRegistrada());
+        when(conceptoRepository.findByCodigoAndActivo("IR4TA_CAS", 1))
+                .thenReturn(Optional.of(conceptoMef(9042L, "NO_APLICA", "Retención IR 4ta CAS", "DESCUENTO")));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, atLeastOnce()).save(capt.capture());
+        assertThat(detallePorConcepto(capt, 9042L).getMonto()).isCloseTo(214.57, within(0.02));
+    }
+
     /** CAS con suspensión vigente → IR4ta = 0, no se graba línea, no bloquea. */
     @Test
     void ir4ta_cas_con_suspension_vigente_no_retiene_ni_graba_linea() {
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("CAS")));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
         mockSueldo(5364.19);
@@ -1836,8 +2057,8 @@ class GeneradorPlanillaServiceTest {
     void base_remunerativa_viene_de_sueldoBasico_e_ignora_concepto_base_manual() {
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("CAS")));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5000.0, REG_CAS, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5000.0, REG_CAS, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
 
@@ -1863,8 +2084,8 @@ class GeneradorPlanillaServiceTest {
     void base_remunerativa_cas_tambien_aplica_si_regimen_catalogo_es_1057() {
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("1057")));
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(5364.19, REG_CAS, /*asigFam=*/0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.empty());
 
@@ -1967,8 +2188,8 @@ class GeneradorPlanillaServiceTest {
         // Sin flag, el motor calcula como antes (compat con motor v2).
         // Concepto cuyo régimen aplicable es 728 asignado a empleado 276 → NO explota.
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", false);
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         ConceptoPlanilla c = conceptoSueldo();
@@ -1984,8 +2205,8 @@ class GeneradorPlanillaServiceTest {
     void flag_on_motor_no_lanza_excepcion_si_regimen_no_aplica() {
         // Con flag, el motor v3 no bloquea (especialista libre de elegir).
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         ConceptoPlanilla c = conceptoSueldo();
@@ -2005,8 +2226,8 @@ class GeneradorPlanillaServiceTest {
         // 3000 × 25/30 = 2500.00. La BASE viene de Config. planilla (aquí 0 para
         // aislar el prorrateo de un concepto NO-base: incremento remunerativo).
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(0.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(0.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         ConceptoPlanilla c = conceptoBaseRem(CONCEPTO_SUELDO_ID, "00303", "Horas Extras");
@@ -2033,8 +2254,8 @@ class GeneradorPlanillaServiceTest {
         // Flag ON pero ES_PRORRATEABLE='N' → monto NO se prorratea aunque
         // haya días de falta.
         ReflectionTestUtils.setField(service, "motorV3ProrrateoEnabled", true);
-        when(planillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.of(planilla(3000.0, REG_276, 0)));
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
         when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
                 .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
         ConceptoPlanilla c = conceptoSueldo();
@@ -2165,5 +2386,46 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(java.util.List.of(permiso, licencia, cese));
 
         assertThat(service.calcularDiasLaborados(EMPLEADO_ID, PERIODO)).isEqualTo(15);
+    }
+
+    // ===== F2 — resolución de base remunerativa por período =====
+
+    private EmpleadoPlanilla planillaConId(long id, double sueldoBasico) {
+        EmpleadoPlanilla pl = new EmpleadoPlanilla();
+        pl.setId(id);
+        pl.setSueldoBasico(sueldoBasico);
+        return pl;
+    }
+
+    @Test
+    void resolverBase_bloquea_cambio_remunerativo_intra_periodo() {
+        when(remuneracionHistRepository.countCambiosEnRango(eq(500L), any(), any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.resolverBaseRemunerativa(planillaConId(500L, 3000.0), PERIODO))
+                .isInstanceOf(com.indeci.exception.NegocioException.class)
+                .hasMessageContaining("tramos");
+    }
+
+    @Test
+    void resolverBase_usa_historial_vigente_aprobado() {
+        com.indeci.rrhh.entity.EmpleadoRemuneracionHist h =
+                new com.indeci.rrhh.entity.EmpleadoRemuneracionHist();
+        h.setRemuneracionTotal(4500.0);
+        when(remuneracionHistRepository.countCambiosEnRango(eq(500L), any(), any())).thenReturn(0L);
+        when(remuneracionHistRepository.findVigenteAprobada(eq(500L), any(), any()))
+                .thenReturn(java.util.List.of(h));
+
+        assertThat(service.resolverBaseRemunerativa(planillaConId(500L, 3000.0), PERIODO))
+                .isEqualByComparingTo("4500.0");
+    }
+
+    @Test
+    void resolverBase_fallback_a_sueldo_basico_sin_historial() {
+        when(remuneracionHistRepository.countCambiosEnRango(eq(500L), any(), any())).thenReturn(0L);
+        when(remuneracionHistRepository.findVigenteAprobada(eq(500L), any(), any()))
+                .thenReturn(java.util.List.of());
+
+        assertThat(service.resolverBaseRemunerativa(planillaConId(500L, 3000.0), PERIODO))
+                .isEqualByComparingTo("3000.0");
     }
 }

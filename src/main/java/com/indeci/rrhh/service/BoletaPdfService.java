@@ -4,6 +4,7 @@ import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.MovimientoPlanillaDetalleResponseDto;
 import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
+import com.indeci.rrhh.entity.TipoProceso;
 import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
 
 import com.lowagie.text.Document;
@@ -33,6 +34,12 @@ import java.util.Locale;
  *
  * Formato compacto institucional (sector público): ocupa la mitad superior de A4,
  * ingresos/descuentos en columnas paralelas, tipografía densa pero legible.
+ *
+ * <p><b>Track B — EXTENSION_PENDIENTE:</b> este generador PDF (OpenPDF) <b>NO</b>
+ * consolida el aguinaldo (opción A). La boleta consolidada (regular + AGUINALDO)
+ * se sirve por {@code BoletaDataService} + la plantilla HTML-printable de Reportes.
+ * Para no emitir una boleta PDF documentalmente incompleta, este servicio se
+ * deshabilita explícitamente en períodos con aguinaldo (ver {@link #generar}).</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -46,6 +53,18 @@ public class BoletaPdfService {
 
     /** Construye el PDF de la boleta del empleado en el período. */
     public byte[] generar(Long empleadoId, String periodo) {
+
+        // Track B (EXTENSION_PENDIENTE): el PDF simple no consolida el aguinaldo.
+        // En períodos con aguinaldo se deshabilita para no emitir una boleta
+        // incompleta; usar la boleta consolidada (endpoint /data + HTML de Reportes).
+        boolean tieneAguinaldo = movimientoRepository
+                .findAllByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1).stream()
+                .anyMatch(m -> TipoProceso.fromTipoPlanilla(m.getTipoPlanilla()) == TipoProceso.AGUINALDO);
+        if (tieneAguinaldo) {
+            throw new NegocioException(
+                    "El período tiene aguinaldo generado: use la boleta consolidada "
+                    + "(no el PDF simple, que aún no incluye el aguinaldo).");
+        }
 
         MovimientoPlanilla mov = movimientoRepository
                 .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)

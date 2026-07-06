@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -41,6 +43,7 @@ public class EmpleadoPlanillaService {
     private static final String EMP_ACTIVO = "ACTIVO";
     private static final Pattern AIRHSP_PATTERN = Pattern.compile("^[0-9]{6}$");
     private static final BigDecimal TOLERANCIA_SUELDO = new BigDecimal("0.01");
+    private static final DateTimeFormatter FMT_FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final EmpleadoPlanillaRepository repository;
     private final AuditoriaContext auditoriaContext;
@@ -58,11 +61,30 @@ public class EmpleadoPlanillaService {
     @Auditable(accion = "CREAR_PLANILLA")
     public void guardar(EmpleadoPlanillaDto dto) {
 
-        Optional<EmpleadoPlanilla> existente =
-                repository.findFirstByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1);
+        // Vínculos secuenciales (rotación CAS): se permite un contrato nuevo solo si
+        // el/los anteriores están CESADOS (activo=1 + fechaCese). Un vínculo cesado
+        // conserva activo=1 y queda en la historia; activo=0 significa ANULADO.
+        List<EmpleadoPlanilla> activos =
+                repository.findByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1);
 
-        if (existente.isPresent()) {
-            throw new NegocioException("Ya existe planilla activa");
+        boolean hayVigenteSinCese = activos.stream()
+                .anyMatch(v -> v.getFechaCese() == null);
+        if (hayVigenteSinCese) {
+            throw new NegocioException(
+                    "Ya existe un contrato vigente. Ciérrelo con su cese antes de registrar uno nuevo.");
+        }
+
+        Optional<LocalDate> ultimoCese = activos.stream()
+                .map(EmpleadoPlanilla::getFechaCese)
+                .filter(Objects::nonNull)
+                .max(LocalDate::compareTo);
+        if (ultimoCese.isPresent()) {
+            LocalDate inicioNuevo = dto.getFechaInicioContrato();
+            if (inicioNuevo == null || !inicioNuevo.isAfter(ultimoCese.get())) {
+                throw new NegocioException(
+                        "El nuevo contrato debe iniciar después del cese del contrato anterior ("
+                                + ultimoCese.get().format(FMT_FECHA) + ").");
+            }
         }
 
         RemuneracionCalculada remuneracion = calcularRemuneracionDesdeDto(dto);
@@ -78,9 +100,12 @@ public class EmpleadoPlanillaService {
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
         entity.setModalidadCasId(dto.getModalidadCasId());
+        entity.setGrupoServidorCivil(dto.getGrupoServidorCivil());
+        entity.setEsConfianza(dto.getEsConfianza());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
         entity.setFechaInicioContrato(dto.getFechaInicioContrato());
+        aplicarFechasYCese(entity, dto);
         entity.setActivo(1);
         entity.setFechaInicio(LocalDate.now());
         entity.setCreatedAt(LocalDateTime.now());
@@ -114,9 +139,29 @@ public class EmpleadoPlanillaService {
                     dto.setTipoContratoId(e.getTipoContratoId());
                     dto.setCondicionLaboralId(e.getCondicionLaboralId());
                     dto.setModalidadCasId(e.getModalidadCasId());
+                    dto.setGrupoServidorCivil(e.getGrupoServidorCivil());
+                    dto.setEsConfianza(e.getEsConfianza());
                     dto.setTipoPersonaMefId(e.getTipoPersonaMefId());
                     dto.setRegistroPlazaAirhsp(e.getRegistroPlazaAirhsp());
                     dto.setFechaInicioContrato(e.getFechaInicioContrato());
+                    dto.setFechaFin(e.getFechaFin());
+                    dto.setFechaCese(e.getFechaCese());
+                    dto.setMotivoCese(e.getMotivoCese());
+                    dto.setDocumentoCese(e.getDocumentoCese());
+                    dto.setDocumentoOrigenTipo(e.getDocumentoOrigenTipo());
+                    dto.setDocumentoOrigenNumero(e.getDocumentoOrigenNumero());
+                    dto.setDocumentoOrigenFecha(e.getDocumentoOrigenFecha());
+
+                    // Estado del vínculo DERIVADO (no editable). Inicio = fecha del
+                    // contrato con respaldo a FECHA_INICIO legacy.
+                    java.time.LocalDate inicio = e.getFechaInicioContrato() != null
+                            ? e.getFechaInicioContrato() : e.getFechaInicio();
+                    var estado = com.indeci.rrhh.vinculacion.VinculoEstadoResolver.derivar(
+                            e.getActivo(), inicio, e.getFechaFin(), e.getFechaCese(),
+                            java.time.LocalDate.now());
+                    dto.setEstadoVinculo(estado.name());
+                    dto.setHabilitaLbs(com.indeci.rrhh.vinculacion.VinculoEstadoResolver.habilitaLbs(
+                            estado, e.getFechaCese(), e.getMotivoCese(), e.getDocumentoCese()));
 
                     // Etiquetas resueltas para el listado.
                     if (e.getRegimenLaboralId() != null) {
@@ -212,13 +257,38 @@ public class EmpleadoPlanillaService {
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
         entity.setModalidadCasId(dto.getModalidadCasId());
+        entity.setGrupoServidorCivil(dto.getGrupoServidorCivil());
+        entity.setEsConfianza(dto.getEsConfianza());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
         entity.setFechaInicioContrato(dto.getFechaInicioContrato());
+        aplicarFechasYCese(entity, dto);
 
         repository.save(entity);
 
         auditoriaContext.setDetalle("Planilla actualizada ID: " + id);
+    }
+
+    /**
+     * Aplica fecha fin contractual y los hechos de cese al vínculo. Regla (RR.HH.):
+     * si se registra una fecha de cese, el motivo y el documento de sustento son
+     * obligatorios (el estado CESADO se deriva a partir de estos hechos).
+     */
+    private void aplicarFechasYCese(EmpleadoPlanilla entity, EmpleadoPlanillaDto dto) {
+        entity.setFechaFin(dto.getFechaFin());
+        if (dto.getFechaCese() != null
+                && (dto.getMotivoCese() == null || dto.getMotivoCese().isBlank()
+                    || dto.getDocumentoCese() == null || dto.getDocumentoCese().isBlank())) {
+            throw new NegocioException(
+                    "Para registrar el cese se requieren fecha de cese, motivo y documento de sustento");
+        }
+        entity.setFechaCese(dto.getFechaCese());
+        entity.setMotivoCese(dto.getMotivoCese());
+        entity.setDocumentoCese(dto.getDocumentoCese());
+        // Sustento de origen del vínculo (V012_08).
+        entity.setDocumentoOrigenTipo(dto.getDocumentoOrigenTipo());
+        entity.setDocumentoOrigenNumero(dto.getDocumentoOrigenNumero());
+        entity.setDocumentoOrigenFecha(dto.getDocumentoOrigenFecha());
     }
 
     // ============================

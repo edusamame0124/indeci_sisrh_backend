@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,15 @@ public class PlanillaLoteService {
     private final EmpleadoRepository empleadoRepository;
     private final GeneradorPlanillaService generadorPlanillaService;
     private final PlanillaLoteRepository planillaLoteRepository;
+    private final ReintegroMontoRepository reintegroMontoRepository;
+    private final ConceptoPlanillaRepository conceptoPlanillaRepository;
+
+    /**
+     * Track B F1 — Tope parametrizable de planillas ADICIONALES por período+régimen.
+     * Configurable vía {@code planilla.max-adicionales} (application.yml); default 3.
+     */
+    @Value("${planilla.max-adicionales:3}")
+    private int maxPlanillasAdicionales;
 
     @Transactional(readOnly = true)
     public List<CandidatoAdicionalDto> obtenerCandidatosAdicionales(String periodo) {
@@ -73,6 +83,25 @@ public class PlanillaLoteService {
             }
         }
 
+        // F2 — Candidatos por REINTEGRO/devengado PENDIENTE del período destino
+        // (Modelo B). Si el empleado ya es candidato por otro motivo, se conserva.
+        java.util.Set<Long> yaAgregados = candidatos.stream()
+                .map(CandidatoAdicionalDto::getEmpleadoId)
+                .collect(Collectors.toSet());
+        for (ReintegroMonto r : reintegroMontoRepository
+                .findByPeriodoDestinoAndEstadoPago(periodo, "PENDIENTE")) {
+            if (yaAgregados.contains(r.getEmpleadoId())) {
+                continue;
+            }
+            empleadosActivos.stream()
+                    .filter(ep -> ep.getEmpleadoId().equals(r.getEmpleadoId()))
+                    .findFirst()
+                    .ifPresent(ep -> {
+                        candidatos.add(mapToDto(ep, "REINTEGRO"));
+                        yaAgregados.add(ep.getEmpleadoId());
+                    });
+        }
+
         return candidatos;
     }
 
@@ -106,6 +135,14 @@ public class PlanillaLoteService {
             Integer maxCorrelativo = planillaLoteRepository.findMaxCorrelativo(periodo, regimen, "ADICIONAL");
             int nextLoteNum = (maxCorrelativo == null) ? 1 : maxCorrelativo + 1;
 
+            // Track B F1 — Tope parametrizado de planillas adicionales por período+régimen.
+            if (nextLoteNum > maxPlanillasAdicionales) {
+                throw new NegocioException(
+                        "Se alcanzó el máximo de planillas adicionales ("
+                                + maxPlanillasAdicionales + ") para el período " + periodo
+                                + " y régimen " + regimen + ".");
+            }
+
             // Crear PlanillaLote
             PlanillaLote lote = new PlanillaLote();
             lote.setPeriodo(periodo);
@@ -113,6 +150,8 @@ public class PlanillaLoteService {
             lote.setTipoPlanilla("ADICIONAL");
             lote.setConceptoPlanilla(request.getConcepto());
             lote.setCorrelativo(nextLoteNum);
+            lote.setMotivo(request.getMotivo());
+            lote.setSustento(request.getSustento());
             lote.setEstado("GENERADO");
             planillaLoteRepository.save(lote);
 
@@ -162,8 +201,41 @@ public class PlanillaLoteService {
                     log.info("Sueldo prorrateado para empleado {} (puesto {}): {}", empleadoId, puesto.getId(), sueldoProrrateado);
                     
                     generadorPlanillaService.generarConOverride(
-                            empleadoId, periodo, sueldoProrrateado, puesto.getId(), tipoPlanillaAdicional, inicioReal, finReal, lote.getId());
+                            empleadoId, periodo, sueldoProrrateado, puesto.getId(), tipoPlanillaAdicional, inicioReal, finReal, lote.getId(), request.getConceptosSeleccionados());
                 }
+            }
+
+            // F2 — Pago de reintegros/devengados PENDIENTES (Modelo B) del régimen.
+            procesarReintegrosPendientes(periodo, empleadosRegimen, lote.getId(), tipoPlanillaAdicional);
+        }
+    }
+
+    /**
+     * F2 (BLOQUE 3) — Detecta y paga los reintegros PENDIENTES de los empleados
+     * del lote. Cada pago crea la línea 00507 (afecto 100%) vía el motor y la
+     * transición a PAGADO ocurre en esta misma transacción (atómica). Guard
+     * anti-doble-pago: solo procesa lo estrictamente PENDIENTE; un reintegro ya
+     * PAGADO se ignora limpiamente (no se re-paga, no se duplica el egreso).
+     */
+    private void procesarReintegrosPendientes(String periodo, List<Long> empleadosIds,
+            Long loteId, String tipoPlanilla) {
+        ConceptoPlanilla conceptoReintegro = conceptoPlanillaRepository
+                .findByCodigoMefAndActivo("00507", 1)
+                .orElseThrow(() -> new NegocioException(
+                        "Concepto de reintegro (CODIGO_MEF 00507) no configurado. Ejecutar seed V010_11."));
+
+        for (Long empleadoId : empleadosIds) {
+            List<ReintegroMonto> pendientes = reintegroMontoRepository
+                    .findByEmpleadoIdAndPeriodoDestinoAndEstadoPago(empleadoId, periodo, "PENDIENTE");
+            for (ReintegroMonto r : pendientes) {
+                // Guard anti-doble-pago (defensivo, además del filtro de la query).
+                if (!"PENDIENTE".equals(r.getEstadoPago())) {
+                    continue;
+                }
+                generadorPlanillaService.generarReintegroAdicional(
+                        empleadoId, periodo, r.getMonto(), conceptoReintegro, loteId, tipoPlanilla);
+                r.setEstadoPago("PAGADO");
+                reintegroMontoRepository.save(r);
             }
         }
     }
@@ -196,7 +268,12 @@ public class PlanillaLoteService {
         dto.setRegimenLaboral(ep.getRegimenLaboral() != null ? ep.getRegimenLaboral().getCodigo() : "DESC");
         dto.setFechaIngreso(ep.getFechaInicioContrato());
         dto.setMotivo(motivo);
-        
+        // F0 — clasificación laboral (el dato ya existe en EmpleadoPlanilla) para
+        // que el frontend filtre por tipo contrato / condición / modalidad CAS.
+        dto.setTipoContratoId(ep.getTipoContratoId());
+        dto.setCondicionLaboralId(ep.getCondicionLaboralId());
+        dto.setModalidadCasId(ep.getModalidadCasId());
+
         Optional<Empleado> empOpt = empleadoRepository.findById(ep.getEmpleadoId());
         if (empOpt.isPresent() && empOpt.get().getPersona() != null) {
             dto.setDni(empOpt.get().getPersona().getDni());

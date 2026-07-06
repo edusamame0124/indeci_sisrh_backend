@@ -2,6 +2,8 @@ package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.BeneficioCasCalculadoDto;
+import com.indeci.rrhh.entity.ReglaBeneficioCas;
+import com.indeci.rrhh.repository.ReglaBeneficioCasRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,7 @@ import static org.mockito.Mockito.when;
 class BeneficiosCasServiceTest {
 
     @Mock private ParametroRemunerativoService parametroService;
+    @Mock private ReglaBeneficioCasRepository reglaRepository;
     @InjectMocks private BeneficiosCasService service;
 
     @BeforeEach
@@ -192,5 +195,63 @@ class BeneficiosCasServiceTest {
         assertThatThrownBy(() -> service.calcular(null, "CAS"))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("Período requerido");
+    }
+
+    // =================== Track B F4 — Gratificación CAS 100% (Ley 32563) ===================
+
+    private ReglaBeneficioCas regla(String codigo, String mef) {
+        ReglaBeneficioCas r = new ReglaBeneficioCas();
+        r.setCodigoBeneficio(codigo);
+        r.setCodigoMef(mef);
+        r.setMontoTipo("PCT_REMUNERACION");
+        r.setFactor(new BigDecimal("1.0000"));
+        r.setEstado("ACTIVO");
+        return r;
+    }
+
+    @Test
+    void gratificacion_julio_cas_fiestas_patrias_100pct() {
+        when(reglaRepository.findGratificacionesVigentes(eq("CAS"), eq(7), any()))
+                .thenReturn(java.util.List.of(regla("GRATIFICACION_FIESTAS_PATRIAS_CAS", "0077")));
+
+        var r = service.calcularGratificacion("2026-07", "CAS", new BigDecimal("3000.00"));
+
+        assertThat(r).isPresent();
+        assertThat(r.get().codigoBeneficio()).isEqualTo("GRATIFICACION_FIESTAS_PATRIAS_CAS");
+        assertThat(r.get().codigoMef()).isEqualTo("0077");
+        assertThat(r.get().monto()).isEqualByComparingTo("3000.00");
+    }
+
+    @Test
+    void gratificacion_diciembre_cas_navidad_100pct() {
+        when(reglaRepository.findGratificacionesVigentes(eq("CAS"), eq(12), any()))
+                .thenReturn(java.util.List.of(regla("GRATIFICACION_NAVIDAD_CAS", "0025")));
+
+        var r = service.calcularGratificacion("2026-12", "CAS", new BigDecimal("4864.19"));
+
+        assertThat(r).isPresent();
+        assertThat(r.get().codigoBeneficio()).isEqualTo("GRATIFICACION_NAVIDAD_CAS");
+        assertThat(r.get().monto()).isEqualByComparingTo("4864.19");
+    }
+
+    @Test
+    void gratificacion_mes_normal_no_genera() {
+        assertThat(service.calcularGratificacion("2026-05", "CAS", new BigDecimal("3000")))
+                .isEmpty();
+    }
+
+    @Test
+    void gratificacion_regimen_no_cas_no_genera() {
+        assertThat(service.calcularGratificacion("2026-07", "276", new BigDecimal("3000")))
+                .isEmpty();
+    }
+
+    @Test
+    void gratificacion_sin_regla_vigente_no_genera() {
+        when(reglaRepository.findGratificacionesVigentes(eq("CAS"), eq(7), any()))
+                .thenReturn(java.util.List.of());
+
+        assertThat(service.calcularGratificacion("2026-07", "CAS", new BigDecimal("3000")))
+                .isEmpty();
     }
 }

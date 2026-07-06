@@ -54,4 +54,16 @@ public class BeneficiosCasController {
                 "Feature flag de beneficios CAS 2026",
                 service.isEnabled());
     }
+
+    /**
+     * Track B F4 — Gratificación CAS que el motor evaluará automáticamente en el
+     * período (read-only para la pantalla de generación). {@code null} si no aplica.
+     */
+    @GetMapping("/gratificacion-aplicable/{periodo}")
+    public ApiResponse<String> gratificacionAplicable(@PathVariable String periodo) {
+        return new ApiResponse<>(
+                "OK",
+                "Gratificación CAS aplicable al período",
+                service.gratificacionAplicableEtiqueta(periodo).orElse(null));
+    }
 }

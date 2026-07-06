@@ -63,6 +63,11 @@ public class EmpleadoPlanillaDto {
 
     private Long modalidadCasId;
 
+    /** Ley 30057 (V012_07): grupo de servidor civil + confianza. */
+    private String grupoServidorCivil;
+
+    private Integer esConfianza;
+
     private Long tipoPersonaMefId;
 
     private String registroPlazaAirhsp;
@@ -72,4 +77,25 @@ public class EmpleadoPlanillaDto {
     // =====================================
 
     private java.time.LocalDate fechaInicioContrato;
+
+    /** Fecha fin contractual (término previsto). */
+    private java.time.LocalDate fechaFin;
+
+    // =====================================
+    // CESE (V012_04) — hechos que registra RR.HH. El estado se DERIVA.
+    // Si se registra fechaCese, motivo y documento son obligatorios.
+    // =====================================
+
+    private java.time.LocalDate fechaCese;
+
+    private String motivoCese;
+
+    private String documentoCese;
+
+    // Sustento de origen del vínculo (V012_08).
+    private String documentoOrigenTipo;
+
+    private String documentoOrigenNumero;
+
+    private java.time.LocalDate documentoOrigenFecha;
 }

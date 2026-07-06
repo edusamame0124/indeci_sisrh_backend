@@ -235,6 +235,7 @@ public class GeneradorPlanillaService {
     private final AfpParametroVigenciaRepository afpVigenciaRepository;
     private final OnpParametroVigenciaRepository onpVigenciaRepository;
     private final TipoComisionAfpRepository tipoComisionAfpRepository;
+    private final EmpleadoRemuneracionHistRepository remuneracionHistRepository;
     
     /** HU-02 - Maestro de Lotes para vincular automáticamente planillas Ordinarias. */
     private final PlanillaLoteRepository planillaLoteRepository;
@@ -310,7 +311,11 @@ public class GeneradorPlanillaService {
             String periodo,
             MovimientoPlanilla movimiento,
             EmpleadoPlanilla planilla) {
-        return subsidioPlanillaIntegracionService.ingresoSubsidioMotor(empleadoId, periodo);
+        // F1.10 — El motor es la fuente única de las líneas de subsidio: las graba
+        // en el movimiento (ya regenerado, detalles previos borrados) y devuelve el
+        // total, garantizando línea == total en la boleta de forma determinista.
+        return subsidioPlanillaIntegracionService.grabarSubsidioEnMovimientoMotor(
+                empleadoId, periodo, movimiento.getId());
     }
 
     /** Resuelve el concepto de subsidio por CODIGO interno (PLAME, no MEF). */
@@ -330,18 +335,75 @@ public class GeneradorPlanillaService {
 
     @Transactional
     public void generar(Long empleadoId, String periodo) {
-        generarConOverride(empleadoId, periodo, null, null, "ORDINARIA", null, null, null);
+        generarConOverride(empleadoId, periodo, null, null, "ORDINARIA", null, null, null, null);
     }
 
     @Transactional
     public void generarConOverride(Long empleadoId, String periodo, BigDecimal overrideSueldoBasico) {
-        generarConOverride(empleadoId, periodo, overrideSueldoBasico, null, "ORDINARIA", null, null, null);
+        generarConOverride(empleadoId, periodo, overrideSueldoBasico, null, "ORDINARIA", null, null, null, null);
+    }
+
+    /**
+     * F2 (BLOQUE 3) — Pago de un reintegro/devengado (Modelo B) en la planilla
+     * adicional. Crea un movimiento con la línea del reintegro bajo el concepto
+     * {@code CODIGO_MEF=00507} y aplica la matriz de afectación al 100%: ONP/AFP,
+     * IR (4ta CAS / 5ta 728·SERVIR) y EsSalud 9%. La transición del reintegro a
+     * PAGADO la realiza {@code PlanillaLoteService} en la misma transacción.
+     */
+    @Transactional
+    public void generarReintegroAdicional(Long empleadoId, String periodo,
+            BigDecimal montoReintegro, ConceptoPlanilla conceptoReintegro,
+            Long loteId, String tipoPlanilla) {
+        if (montoReintegro == null || montoReintegro.signum() <= 0) {
+            return;
+        }
+        PeriodoPlanilla periodoPlanilla = periodoRepository.findByPeriodoAndActivo(periodo, 1)
+                .orElseThrow(() -> new NegocioException("Periodo no existe"));
+        if ("CERRADO".equalsIgnoreCase(periodoPlanilla.getEstado())) {
+            throw new NegocioException("El periodo " + periodo + " está cerrado");
+        }
+        LocalDate inicioPeriodo = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        LocalDate finPeriodo = inicioPeriodo.withDayOfMonth(inicioPeriodo.lengthOfMonth());
+        EmpleadoPlanilla planilla = planillaRepository
+                .findVinculosVigentesEnPeriodo(empleadoId, inicioPeriodo, finPeriodo)
+                .stream().findFirst()
+                .orElseThrow(() -> new NegocioException(
+                        "El empleado no tiene un vínculo vigente en el período " + periodo));
+        Optional<EmpleadoPension> pensionOpt =
+                empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1);
+        Empleado empleado = empleadoRepository.findById(empleadoId).orElse(null);
+        int anioFiscal = anioDePeriodo(periodo);
+        String regimen = resolverRegimenLaboralCodigo(planilla.getRegimenLaboralId());
+
+        borrarMovimientoAnterior(empleadoId, periodo, tipoPlanilla, null);
+        MovimientoPlanilla mov = crearCabecera(
+                empleadoId, periodo, tipoPlanilla, null, inicioPeriodo, finPeriodo, loteId);
+
+        // Ingreso: reintegro 100% afecto, trazado bajo CODIGO_MEF 00507.
+        grabarDetalle(mov.getId(), conceptoReintegro, montoReintegro,
+                "Reintegro/devengado (afecto) — MEF " + conceptoReintegro.getCodigoMef());
+
+        // Matriz de afectación al 100% sobre el monto del reintegro.
+        BigDecimal base = montoReintegro;
+        BigDecimal aportePension = BigDecimal.ZERO;
+        if (pensionOpt.isPresent()) {
+            aportePension = calcularAportePensionario(mov, pensionOpt.get(), base, anioFiscal);
+        }
+        BigDecimal ir = esRegimenCas(regimen)
+                ? calcular4taCategoriaCAS(base, regimen, anioFiscal, false)
+                : calcular5taCategoria(mov, planilla, base, anioFiscal);
+        calcularEssaludEmpleador(mov, empleado, base, anioFiscal, regimen, empleadoId, periodo);
+
+        BigDecimal totalDescuentos = aportePension.add(ir);
+        calcularTotalesYCUC(mov, montoReintegro, totalDescuentos, montoReintegro,
+                ir, aportePension, BigDecimal.ZERO);
     }
 
     @Transactional
     public void generarConOverride(Long empleadoId, String periodo, BigDecimal overrideSueldoBasico,
                                    Long empleadoPuestoId, String tipoPlanilla,
-                                   LocalDate fechaInicioPago, LocalDate fechaFinPago, Long loteId) {
+                                   LocalDate fechaInicioPago, LocalDate fechaFinPago, Long loteId,
+                                   List<String> conceptosAdicionales) {
 
         // 1. Validar periodo
         PeriodoPlanilla periodoPlanilla = periodoRepository
@@ -351,11 +413,15 @@ public class GeneradorPlanillaService {
             throw new NegocioException("El periodo " + periodo + " está cerrado");
         }
 
-        // 2. Configuración planilla del empleado
+        // 2. Vínculo que corresponde al período (traslape), no "el más reciente".
+        //    Soporta vínculos secuenciales (rotación CAS): junio→CAS cesado, julio→CAS nuevo.
+        LocalDate inicioPeriodo = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        LocalDate finPeriodo = inicioPeriodo.withDayOfMonth(inicioPeriodo.lengthOfMonth());
         EmpleadoPlanilla planilla = planillaRepository
-                .findFirstByEmpleadoIdAndActivo(empleadoId, 1)
+                .findVinculosVigentesEnPeriodo(empleadoId, inicioPeriodo, finPeriodo)
+                .stream().findFirst()
                 .orElseThrow(() -> new NegocioException(
-                        "Empleado sin configuración planilla"));
+                        "El empleado no tiene un vínculo vigente en el período " + periodo));
 
         // 3. Pensión vigente (opcional — sin pensión, no se calcula aporte)
         Optional<EmpleadoPension> pensionOpt =
@@ -415,6 +481,7 @@ public class GeneradorPlanillaService {
                 .periodoPlanilla(periodoPlanilla)
                 .pensionOpt(pensionOpt)
                 .overrideSueldoBasico(overrideSueldoBasico)
+                .conceptosAdicionales(conceptosAdicionales)
                 .motorLegacy(this)
                 .build();
 
@@ -533,13 +600,37 @@ public class GeneradorPlanillaService {
         // Remuneración BASE desde Configuración de planilla (mejora 2026-06-03):
         // la base es EmpleadoPlanilla.sueldoBasico, NO un concepto manual. Se graba
         // con el concepto base del régimen (CAS/728/276/SERVIR) → línea trazable.
-        BigDecimal sueldoBasico = overrideSueldoBasico != null ? overrideSueldoBasico : toBigDecimal(planilla.getSueldoBasico());
+        BigDecimal sueldoBasico = overrideSueldoBasico != null
+                ? overrideSueldoBasico
+                : resolverBaseRemunerativa(planilla, movimiento.getPeriodo());
+
+        // Fase 3 / F1.8 — prorrateo del haber del cargo por días EFECTIVOS =
+        // días de vínculo (cese/alta intra-mes) − días de subsidio. Los días bajo
+        // subsidio los cubre EsSalud; el empleador NO paga remuneración ordinaria
+        // por ellos (regla Contraloría, divisor 1/30). La reducción por subsidio
+        // es OBLIGATORIA e INCONDICIONAL (sin feature flag); el módulo de subsidios
+        // la provee vía contrato diasSubsidioMotor. La asignación familiar
+        // (beneficio fijo, D.S. 035-90-TR) se paga completa, no se prorratea.
+        // Cero regresión: sin subsidio diasSubsidio=0 → diasHaber=diasVinc.
+        int diasVinc = diasVinculoEnPeriodo(planilla, movimiento.getPeriodo());
+        int diasSubsidio = subsidioPlanillaIntegracionService
+                .diasSubsidioMotor(planilla.getEmpleadoId(), movimiento.getPeriodo());
+        int diasHaber = Math.max(0, diasVinc - diasSubsidio);
+        boolean prorrateado = diasHaber < DIAS_LAB_DEFAULT;
+        sueldoBasico = prorratear(sueldoBasico, diasHaber);
+
         if (sueldoBasico.signum() > 0 && regimenCodigo != null) {
             String baseMef = baseMefDeRegimen(regimenCodigo, empleado);
             if (baseMef != null) {
                 ConceptoPlanilla conceptoBase = conceptoPorMef(baseMef);
-                grabarDetalle(movimiento.getId(), conceptoBase, sueldoBasico,
-                        "Remuneración base (" + regimenCodigo + ")");
+                String desc = "Remuneración base (" + regimenCodigo + ")"
+                        + (prorrateado
+                            ? " — prorrateada " + diasHaber + "/30 días"
+                                + (diasSubsidio > 0
+                                    ? " (subsidio " + diasSubsidio + " d)"
+                                    : " (cese/alta)")
+                            : "");
+                grabarDetalle(movimiento.getId(), conceptoBase, sueldoBasico, desc);
                 acumular(result, conceptoBase, sueldoBasico);
             }
         }
@@ -610,7 +701,7 @@ public class GeneradorPlanillaService {
             String periodo) {
 
         ManualesResult result = new ManualesResult();
-        BigDecimal sueldoBasico = toBigDecimal(planilla.getSueldoBasico());
+        BigDecimal sueldoBasico = resolverBaseRemunerativa(planilla, periodo);
 
         // F1.5b — días laborados se calculan UNA VEZ por empleado/período;
         // se reusan en cada EmpleadoConcepto prorrateable. Solo se calcula
@@ -618,6 +709,14 @@ public class GeneradorPlanillaService {
         int diasLab = motorV3ProrrateoEnabled
                 ? calcularDiasLaborados(planilla.getEmpleadoId(), periodo)
                 : DIAS_LAB_DEFAULT;
+
+        // F1.8 — días de subsidio para la reducción INCONDICIONAL de conceptos
+        // prorrateables cuando el flag legacy motorV3 está OFF (con el flag ON ya
+        // vienen incluidos dentro de diasLab vía calcularDiasLaborados → DRY).
+        int diasSubsidioManual = motorV3ProrrateoEnabled
+                ? 0
+                : subsidioPlanillaIntegracionService.diasSubsidioMotor(
+                        planilla.getEmpleadoId(), periodo);
 
         List<EmpleadoConcepto> conceptos =
                 empleadoConceptoRepository.findByEmpleadoIdAndActivo(
@@ -663,11 +762,16 @@ public class GeneradorPlanillaService {
 
             BigDecimal monto = calcularMontoEmpleadoConcepto(ec, sueldoBasico);
 
-            // F1.5b — Si el concepto es prorrateable y el flag está ON,
-            // prorratear el monto por días laborados (helper F1.3c).
-            if (motorV3ProrrateoEnabled
-                    && "S".equalsIgnoreCase(concepto.getEsProrrateable())) {
-                monto = prorratear(monto, diasLab);
+            // F1.5b / F1.8 — Prorrateo de conceptos manuales prorrateables: el
+            // prorrateo por faltas/eventos sigue tras el flag motorV3, pero la
+            // reducción por SUBSIDIO es OBLIGATORIA e incondicional (Contraloría).
+            if ("S".equalsIgnoreCase(concepto.getEsProrrateable())) {
+                int diasProrrateo = motorV3ProrrateoEnabled
+                        ? diasLab
+                        : Math.max(0, DIAS_LAB_DEFAULT - diasSubsidioManual);
+                if (diasProrrateo < DIAS_LAB_DEFAULT) {
+                    monto = prorratear(monto, diasProrrateo);
+                }
             }
 
             grabarDetalle(movimiento.getId(), concepto, monto, concepto.getNombre());
@@ -1348,6 +1452,53 @@ public class GeneradorPlanillaService {
             BigDecimal aportePension,
             BigDecimal descuentoJudicial) {
 
+        // FASE 2: Consolidación exacta de totales para planillas ADICIONALES (recalcula desde BD + actual)
+        if (movimiento.getTipoPlanilla() != null && movimiento.getTipoPlanilla().startsWith("ADICIONAL_") && movimiento.getId() != null) {
+            List<MovimientoPlanillaDetalle> detalles = detalleRepository.findByMovimientoPlanillaId(movimiento.getId());
+            BigDecimal tIngresos = BigDecimal.ZERO;
+            BigDecimal tDescuentos = BigDecimal.ZERO;
+            BigDecimal iPermanentes = BigDecimal.ZERO;
+            BigDecimal rRenta = BigDecimal.ZERO;
+            BigDecimal aPension = BigDecimal.ZERO;
+            BigDecimal dJudicial = BigDecimal.ZERO;
+
+            for (MovimientoPlanillaDetalle d : detalles) {
+                BigDecimal m = BigDecimal.valueOf(d.getMonto() != null ? d.getMonto() : 0.0);
+                String tipo = d.getConceptoTipo() != null ? d.getConceptoTipo() : "";
+                
+                if ("REMUNERATIVO".equalsIgnoreCase(tipo) || "NO_REMUNERATIVO".equalsIgnoreCase(tipo)) {
+                    tIngresos = tIngresos.add(m);
+                    if ("REMUNERATIVO".equalsIgnoreCase(tipo)) {
+                        iPermanentes = iPermanentes.add(m);
+                    }
+                } else if ("DESCUENTO".equalsIgnoreCase(tipo) || "APORTE_TRABAJADOR".equalsIgnoreCase(tipo) || "DESCUENTO_JUDICIAL".equalsIgnoreCase(tipo)) {
+                    tDescuentos = tDescuentos.add(m);
+                    
+                    Optional<ConceptoPlanilla> cOpt = conceptoRepository.findById(d.getConceptoPlanillaId());
+                    if (cOpt.isPresent()) {
+                        ConceptoPlanilla c = cOpt.get();
+                        String mef = c.getCodigoMef();
+                        String cod = c.getCodigo();
+                        if ("05101".equals(mef) || "IR4TA_CAS".equals(cod)) {
+                            rRenta = rRenta.add(m);
+                        }
+                        if ("05001".equals(mef) || "05002".equals(mef) || "05003".equals(mef) || "05004".equals(mef)) {
+                            aPension = aPension.add(m);
+                        }
+                    }
+                    if ("DESCUENTO_JUDICIAL".equalsIgnoreCase(tipo)) {
+                        dJudicial = dJudicial.add(m);
+                    }
+                }
+            }
+            totalIngresos = tIngresos;
+            totalDescuentos = tDescuentos;
+            ingresosMensualesPermanentes = iPermanentes;
+            retencionRenta = rRenta;
+            aportePension = aPension;
+            descuentoJudicial = dJudicial;
+        }
+
         BigDecimal neto = totalIngresos.subtract(totalDescuentos)
                 .setScale(2, RoundingMode.HALF_UP);
 
@@ -1412,6 +1563,12 @@ public class GeneradorPlanillaService {
     // ======================================================================
 
     private void borrarMovimientoAnterior(Long empleadoId, String periodo, String tipoPlanilla, Long empleadoPuestoId) {
+        if (tipoPlanilla != null && tipoPlanilla.startsWith("ADICIONAL_")) {
+            // FASE 2: No borrar en llamadas sucesivas del mismo lote para permitir consolidación
+            // de boletas (un solo cabezal por empleado con múltiples detalles)
+            return;
+        }
+
         Optional<MovimientoPlanilla> opt;
         if (tipoPlanilla == null || tipoPlanilla.equals("ORDINARIA")) {
             opt = movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1);
@@ -1470,6 +1627,22 @@ public class GeneradorPlanillaService {
 
     private MovimientoPlanilla crearCabecera(Long empleadoId, String periodo, String tipoPlanilla, 
                                              Long empleadoPuestoId, LocalDate fechaInicioPago, LocalDate fechaFinPago, Long loteId) {
+        // FASE 2: Consolidación de boleta adicional
+        if (tipoPlanilla != null && tipoPlanilla.startsWith("ADICIONAL_")) {
+            List<MovimientoPlanilla> existentes = movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                    .stream().filter(m -> tipoPlanilla.equals(m.getTipoPlanilla())).toList();
+            if (!existentes.isEmpty()) {
+                MovimientoPlanilla existente = existentes.get(0);
+                if (fechaInicioPago != null && (existente.getFechaInicioPago() == null || fechaInicioPago.isBefore(existente.getFechaInicioPago()))) {
+                    existente.setFechaInicioPago(fechaInicioPago);
+                }
+                if (fechaFinPago != null && (existente.getFechaFinPago() == null || fechaFinPago.isAfter(existente.getFechaFinPago()))) {
+                    existente.setFechaFinPago(fechaFinPago);
+                }
+                return existente;
+            }
+        }
+
         MovimientoPlanilla movimiento = new MovimientoPlanilla();
         movimiento.setEmpleadoId(empleadoId);
         movimiento.setPeriodo(periodo);
@@ -1515,6 +1688,11 @@ public class GeneradorPlanillaService {
                 .orElseThrow(() -> new NegocioException(
                         "Concepto MEF " + codigoMef + " no existe o no está activo. "
                                 + "Ejecutar seed V010_04__seed_conceptos_mef.sql."));
+    }
+
+    /** Track B F4 — Resolutor público de concepto por CODIGO_MEF (gratificación CAS). */
+    public ConceptoPlanilla conceptoPorCodigoMef(String codigoMef) {
+        return conceptoPorMef(codigoMef);
     }
 
     /**
@@ -1565,6 +1743,43 @@ public class GeneradorPlanillaService {
 
     public BigDecimal toBigDecimal(Double valor) {
         return valor == null ? BigDecimal.ZERO : BigDecimal.valueOf(valor);
+    }
+
+    /**
+     * F2 — Base remunerativa del vínculo para el período. Prioridad: historial
+     * remunerativo VIGENTE y APROBADO a la fecha del período; si no hay, fallback a
+     * {@code EMPLEADO_PLANILLA.SUELDO_BASICO} con advertencia auditable
+     * {@code USANDO_FALLBACK_LEGACY_SUELDO_BASICO}. No inventa cálculo por tramos.
+     */
+    public BigDecimal resolverBaseRemunerativa(EmpleadoPlanilla planilla, String periodo) {
+        if (planilla == null) {
+            return BigDecimal.ZERO;
+        }
+        if (planilla.getId() != null && periodo != null) {
+            java.time.LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+            java.time.LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
+
+            // Guard de tramos (F2): un cambio remunerativo DENTRO del período (con
+            // vigencia posterior al día 1) exigiría calcular por tramos, no soportado.
+            // Decisión RR.HH.: no inventar cálculo → alerta bloqueante.
+            if (remuneracionHistRepository.countCambiosEnRango(planilla.getId(), inicio, fin) > 0) {
+                throw new NegocioException(
+                        "Cambio remunerativo dentro del período " + periodo
+                        + ": el cálculo por tramos no está soportado. Regularice la vigencia para "
+                        + "que inicie al comienzo del período, o configure una regla de prorrateo.");
+            }
+
+            var vig = remuneracionHistRepository.findVigenteAprobada(
+                    planilla.getId(), inicio,
+                    org.springframework.data.domain.PageRequest.of(0, 1));
+            if (!vig.isEmpty() && vig.get(0).getRemuneracionTotal() != null) {
+                return BigDecimal.valueOf(vig.get(0).getRemuneracionTotal());
+            }
+        }
+        log.warn("USANDO_FALLBACK_LEGACY_SUELDO_BASICO empleadoPlanillaId={} periodo={} — "
+                + "sin historial remunerativo vigente aprobado; se usa EMPLEADO_PLANILLA.SUELDO_BASICO",
+                planilla.getId(), periodo);
+        return toBigDecimal(planilla.getSueldoBasico());
     }
 
     private BigDecimal primeraTasaNoNula(Double explicita, java.util.function.Supplier<BigDecimal> fallback) {
@@ -1662,11 +1877,15 @@ public class GeneradorPlanillaService {
      * genera en su propia transacción (vía el proxy {@code self}).
      */
     public GeneracionMasivaResultDto generarTodoPeriodo(GenerarPlanillaCabeceraDto request) {
+        LocalDate inicioPeriodo = ParametroRemunerativoService.periodoToFechaInicio(request.getPeriodo());
+        LocalDate finPeriodo = inicioPeriodo.withDayOfMonth(inicioPeriodo.lengthOfMonth());
         List<EmpleadoPlanilla> empleados = planillaRepository.findEmpleadosParaGeneracion(
                 request.getRegimenLaboralId(),
                 request.getTipoContratoId(),
                 request.getCondicionLaboralId(),
-                request.getModalidadCasId()
+                request.getModalidadCasId(),
+                inicioPeriodo,
+                finPeriodo
         );
         List<GeneracionFallidaDto> fallidos = new ArrayList<>();
         List<Long> exitososIds = new ArrayList<>();
@@ -1818,7 +2037,106 @@ public class GeneradorPlanillaService {
         // permiso personal, etc.). El query ya filtra por flag y por activo.
         int diasEventos = sumarDiasAfectosEventos(empleadoId, periodo);
 
-        return Math.max(0, DIAS_LAB_DEFAULT - diasFalta - diasEventos);
+        // F1.8 — Días de subsidio (enfermedad/maternidad) reducen los días
+        // laborados de forma OBLIGATORIA e incondicional, con el MISMO contrato
+        // de dominio que usa el haber en calcularRemunerativos (DRY). Así la
+        // boleta persiste los días reales (p. ej. 20) y los conceptos manuales
+        // prorratean en sincronía con el haber.
+        int diasSubsidio = subsidioPlanillaIntegracionService
+                .diasSubsidioMotor(empleadoId, periodo);
+
+        int dias = Math.max(0, DIAS_LAB_DEFAULT - diasFalta - diasEventos - diasSubsidio);
+
+        // Fase 3 — acotar por los días del vínculo dentro del período (cese/alta
+        // intra-mes), para que la boleta muestre los días realmente trabajados.
+        // Para meses completos diasVinculo = 30 → no cambia nada.
+        LocalDate inicioPeriodo = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        LocalDate finPeriodo = inicioPeriodo.withDayOfMonth(inicioPeriodo.lengthOfMonth());
+        int diasVinculo = planillaRepository
+                .findVinculosVigentesEnPeriodo(empleadoId, inicioPeriodo, finPeriodo)
+                .stream().findFirst()
+                .map(p -> diasVinculoEnPeriodo(p, periodo))
+                .orElse(DIAS_LAB_DEFAULT);
+        return Math.min(dias, diasVinculo);
+    }
+
+    /**
+     * Fase 3 — Días del vínculo DENTRO del período según cese/alta intra-mes, en
+     * convención /30 (sector público). Devuelve {@link #DIAS_LAB_DEFAULT} (mes
+     * completo) cuando el vínculo cubre todo el período; un valor 0..29 solo
+     * cuando la fecha de inicio de contrato o la de cese caen dentro del período.
+     * Así el mes de ingreso/cese se prorratea y los meses completos NO cambian
+     * (cero regresión).
+     */
+    int diasVinculoEnPeriodo(EmpleadoPlanilla planilla, String periodo) {
+        if (planilla == null || periodo == null) {
+            return DIAS_LAB_DEFAULT;
+        }
+        LocalDate inicioPeriodo = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        LocalDate finPeriodo = inicioPeriodo.withDayOfMonth(inicioPeriodo.lengthOfMonth());
+        LocalDate inicioContrato = planilla.getFechaInicioContrato() != null
+                ? planilla.getFechaInicioContrato() : planilla.getFechaInicio();
+        LocalDate cese = planilla.getFechaCese();
+
+        boolean altaIntraMes = inicioContrato != null
+                && inicioContrato.isAfter(inicioPeriodo)
+                && !inicioContrato.isAfter(finPeriodo);
+        boolean ceseIntraMes = cese != null
+                && !cese.isBefore(inicioPeriodo)
+                && cese.isBefore(finPeriodo);
+
+        if (!altaIntraMes && !ceseIntraMes) {
+            return DIAS_LAB_DEFAULT; // mes completo → sin prorrateo
+        }
+
+        int diaInicio = altaIntraMes
+                ? Math.min(inicioContrato.getDayOfMonth(), DIAS_LAB_DEFAULT) : 1;
+        int diaFin = ceseIntraMes
+                ? Math.min(cese.getDayOfMonth(), DIAS_LAB_DEFAULT) : DIAS_LAB_DEFAULT;
+        int dias = diaFin - diaInicio + 1;
+        if (dias < 0) dias = 0;
+        if (dias > DIAS_LAB_DEFAULT) dias = DIAS_LAB_DEFAULT;
+        return dias;
+    }
+
+    /**
+     * Fase 3 — Base prorrateada por los días del vínculo dentro del período
+     * (cese/alta intra-mes). Para meses completos devuelve la base intacta (cero
+     * regresión). Fuente ÚNICA del prorrateo de la base: la usan tanto la
+     * remuneración del cargo como la base del IR4ta CAS, para que ambas queden
+     * consistentes (evita retener impuesto sobre un mes completo cuando se pagó
+     * proporcional).
+     */
+    public BigDecimal prorratearBasePorVinculo(
+            BigDecimal base, EmpleadoPlanilla planilla, String periodo) {
+        if (base == null) {
+            return BigDecimal.ZERO;
+        }
+        int diasVinc = diasVinculoEnPeriodo(planilla, periodo);
+        return diasVinc < DIAS_LAB_DEFAULT ? prorratear(base, diasVinc) : base;
+    }
+
+    /**
+     * F1.9 — Base tributaria de IR 4ta CAS prorrateada por días EFECTIVOS =
+     * días de vínculo (cese/alta) − días de subsidio. Los subsidios de EsSalud
+     * son INAFECTOS al Impuesto a la Renta (Art. 18 TUO LIR): la retención debe
+     * calcularse ÚNICAMENTE sobre los haberes pagados por el empleador, nunca
+     * sobre el monto subsidiado. Reutiliza el mismo contrato de dominio que el
+     * haber ({@code diasSubsidioMotor}) → DRY con F1.8.
+     *
+     * <p>Cero regresión: sin subsidio {@code diasSubsidio=0 → diasHaber=diasVinc},
+     * idéntico a {@link #prorratearBasePorVinculo}.</p>
+     */
+    public BigDecimal prorratearBaseTributariaPorVinculoYSubsidio(
+            BigDecimal base, EmpleadoPlanilla planilla, String periodo) {
+        if (base == null) {
+            return BigDecimal.ZERO;
+        }
+        int diasVinc = diasVinculoEnPeriodo(planilla, periodo);
+        int diasSubsidio = subsidioPlanillaIntegracionService
+                .diasSubsidioMotor(planilla.getEmpleadoId(), periodo);
+        int diasHaber = Math.max(0, diasVinc - diasSubsidio);
+        return diasHaber < DIAS_LAB_DEFAULT ? prorratear(base, diasHaber) : base;
     }
 
     /**

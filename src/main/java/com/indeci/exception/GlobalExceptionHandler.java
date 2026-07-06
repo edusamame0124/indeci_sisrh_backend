@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
@@ -120,6 +121,20 @@ public class GlobalExceptionHandler {
         Map<String, Object> response = new HashMap<>();
         response.put("status", 400);
         response.put("mensaje", msg);
+        response.put("requiereCaptcha", false);
+
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    // ============================
+    // BODY ILEGIBLE / ENUM FUERA DE CONTRATO (400)
+    // ============================
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<?> handleBodyIlegible(HttpMessageNotReadableException ex,
+                                                HttpServletRequest request) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 400);
+        response.put("mensaje", "Datos de entrada inválidos: verifique el formato y los valores permitidos.");
         response.put("requiereCaptcha", false);
 
         return ResponseEntity.badRequest().body(response);

@@ -25,4 +25,7 @@ public class GenerarPlanillaCabeceraDto {
     
     // Usado opcionalmente cuando tipoPlanilla = ADICIONAL
     private List<Long> empleadosIds;
+    private List<String> conceptosSeleccionados;
+    private String motivo;
+    private String sustento;
 }

@@ -18,10 +18,12 @@ public class PlanillaLoteDashboardDto {
     private LocalDateTime creadoEn;
     private Long cantidadEmpleados;
     private Double montoTotalNeto;
+    private String motivo;
 
     public String getDescripcionConcatenada() {
         String base = tipoPlanilla != null && tipoPlanilla.contains("ADICIONAL") 
                 ? "Planilla Adicional " + (correlativo != null ? correlativo : "") 
+
                 : "Planilla Ordinaria";
         
         return base.trim() + (regimenLaboralCodigo != null ? " - " + regimenLaboralCodigo : "");

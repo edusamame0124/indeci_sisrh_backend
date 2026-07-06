@@ -22,8 +22,15 @@ public class BoletaPagoResponseDto {
     private List<ConceptoBoletaDto> descuentos;
     private List<ConceptoBoletaDto> aportes; // Essalud, etc (opcional o se suma en ingresos/descuentos)
 
-    // 3. Totales
+    // 3. Totales (sección regular)
     private Double totalIngresos;
     private Double totalDescuentos;
     private Double netoPagar;
+
+    // 4. Track B — Sección AGUINALDO consolidada (opción A). null si no hay
+    //    aguinaldo del período → boleta regular idéntica a la actual (caso b).
+    private AguinaldoSeccionDto aguinaldo;
+
+    /** Neto total del documento = neto regular + neto aguinaldo (solo se muestra si hay aguinaldo). */
+    private Double netoTotal;
 }

@@ -20,10 +20,10 @@ public interface PlanillaLoteRepository extends JpaRepository<PlanillaLote, Long
 
     @Query("SELECT new com.indeci.rrhh.dto.PlanillaLoteDashboardDto(" +
            "l.id, l.periodo, l.regimenLaboralCodigo, l.tipoPlanilla, l.correlativo, l.estado, l.creadoEn, " +
-           "COUNT(m.id), COALESCE(SUM(m.netoPagar), 0.0)) " +
+           "COUNT(m.id), COALESCE(SUM(m.netoPagar), 0.0), l.motivo) " +
            "FROM PlanillaLote l LEFT JOIN MovimientoPlanilla m ON m.loteId = l.id " +
            "WHERE l.periodo = :periodo AND (:regimen IS NULL OR l.regimenLaboralCodigo = :regimen) " +
-           "GROUP BY l.id, l.periodo, l.regimenLaboralCodigo, l.tipoPlanilla, l.correlativo, l.estado, l.creadoEn " +
+           "GROUP BY l.id, l.periodo, l.regimenLaboralCodigo, l.tipoPlanilla, l.correlativo, l.estado, l.creadoEn, l.motivo " +
            "ORDER BY l.creadoEn DESC")
     List<PlanillaLoteDashboardDto> findLotesDashboard(@Param("periodo") String periodo, 
                                                       @Param("regimen") String regimen);

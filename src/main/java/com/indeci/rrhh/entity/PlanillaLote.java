@@ -37,6 +37,21 @@ public class PlanillaLote {
     @Column(name = "CREADO_EN", updatable = false)
     private LocalDateTime creadoEn;
 
+    @Column(name = "MOTIVO", length = 500)
+    private String motivo;
+
+    @Column(name = "SUSTENTO", length = 500)
+    private String sustento;
+
+    /**
+     * Track B F1 — Tipo de proceso derivado del {@code tipoPlanilla} legacy.
+     * Método derivado (no columna): no se persiste ni rompe el esquema.
+     */
+    @Transient
+    public TipoProceso getTipoProceso() {
+        return TipoProceso.fromTipoPlanilla(this.tipoPlanilla);
+    }
+
     @PrePersist
     protected void onCreate() {
         if (creadoEn == null) {

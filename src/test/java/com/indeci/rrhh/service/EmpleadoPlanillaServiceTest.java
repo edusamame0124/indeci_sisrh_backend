@@ -55,8 +55,8 @@ class EmpleadoPlanillaServiceTest {
 
     @BeforeEach
     void sinPlanillaActiva() {
-        when(repository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
-                .thenReturn(Optional.empty());
+        when(repository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -150,6 +150,60 @@ class EmpleadoPlanillaServiceTest {
         assertThat(rows.get(0).getCodigoAirhsp()).isEqualTo("000051");
         assertThat(rows.get(0).getMontoContrato()).isEqualTo(4500.0);
         assertThat(rows.get(0).getSueldoBasico()).isEqualTo(4864.19);
+    }
+
+    // ── Fase 1: registro secuencial de vínculos (rotación CAS) ──────────────
+
+    @Test
+    void guardar_permite_nuevo_vinculo_si_anterior_esta_cesado() {
+        stubCalculo("4864.19");
+        EmpleadoPlanilla cesado = new EmpleadoPlanilla();
+        cesado.setActivo(1);
+        cesado.setFechaCese(LocalDate.of(2026, 6, 30));
+        when(repository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(List.of(cesado));
+
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+        dto.setFechaInicioContrato(LocalDate.of(2026, 7, 1));
+
+        service.guardar(dto);
+
+        verify(repository).save(any(EmpleadoPlanilla.class));
+    }
+
+    @Test
+    void guardar_rechaza_nuevo_vinculo_si_existe_uno_vigente_sin_cese() {
+        EmpleadoPlanilla vigente = new EmpleadoPlanilla();
+        vigente.setActivo(1);
+        vigente.setFechaCese(null);
+        when(repository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(List.of(vigente));
+
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("contrato vigente");
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void guardar_rechaza_nuevo_vinculo_que_inicia_antes_del_cese_anterior() {
+        EmpleadoPlanilla cesado = new EmpleadoPlanilla();
+        cesado.setActivo(1);
+        cesado.setFechaCese(LocalDate.of(2026, 6, 30));
+        when(repository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(List.of(cesado));
+
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+        dto.setFechaInicioContrato(LocalDate.of(2026, 6, 15)); // anterior/igual al cese
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("después del cese");
+
+        verify(repository, never()).save(any());
     }
 
     private void stubCalculo(String remuneracionMensual) {

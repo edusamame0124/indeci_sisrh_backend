@@ -25,6 +25,7 @@ public class ContextoCalculoPlanilla {
     private PeriodoPlanilla periodoPlanilla;
     private Optional<EmpleadoPension> pensionOpt;
     private BigDecimal overrideSueldoBasico;
+    private java.util.List<String> conceptosAdicionales;
     
     // Referencia temporal para invocar métodos legados extraídos
     private GeneradorPlanillaService motorLegacy;

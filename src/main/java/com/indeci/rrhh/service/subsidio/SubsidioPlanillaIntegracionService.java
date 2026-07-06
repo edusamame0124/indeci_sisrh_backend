@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
-import com.indeci.rrhh.entity.MovimientoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
 import com.indeci.rrhh.entity.SubsidioCaso;
 import com.indeci.rrhh.entity.SubsidioLiquidacion;
@@ -20,7 +19,6 @@ import com.indeci.rrhh.entity.SubsidioReglaVigencia;
 import com.indeci.rrhh.entity.SubsidioTramo;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.MovimientoPlanillaDetalleRepository;
-import com.indeci.rrhh.repository.MovimientoPlanillaRepository;
 import com.indeci.rrhh.repository.SubsidioCasoRepository;
 import com.indeci.rrhh.repository.SubsidioLiquidacionMovimientoRepository;
 import com.indeci.rrhh.repository.SubsidioLiquidacionRepository;
@@ -43,7 +41,6 @@ public class SubsidioPlanillaIntegracionService {
     private final SubsidioReglaResolverService reglaResolver;
     private final SubsidioValidacionService validacionService;
     private final SubsidioTimelineService timelineService;
-    private final MovimientoPlanillaRepository movimientoRepository;
     private final MovimientoPlanillaDetalleRepository detalleRepository;
     private final ConceptoPlanillaRepository conceptoRepository;
 
@@ -61,36 +58,14 @@ public class SubsidioPlanillaIntegracionService {
         String periodoPlanilla = SubsidioPeriodoUtil.aPlanilla(tramo.getPeriodo());
         validacionService.assertPeriodoAbierto(periodoPlanilla);
 
-        MovimientoPlanilla movimiento = movimientoRepository
-                .findByEmpleadoIdAndPeriodoAndActivo(caso.getEmpleadoId(), periodoPlanilla, 1)
-                .orElseGet(() -> crearCabecera(caso.getEmpleadoId(), periodoPlanilla));
-
-        SubsidioReglaVigencia regla = reglaResolver.resolverVigente(tramo.getFechaDesde());
-        String tipoConcepto = mapTipoSubsidio(caso.getTipoCaso());
-
-        ConceptoPlanilla conceptoSubsidio = resolverConcepto(
-                regla.getId(), tipoConcepto, SubsidioEstados.IMPUT_SUBSIDIO_100);
-        ConceptoPlanilla conceptoDiferencial = resolverConcepto(
-                regla.getId(), "DIFERENCIAL", SubsidioEstados.IMPUT_DIFERENCIAL_2073);
-
-        MovimientoPlanillaDetalle detSubsidio = grabarDetalle(
-                movimiento.getId(), conceptoSubsidio,
-                liq.getContraprestacionEquivalente(),
-                "Subsidio 100% tramo " + tramo.getPeriodo());
-        registrarMovimientoSubsidio(liq.getId(), movimiento.getId(), detSubsidio.getId(),
-                conceptoSubsidio.getId(), SubsidioEstados.IMPUT_SUBSIDIO_100,
-                liq.getContraprestacionEquivalente());
-
-        if (liq.getDiferencialIndeci() != null && liq.getDiferencialIndeci().signum() != 0) {
-            MovimientoPlanillaDetalle detDiff = grabarDetalle(
-                    movimiento.getId(), conceptoDiferencial,
-                    liq.getDiferencialIndeci(),
-                    "Diferencial INDECI tramo " + tramo.getPeriodo());
-            registrarMovimientoSubsidio(liq.getId(), movimiento.getId(), detDiff.getId(),
-                    conceptoDiferencial.getId(), SubsidioEstados.IMPUT_DIFERENCIAL_2073,
-                    liq.getDiferencialIndeci());
-        }
-
+        // F1.10 — El MOTOR es la fuente ÚNICA de las líneas de subsidio en la
+        // boleta: las graba durante la generación ordinaria
+        // (grabarSubsidioEnMovimientoMotor), tras borrar los detalles previos,
+        // garantizando línea == total de forma determinista y sin líneas
+        // huérfanas ni doble conteo. aplicarPlanilla ya NO inserta líneas en el
+        // movimiento; solo marca la liquidación como APLICADA y persiste los días
+        // de subsidio para el prorrateo 1/30 del haber (F1.8).
+        liq.setDiasSubsidio(tramo.getDiasSubsidio());
         liq.setEstado(SubsidioEstados.LIQ_APLICADO_PLANILLA);
         liquidacionRepository.save(liq);
 
@@ -115,6 +90,82 @@ public class SubsidioPlanillaIntegracionService {
                 .map(SubsidioLiquidacion::getContraprestacionEquivalente)
                 .filter(m -> m != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * F1.10 — Fuente ÚNICA de las líneas de subsidio en la boleta. El motor la
+     * invoca durante la generación ordinaria (después de {@code
+     * borrarMovimientoAnterior}) para grabar las líneas de detalle
+     * (subsidio 100% + diferencial INDECI) de las liquidaciones APLICADAS en el
+     * movimiento recién regenerado, devolviendo su total. Así la boleta muestra
+     * siempre las líneas y el total almacenado de forma consistente
+     * (línea == total), sin líneas huérfanas ni doble conteo.
+     *
+     * @return total del subsidio grabado (a sumar a {@code totalIngresos}). 0 si no hay.
+     */
+    @Transactional
+    public BigDecimal grabarSubsidioEnMovimientoMotor(
+            Long empleadoId, String periodoPlanilla, Long movimientoId) {
+        String periodoSubsidio = SubsidioPeriodoUtil.aSubsidio(periodoPlanilla);
+        List<SubsidioLiquidacion> liquidaciones = liquidacionRepository
+                .findVigentesPorEmpleadoPeriodoEstado(
+                        empleadoId, periodoSubsidio, SubsidioEstados.LIQ_APLICADO_PLANILLA);
+        BigDecimal total = BigDecimal.ZERO;
+        for (SubsidioLiquidacion liq : liquidaciones) {
+            total = total.add(grabarLineasSubsidio(liq, movimientoId));
+        }
+        return total;
+    }
+
+    /** F1.10 — Graba las líneas (subsidio 100% + diferencial) de una liquidación en el movimiento y devuelve su total. */
+    private BigDecimal grabarLineasSubsidio(SubsidioLiquidacion liq, Long movimientoId) {
+        SubsidioTramo tramo = tramoRepository.findById(liq.getTramoId()).orElseThrow();
+        SubsidioCaso caso = casoRepository.findById(tramo.getCasoId()).orElseThrow();
+        SubsidioReglaVigencia regla = reglaResolver.resolverVigente(tramo.getFechaDesde());
+        String tipoConcepto = mapTipoSubsidio(caso.getTipoCaso());
+        BigDecimal total = BigDecimal.ZERO;
+
+        if (liq.getContraprestacionEquivalente() != null
+                && liq.getContraprestacionEquivalente().signum() != 0) {
+            ConceptoPlanilla conceptoSubsidio = resolverConcepto(
+                    regla.getId(), tipoConcepto, SubsidioEstados.IMPUT_SUBSIDIO_100);
+            grabarDetalle(movimientoId, conceptoSubsidio,
+                    liq.getContraprestacionEquivalente(),
+                    "Subsidio 100% tramo " + tramo.getPeriodo());
+            total = total.add(liq.getContraprestacionEquivalente());
+        }
+
+        if (liq.getDiferencialIndeci() != null && liq.getDiferencialIndeci().signum() != 0) {
+            ConceptoPlanilla conceptoDiferencial = resolverConcepto(
+                    regla.getId(), "DIFERENCIAL", SubsidioEstados.IMPUT_DIFERENCIAL_2073);
+            grabarDetalle(movimientoId, conceptoDiferencial,
+                    liq.getDiferencialIndeci(),
+                    "Diferencial INDECI tramo " + tramo.getPeriodo());
+            total = total.add(liq.getDiferencialIndeci());
+        }
+        return total;
+    }
+
+    /**
+     * F1.8 — Contrato de dominio: días de subsidio aplicados a la planilla del
+     * período. El motor los consume para reducir el haber ordinario (divisor
+     * 1/30) sin conocer las tablas internas del módulo de subsidios.
+     *
+     * @return suma de días de subsidio de las liquidaciones aplicadas, con tope
+     *         defensivo de 30 (un mes ordinario nunca excede 30 días). 0 si no hay.
+     */
+    @Transactional(readOnly = true)
+    public int diasSubsidioMotor(Long empleadoId, String periodoPlanilla) {
+        String periodoSubsidio = SubsidioPeriodoUtil.aSubsidio(periodoPlanilla);
+        List<SubsidioLiquidacion> liquidaciones = liquidacionRepository
+                .findVigentesPorEmpleadoPeriodoEstado(
+                        empleadoId, periodoSubsidio, SubsidioEstados.LIQ_APLICADO_PLANILLA);
+        int dias = liquidaciones.stream()
+                .map(SubsidioLiquidacion::getDiasSubsidio)
+                .filter(d -> d != null)
+                .mapToInt(Integer::intValue)
+                .sum();
+        return Math.min(dias, 30);
     }
 
     @Transactional
@@ -165,20 +216,6 @@ public class SubsidioPlanillaIntegracionService {
                 ? SubsidioEstados.TIPO_MATERNIDAD : SubsidioEstados.TIPO_ENFERMEDAD;
     }
 
-    private MovimientoPlanilla crearCabecera(Long empleadoId, String periodo) {
-        MovimientoPlanilla mov = new MovimientoPlanilla();
-        mov.setEmpleadoId(empleadoId);
-        mov.setPeriodo(periodo);
-        mov.setObservacion("SUBSIDIO APLICADO");
-        mov.setActivo(1);
-        mov.setEstado("GENERADO");
-        mov.setCreatedAt(LocalDateTime.now());
-        mov.setTotalIngresos(0.0);
-        mov.setTotalDescuentos(0.0);
-        mov.setNetoPagar(0.0);
-        return movimientoRepository.save(mov);
-    }
-
     private MovimientoPlanillaDetalle grabarDetalle(
             Long movimientoId, ConceptoPlanilla concepto, BigDecimal monto, String obs) {
         MovimientoPlanillaDetalle det = new MovimientoPlanillaDetalle();
@@ -189,20 +226,5 @@ public class SubsidioPlanillaIntegracionService {
         det.setObservacion(obs);
         det.setCreatedAt(LocalDateTime.now());
         return detalleRepository.save(det);
-    }
-
-    private void registrarMovimientoSubsidio(
-            Long liquidacionId, Long movimientoId, Long detId,
-            Long conceptoId, String tipoImputacion, BigDecimal monto) {
-        SubsidioLiquidacionMovimiento link = new SubsidioLiquidacionMovimiento();
-        link.setLiquidacionId(liquidacionId);
-        link.setMovimientoPlanillaId(movimientoId);
-        link.setMovimientoDetId(detId);
-        link.setConceptoPlanillaId(conceptoId);
-        link.setTipoImputacion(tipoImputacion);
-        link.setMonto(monto);
-        link.setEstado("IMPUTADO");
-        link.setCreatedAt(LocalDateTime.now());
-        movimientoSubsidioRepository.save(link);
     }
 }
