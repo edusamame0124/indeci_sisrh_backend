@@ -22,6 +22,13 @@ public final class SisrhPermission {
     public static final String PLA_WRITE = "PLA_WRITE";
     public static final String PLA_APPROVE = "PLA_APPROVE";
 
+    // Liquidación de CTS Trunca (feature 016). Módulo PLANILLAS / LIQUIDACIONES.
+    // Semántica: READ = ver módulo/buscar cesantes/ver snapshot; WRITE = calcular/
+    // precargar (PENDIENTE/CALCULADO); APPROVE = sellar y cerrar (estado inmutable).
+    public static final String PLA_CTS_READ = "PLA_CTS_READ";
+    public static final String PLA_CTS_WRITE = "PLA_CTS_WRITE";
+    public static final String PLA_CTS_APPROVE = "PLA_CTS_APPROVE";
+
     public static final String RPT_READ = "RPT_READ";
     public static final String RPT_WRITE = "RPT_WRITE";
 

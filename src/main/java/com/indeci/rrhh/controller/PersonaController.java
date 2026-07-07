@@ -23,7 +23,7 @@ import org.springframework.http.ResponseEntity;
 @RestController
 @RequestMapping("/api/rrhh")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+@PreAuthorize(SisrhSecurityExpressions.EMP_READ + " or " + SisrhSecurityExpressions.ADM_USERS)
 public class PersonaController {
 
     private final PersonaService personaService;
@@ -46,7 +46,7 @@ public class PersonaController {
     @PostMapping(
             value="/persona/{id}/foto",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<Void> subirFoto(
 
             @PathVariable Long id,
@@ -66,7 +66,7 @@ public class PersonaController {
 
     // CREAR
     @PostMapping("/persona")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<Void> guardar(@RequestBody PersonaEmpleadoDto dto) {
         personaService.guardar(dto);
         return new ApiResponse<>("OK", "Registrado correctamente", null);
@@ -104,7 +104,7 @@ public class PersonaController {
 
     // ACTUALIZAR
     @PutMapping("/persona/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<Void> actualizar(
             @PathVariable Long id,
             @RequestBody PersonaEmpleadoDto dto
@@ -115,7 +115,7 @@ public class PersonaController {
 
     // ELIMINAR
     @DeleteMapping("/persona/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         personaService.eliminar(id);
         return new ApiResponse<>("OK", "Eliminado correctamente", null);

@@ -25,7 +25,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/sistemas")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+@PreAuthorize(SisrhSecurityExpressions.ADM_USERS)
 public class AdminSistemaController {
 
     private final SistemaRepository sistemaRepository;

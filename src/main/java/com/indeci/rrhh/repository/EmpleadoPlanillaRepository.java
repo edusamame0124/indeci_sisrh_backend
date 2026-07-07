@@ -76,4 +76,7 @@ public interface EmpleadoPlanillaRepository extends JpaRepository<EmpleadoPlanil
 
     /** Spec 012 / C3 (BKD-006) — paso «planilla» del flujo de empleado. */
     boolean existsByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
+
+    /** Feature 016 — vínculos de un régimen para la grilla de candidatos CTS. */
+    List<EmpleadoPlanilla> findByRegimenLaboralIdAndActivo(Long regimenLaboralId, Integer activo);
 }

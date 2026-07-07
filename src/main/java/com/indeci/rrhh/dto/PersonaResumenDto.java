@@ -17,4 +17,8 @@ public class PersonaResumenDto {
     private String estado;
     /** Código del régimen laboral vigente (CAS, 728, 276, SERVIR) — puede ser null. */
     private String regimenLaboral;
+    private String ruc;
+    private String estadoCivil;
+    private String profesion;
+    private String gradoAcademico;
 }

@@ -192,9 +192,10 @@ public class PersonaService {
                         toLong(r[1]),
                         (String) r[2],
                         (String) r[3],
-                        (String) r[4],
-                        (String) r[5],
-                        (String) r[6]))
+                        (String) r[4], (String) r[5],
+                        (String) r[6],
+                        (String) r[7], (String) r[8],
+                        (String) r[9], (String) r[10]))
                 .toList();
     }
 
@@ -210,7 +211,9 @@ public class PersonaService {
                         toLong(r[0]), toLong(r[1]),
                         (String) r[2], (String) r[3],
                         (String) r[4], (String) r[5],
-                        (String) r[6]))
+                        (String) r[6],
+                        (String) r[7], (String) r[8],
+                        (String) r[9], (String) r[10]))
                 .toList();
         return new PersonaResumenPageDto(content, total, totalPages, page, size);
     }

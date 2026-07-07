@@ -41,6 +41,8 @@ public class CalculoSnapshotService {
     public static final String REGLA_IR5TA = "IR5TA";
     public static final String REGLA_SUBSIDIO = "SUBSIDIO";
     public static final String REGLA_ESSALUD = "ESSALUD";
+    /** Feature 016 — Liquidación de CTS Trunca (requiere V012_15 en el CK de REGLA). */
+    public static final String REGLA_CTS = "CTS";
 
     private final CalculoSnapshotRepository repository;
     private final ObjectMapper objectMapper;

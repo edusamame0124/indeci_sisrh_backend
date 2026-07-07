@@ -129,13 +129,13 @@ public class AdminUserController {
     }
 
     @GetMapping("/{id}/accesos")
-    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    @PreAuthorize(SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<List<AccesoSistemaDto>> accesos(@PathVariable Long id) {
         return new ApiResponse<>("OK", "Accesos por sistema", adminUserService.getAccesos(id));
     }
 
     @PutMapping("/{id}/accesos")
-    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    @PreAuthorize(SisrhSecurityExpressions.ADM_USERS)
     public ApiResponse<Void> putAccesos(
             @PathVariable Long id,
             @Valid @RequestBody AccesosPutRequest body) {

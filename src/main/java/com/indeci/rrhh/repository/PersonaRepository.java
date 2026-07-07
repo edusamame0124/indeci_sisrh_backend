@@ -50,9 +50,16 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
                    JOIN GESTIONRRHH.INDECI_REGIMEN_LABORAL   rl ON rl.ID = ep.REGIMEN_LABORAL_ID
                   WHERE ep.EMPLEADO_ID = e.ID
                     AND ep.ACTIVO = 1
-                    AND ROWNUM = 1) AS REGIMEN_LABORAL
+                    AND ROWNUM = 1) AS REGIMEN_LABORAL,
+                p.RUC,
+                ec.NOMBRE AS ESTADO_CIVIL,
+                pr.NOMBRE AS PROFESION,
+                ga.NOMBRE AS GRADO_ACADEMICO
             FROM GESTIONRRHH.INDECI_PERSONA  p
             LEFT JOIN GESTIONRRHH.INDECI_EMPLEADO e ON e.PERSONA_ID = p.ID
+            LEFT JOIN GESTIONRRHH.INDECI_ESTADO_CIVIL ec ON ec.ID = p.ESTADO_CIVIL_ID
+            LEFT JOIN GESTIONRRHH.INDECI_PROFESION pr ON pr.ID = p.PROFESION_ID
+            LEFT JOIN GESTIONRRHH.INDECI_GRADO_ACADEMICO ga ON ga.ID = p.GRADO_ACADEMICO_ID
             ORDER BY p.NOMBRE_COMPLETO ASC
             """, nativeQuery = true)
     List<Object[]> findAllResumenRaw();
@@ -75,9 +82,16 @@ public interface PersonaRepository extends JpaRepository<Persona, Long> {
                    JOIN GESTIONRRHH.INDECI_REGIMEN_LABORAL   rl ON rl.ID = ep.REGIMEN_LABORAL_ID
                   WHERE ep.EMPLEADO_ID = e.ID
                     AND ep.ACTIVO = 1
-                    AND ROWNUM = 1) AS REGIMEN_LABORAL
+                    AND ROWNUM = 1) AS REGIMEN_LABORAL,
+                p.RUC,
+                ec.NOMBRE AS ESTADO_CIVIL,
+                pr.NOMBRE AS PROFESION,
+                ga.NOMBRE AS GRADO_ACADEMICO
             FROM GESTIONRRHH.INDECI_PERSONA  p
             LEFT JOIN GESTIONRRHH.INDECI_EMPLEADO e ON e.PERSONA_ID = p.ID
+            LEFT JOIN GESTIONRRHH.INDECI_ESTADO_CIVIL ec ON ec.ID = p.ESTADO_CIVIL_ID
+            LEFT JOIN GESTIONRRHH.INDECI_PROFESION pr ON pr.ID = p.PROFESION_ID
+            LEFT JOIN GESTIONRRHH.INDECI_GRADO_ACADEMICO ga ON ga.ID = p.GRADO_ACADEMICO_ID
             WHERE (UPPER(p.NOMBRE_COMPLETO) LIKE :q OR p.DNI LIKE :q)
             ORDER BY p.NOMBRE_COMPLETO ASC
             OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY
