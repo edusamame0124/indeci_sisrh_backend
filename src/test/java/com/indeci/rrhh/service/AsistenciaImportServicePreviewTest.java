@@ -11,7 +11,9 @@ import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvParser;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvValidator;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresCsvWriter;
+import com.indeci.rrhh.service.asistencia.AsistenciaLectorRouter;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.rrhh.service.asistencia.FormatoMarcador;
 import com.indeci.rrhh.service.asistencia.MarcadorCsvRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +40,7 @@ class AsistenciaImportServicePreviewTest {
     private static final Path ARCHIVO_GENERADO =
             Path.of("./data/asistencia/import/123_asistencia.csv");
 
-    @Mock private AsistenciaCsvParser csvParser;
+    @Mock private AsistenciaLectorRouter lectorRouter;
     @Mock private AsistenciaCsvValidator csvValidator;
     @Mock private PeriodoPlanillaRepository periodoRepository;
     @Mock private AsistenciaCabeceraRepository cabeceraRepository;
@@ -78,7 +80,8 @@ class AsistenciaImportServicePreviewTest {
         AtomicInteger saveCall = new AtomicInteger();
         when(periodoRepository.findByPeriodoAndActivo("2026-06", 1))
                 .thenReturn(Optional.of(periodo));
-        when(csvParser.parse(any())).thenReturn(parseResult);
+        when(lectorRouter.leer(any())).thenReturn(
+                new AsistenciaLectorRouter.ResultadoLectura(FormatoMarcador.RELOJ1_DIARIO, parseResult));
         when(importacionRepository.save(any(AsistenciaImportacion.class))).thenAnswer(invocation -> {
             AsistenciaImportacion importacion = invocation.getArgument(0);
             if (saveCall.incrementAndGet() == 1) {
@@ -125,7 +128,8 @@ class AsistenciaImportServicePreviewTest {
         AtomicInteger saveCall = new AtomicInteger();
         when(periodoRepository.findByPeriodoAndActivo("2026-06", 1))
                 .thenReturn(Optional.of(periodo));
-        when(csvParser.parse(any())).thenReturn(parseResult);
+        when(lectorRouter.leer(any())).thenReturn(
+                new AsistenciaLectorRouter.ResultadoLectura(FormatoMarcador.RELOJ1_DIARIO, parseResult));
         when(importacionRepository.save(any(AsistenciaImportacion.class))).thenAnswer(invocation -> {
             AsistenciaImportacion importacion = invocation.getArgument(0);
             int call = saveCall.incrementAndGet();
@@ -170,7 +174,8 @@ class AsistenciaImportServicePreviewTest {
 
         when(periodoRepository.findByPeriodoAndActivo("2026-06", 1))
                 .thenReturn(Optional.of(periodo));
-        when(csvParser.parse(any())).thenReturn(parseResult);
+        when(lectorRouter.leer(any())).thenReturn(
+                new AsistenciaLectorRouter.ResultadoLectura(FormatoMarcador.RELOJ1_DIARIO, parseResult));
         when(importacionRepository.save(any(AsistenciaImportacion.class))).thenAnswer(invocation -> {
             AsistenciaImportacion importacion = invocation.getArgument(0);
             importacion.setId(123L);

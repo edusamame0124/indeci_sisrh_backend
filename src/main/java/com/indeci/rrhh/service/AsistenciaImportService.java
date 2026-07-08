@@ -30,12 +30,15 @@ import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvParser;
+import com.indeci.rrhh.service.asistencia.AsistenciaLectorRouter;
+import com.indeci.rrhh.service.asistencia.FormatoMarcador;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvValidator;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresCsvWriter;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresXlsxWriter;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportEstrategia;
 import com.indeci.rrhh.service.asistencia.AsistenciaMarcadorMapper;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
+import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
 import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
@@ -85,7 +88,7 @@ public class AsistenciaImportService {
     private static final String ESTADO_ANULADA = "ANULADA";
     private static final int MAX_RESULTADO_JSON_LENGTH = 4000;
 
-    private final AsistenciaCsvParser csvParser;
+    private final AsistenciaLectorRouter lectorRouter;
     private final AsistenciaCsvValidator csvValidator;
     private final PeriodoPlanillaRepository periodoRepository;
     private final AsistenciaCabeceraRepository cabeceraRepository;
@@ -99,6 +102,7 @@ public class AsistenciaImportService {
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final AsistenciaDetalleRepository detalleRepository;
+    private final CalendarioLaboralService calendarioService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -106,7 +110,10 @@ public class AsistenciaImportService {
         validarPeriodo(periodo);
         byte[] bytes = leerBytes(archivo);
         String hash = sha256(bytes);
-        AsistenciaCsvParser.ParseResult parseResult = csvParser.parse(bytes);
+        // Detecta el formato (Reloj 1 diario vs Reloj 2 / COEN) y elige el lector.
+        AsistenciaLectorRouter.ResultadoLectura lectura = lectorRouter.leer(bytes);
+        FormatoMarcador formato = lectura.formato();
+        AsistenciaCsvParser.ParseResult parseResult = lectura.parseResult();
         String usuario = usuarioActual();
 
         AsistenciaImportacion importacion = new AsistenciaImportacion();
@@ -126,7 +133,7 @@ public class AsistenciaImportService {
 
         PeriodoPlanilla periodoPlanilla = obtenerPeriodo(periodo);
         List<MarcadorCsvRow> filasValidadas = new ArrayList<>(parseResult.getFilas());
-        csvValidator.validarFilas(filasValidadas, periodoPlanilla);
+        csvValidator.validarFilas(filasValidadas, periodoPlanilla, formato);
         aplicarJornada(filasValidadas);
 
         persistirFilas(importacion.getId(), filasValidadas, hash, usuario);
@@ -189,6 +196,9 @@ public class AsistenciaImportService {
         }
 
         boolean periodoGenerado = "GENERADO".equalsIgnoreCase(estadoPeriodo(periodo));
+        // F3 — calendario del período: genera las FALTAS de días laborables sin marca.
+        PeriodoPlanilla periodoPlan = obtenerPeriodo(periodo);
+        CalendarioLaboralService.Calendario calendario = calendarioDe(periodoPlan);
         int procesados = 0;
         int omitidos = 0;
         int bloqueados = 0;
@@ -211,11 +221,12 @@ public class AsistenciaImportService {
                     bloqueados++;
                     continue;
                 }
-                guardarEmpleadoDesdeImport(importacion, empleadoId, entry.getValue(),
-                        motivo, usuarioActual(), autorizadoPor);
+                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, empleadoId,
+                        entry.getValue(), motivo, usuarioActual(), autorizadoPor);
                 procesados++;
             } else {
-                guardarEmpleadoDesdeImport(importacion, empleadoId, entry.getValue(), null, null, null);
+                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, empleadoId,
+                        entry.getValue(), null, null, null);
                 procesados++;
             }
         }
@@ -738,16 +749,24 @@ public class AsistenciaImportService {
 
     private void guardarEmpleadoDesdeImport(
             AsistenciaImportacion importacion,
+            CalendarioLaboralService.Calendario calendario,
+            PeriodoPlanilla periodoPlan,
             Long empleadoId,
             List<AsistenciaImportacionFila> filasEmpleado,
             String motivoRectificacion,
             String usuarioRectificacion,
             String autorizadoPor) {
 
-        List<AsistenciaDiaDto> dias = filasEmpleado.stream()
+        List<AsistenciaDiaDto> diasMarcados = filasEmpleado.stream()
                 .sorted(Comparator.comparing(AsistenciaImportacionFila::getFecha))
                 .map(this::toDiaDto)
                 .toList();
+        // F3 — completa con las FALTAS de días laborables sin marca (persiste como detalle).
+        List<AsistenciaDiaDto> dias = conFaltasCalendario(
+                empleadoId, calendario,
+                periodoPlan != null ? periodoPlan.getFechaInicio() : null,
+                periodoPlan != null ? periodoPlan.getFechaFin() : null,
+                diasMarcados);
 
         BaseAsistenciaResult base = baseResolver.resolver(empleadoId);
         String estadoCabecera = resolverEstadoCabecera(filasEmpleado, dias);
@@ -778,6 +797,75 @@ public class AsistenciaImportService {
             return "LISTA_PARA_VALIDAR";
         }
         return "PREVALIDADA";
+    }
+
+    /** Calendario del período; null si el período no tiene fechas (no se generan faltas). */
+    private CalendarioLaboralService.Calendario calendarioDe(PeriodoPlanilla periodoPlan) {
+        if (periodoPlan == null
+                || periodoPlan.getFechaInicio() == null
+                || periodoPlan.getFechaFin() == null) {
+            return null;
+        }
+        return calendarioService.paraPeriodo(periodoPlan.getFechaInicio(), periodoPlan.getFechaFin());
+    }
+
+    /**
+     * F3 — Agrega los días laborables SIN marca del período como FALTA (respeta
+     * feriados/descansos/vínculo vigente). Si el régimen no es afecto a la planilla
+     * INDECI (SPEC D12) o no hay calendario/fechas, devuelve los días tal cual.
+     */
+    private List<AsistenciaDiaDto> conFaltasCalendario(
+            Long empleadoId,
+            CalendarioLaboralService.Calendario calendario,
+            LocalDate inicio,
+            LocalDate fin,
+            List<AsistenciaDiaDto> dias) {
+
+        if (calendario == null || inicio == null || fin == null) {
+            return dias;
+        }
+        EmpleadoPlanilla vinculo = empleadoPlanillaRepository
+                .findFirstByEmpleadoIdAndActivo(empleadoId, 1)
+                .orElse(null);
+        Long regimenId = vinculo != null ? vinculo.getRegimenLaboralId() : null;
+        if (!esAfectoPlanilla(regimenId)) {
+            return dias;
+        }
+        LocalDate ingreso = vinculo != null ? vinculo.getFechaIngreso() : null;
+        LocalDate cese = vinculo != null ? vinculo.getFechaCese() : null;
+        Set<LocalDate> presentes = dias.stream()
+                .map(AsistenciaDiaDto::getDia)
+                .filter(f -> f != null)
+                .collect(Collectors.toSet());
+
+        List<LocalDate> faltas = calendario.diasFalta(inicio, fin, ingreso, cese, regimenId, presentes);
+        if (faltas.isEmpty()) {
+            return dias;
+        }
+        List<AsistenciaDiaDto> resultado = new ArrayList<>(dias);
+        for (LocalDate fecha : faltas) {
+            resultado.add(diaFalta(fecha));
+        }
+        return resultado;
+    }
+
+    private AsistenciaDiaDto diaFalta(LocalDate fecha) {
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setDia(fecha);
+        dia.setTipoDia("FALTA");
+        dia.setMinutosTardanza(0);
+        dia.setObservacion("Falta (día laborable sin marca) — generada por calendario.");
+        dia.setOrigen("CALENDARIO");
+        return dia;
+    }
+
+    /**
+     * SPEC D12 (hook) — regímenes NO afectos a la planilla INDECI (ej. destacado
+     * militar, pagado por otra entidad) no generan faltas/descuentos. Hoy todos
+     * afectan; pendiente cablear el flag por régimen/situación laboral.
+     */
+    private boolean esAfectoPlanilla(Long regimenLaboralId) {
+        return true;
     }
 
     private AsistenciaDiaDto toDiaDto(AsistenciaImportacionFila fila) {
@@ -953,9 +1041,14 @@ public class AsistenciaImportService {
         preview.setEmpleadosDetectados(porEmpleado.size());
         preview.setEmpleadosConError(dnisConError.size());
 
-        for (Map.Entry<Long, List<MarcadorCsvRow>> entry : porEmpleado.entrySet()) {
-            preview.getEmpleados().add(construirResumenEmpleado(
-                    importacion.getPeriodo(), entry.getKey(), entry.getValue()));
+        if (!porEmpleado.isEmpty()) {
+            // F3 — un solo calendario para todo el período (feriados/descansos).
+            PeriodoPlanilla periodoPlan = obtenerPeriodo(importacion.getPeriodo());
+            CalendarioLaboralService.Calendario calendario = calendarioDe(periodoPlan);
+            for (Map.Entry<Long, List<MarcadorCsvRow>> entry : porEmpleado.entrySet()) {
+                preview.getEmpleados().add(construirResumenEmpleado(
+                        periodoPlan, calendario, entry.getKey(), entry.getValue()));
+            }
         }
         return preview;
     }
@@ -967,10 +1060,12 @@ public class AsistenciaImportService {
     }
 
     private AsistenciaImportEmpleadoResumenDto construirResumenEmpleado(
-            String periodo,
+            PeriodoPlanilla periodoPlan,
+            CalendarioLaboralService.Calendario calendario,
             Long empleadoId,
             List<MarcadorCsvRow> filas) {
 
+        String periodo = periodoPlan.getPeriodo();
         AsistenciaImportEmpleadoResumenDto resumen = new AsistenciaImportEmpleadoResumenDto();
         resumen.setEmpleadoId(empleadoId);
         resumen.setEmpleadoEncontrado(true);
@@ -995,9 +1090,13 @@ public class AsistenciaImportService {
                         f.getObservacion()))
                 .toList();
 
+        // F3 — completa con las FALTAS de días laborables sin marca para el conteo/descuento.
+        List<AsistenciaDiaDto> diasConFaltas = conFaltasCalendario(
+                empleadoId, calendario, periodoPlan.getFechaInicio(), periodoPlan.getFechaFin(), dias);
+
         BaseAsistenciaResult base = baseResolver.resolver(empleadoId);
         AsistenciaResumenCalculator.Resumen calc =
-                AsistenciaResumenCalculator.calcular(dias, base.getRemuneracionBase());
+                AsistenciaResumenCalculator.calcular(diasConFaltas, base.getRemuneracionBase());
 
         resumen.setDiasLaborados(calc.getDiasLaborados());
         resumen.setDiasFalta(calc.getDiasFalta());

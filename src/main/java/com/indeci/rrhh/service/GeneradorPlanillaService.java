@@ -108,13 +108,17 @@ public class GeneradorPlanillaService {
     private static final String MEF_BASE_728 = "00301";  // Sueldo Básico
     private static final String MEF_BASE_CAS = "00501";  // Remuneración CAS
 
-    /** SERVIR (Ley 30057 / RD0111-2021-EF) — base por subgrupo del servidor civil. */
+    /**
+     * SERVIR (Ley 30057 / RD0111-2021-EF) — base por grupo del servidor civil.
+     * Las claves son los valores que persiste el frontend en
+     * EMPLEADO_PLANILLA.GRUPO_SERVIDOR_CIVIL (ver GRUPOS_SERVIDOR_CIVIL en la UI).
+     */
     private static final Map<String, String> SERVIR_SUBGRUPO_BASE_MEF = Map.of(
-            "FUNCIONARIO_PUBLICO", "L001",
-            "DIRECTIVO_PUBLICO", "L002",
-            "SERVIDOR_CIVIL_CARRERA", "L003",
-            "ACT_COMPLEMENTARIAS", "L004");
-    /** Fallback operativo si el SERVIR no tiene subgrupo informado (no bloquea). */
+            "FUNCIONARIO", "L001",                  // Compensación del Funcionario Público
+            "DIRECTIVO", "L002",                    // Compensación del Directivo Público
+            "CARRERA", "L003",                      // Compensación del Servidor Civil de Carrera
+            "ACTIVIDADES_COMPLEMENTARIAS", "L004"); // Compensación de Actividades Complementarias
+    /** Fallback operativo si el SERVIR no tiene grupo informado (no bloquea — decisión RR.HH.). */
     private static final String MEF_BASE_SERVIR_FALLBACK = "L003";
 
     /**
@@ -142,7 +146,8 @@ public class GeneradorPlanillaService {
     private static final String REG_LABORAL_728    = "728";
     private static final String REG_LABORAL_CAS    = "CAS";    // INDECI_REGIMEN_LABORAL.CODIGO
     private static final String REG_LABORAL_CAS_1057 = "1057"; // Alias legacy usado en catálogos MEF/SUNAT
-    private static final String REG_LABORAL_SERVIR = "SERVIR";
+    private static final String REG_LABORAL_SERVIR = "SERVIR"; // Alias textual (catálogos MEF/SUNAT)
+    private static final String REG_LABORAL_SERVIR_30057 = "30057"; // INDECI_REGIMEN_LABORAL.CODIGO (Ley 30057)
 
     // Coincide con INDECI_REGIMEN_PENSIONARIO.TIPO (no CODIGO — ese trae la AFP).
     private static final String REG_PENS_ONP = "ONP";
@@ -222,9 +227,7 @@ public class GeneradorPlanillaService {
 
     /** V010_93/94 — Control anual del tope de suspensión IR4ta (pendiente B2). */
     private final Ir4taControlAnualService ir4taControlAnualService;
-
-    /** Mejora 2026-06-03 — subgrupo SERVIR para resolver la compensación base. */
-    private final TipoPersonalRepository tipoPersonalRepository;
+    private final QuintaCategoriaService quintaCategoriaService;
 
     /** FASE 2 — Snapshot de trazabilidad (solo añadido; no afecta el cálculo). */
     private final CalculoSnapshotService calculoSnapshotService;
@@ -620,7 +623,7 @@ public class GeneradorPlanillaService {
         sueldoBasico = prorratear(sueldoBasico, diasHaber);
 
         if (sueldoBasico.signum() > 0 && regimenCodigo != null) {
-            String baseMef = baseMefDeRegimen(regimenCodigo, empleado);
+            String baseMef = baseMefDeRegimen(regimenCodigo, planilla.getGrupoServidorCivil());
             if (baseMef != null) {
                 ConceptoPlanilla conceptoBase = conceptoPorMef(baseMef);
                 String desc = "Remuneración base (" + regimenCodigo + ")"
@@ -665,17 +668,19 @@ public class GeneradorPlanillaService {
      * (INDECI_TIPO_PERSONAL.CODIGO del empleado) con fallback L003. {@code null}
      * si el régimen no tiene concepto base definido.
      */
-    private String baseMefDeRegimen(String regimenCodigo, Empleado empleado) {
+    private String baseMefDeRegimen(String regimenCodigo, String grupoServidorCivil) {
         if (esRegimenCas(regimenCodigo)) return MEF_BASE_CAS;
         if (REG_LABORAL_728.equals(regimenCodigo)) return MEF_BASE_728;
         if ("276".equals(regimenCodigo)) return MEF_BASE_276;
-        if (REG_LABORAL_SERVIR.equals(regimenCodigo)) {
-            String subgrupo = (empleado != null && empleado.getPersona().getTipoPersonaId() != null)
-                    ? tipoPersonalRepository.findById(empleado.getPersona().getTipoPersonaId())
-                            .map(tp -> tp.getCodigo())
-                            .orElse(null)
-                    : null;
-            return SERVIR_SUBGRUPO_BASE_MEF.getOrDefault(subgrupo, MEF_BASE_SERVIR_FALLBACK);
+        if (esRegimenServir(regimenCodigo)) {
+            // F2 — el grupo del servidor civil vive en EMPLEADO_PLANILLA.GRUPO_SERVIDOR_CIVIL
+            // (dato que registra RR.HH.), NO en persona.tipo_persona_id. Se normaliza para
+            // tolerar espacios/caso. Sin grupo o grupo desconocido → fallback L003 (decisión
+            // RR.HH.). Guard adicional: SERVIR_SUBGRUPO_BASE_MEF es Map.of (rechaza null).
+            String grupo = grupoServidorCivil != null ? grupoServidorCivil.trim().toUpperCase() : null;
+            return grupo != null
+                    ? SERVIR_SUBGRUPO_BASE_MEF.getOrDefault(grupo, MEF_BASE_SERVIR_FALLBACK)
+                    : MEF_BASE_SERVIR_FALLBACK;
         }
         return null;
     }
@@ -911,6 +916,38 @@ public class GeneradorPlanillaService {
         return total;
     }
 
+    /**
+     * INTEGRACIÓN FINAL: Busca la planilla AGUINALDO del empleado en el periodo
+     * y copia sus detalles de ingreso al movimiento actual. Retorna la suma de los
+     * ingresos consolidados para sumarlos al totalIngresos.
+     */
+    public BigDecimal consolidarAguinaldo(Long empleadoId, String periodo, Long movimientoId) {
+        BigDecimal ingresosAguinaldo = BigDecimal.ZERO;
+        
+        MovimientoPlanilla movAguinaldo = movimientoRepository
+                .findAllByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                .stream()
+                .filter(m -> "AGUINALDO".equals(m.getTipoPlanilla()))
+                .findFirst()
+                .orElse(null);
+
+        if (movAguinaldo != null) {
+            List<MovimientoPlanillaDetalle> detalles = detalleRepository.findByMovimientoPlanillaId(movAguinaldo.getId());
+            for (MovimientoPlanillaDetalle det : detalles) {
+                if (det.getMonto() != null && det.getMonto() > 0 && det.getConceptoPlanillaId() != null) {
+                    ConceptoPlanilla concepto = conceptoRepository.findById(det.getConceptoPlanillaId()).orElse(null);
+                    if (concepto != null && !"DESCUENTO".equals(concepto.getTipo())) {
+                        grabarDetalle(movimientoId, concepto, 
+                                BigDecimal.valueOf(det.getMonto()), det.getObservacion() + " (Consolidado)");
+                        ingresosAguinaldo = ingresosAguinaldo.add(BigDecimal.valueOf(det.getMonto()));
+                    }
+                }
+            }
+        }
+        
+        return ingresosAguinaldo;
+    }
+
     // ======================================================================
     // PASO 8 — APORTE PENSIONARIO (ONP / AFP)
     // ======================================================================
@@ -1018,7 +1055,26 @@ public class GeneradorPlanillaService {
                     vig != null ? vig.getPrimaSeguroPct() : null,
                     () -> parametroService.obtenerValor("PRIMA_AFP", anioFiscal, null),
                     MAX_TASA_PRIMA_AFP);
-            if (tasaPrima.signum() > 0) {
+
+            // Validacion automatica de edad 65 años
+            boolean esMayor65 = false;
+            Empleado empleado = empleadoRepository.findById(movimiento.getEmpleadoId()).orElse(null);
+            if (empleado != null && empleado.getPersona() != null) {
+                java.util.Date fechaNac = empleado.getPersona().getFechaNacimiento();
+                if (fechaNac != null) {
+                    java.time.LocalDate fn = java.time.Instant.ofEpochMilli(fechaNac.getTime())
+                            .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                    int mes = mesDePeriodo(movimiento.getPeriodo());
+                    java.time.LocalDate finMes = java.time.LocalDate.of(anioFiscal, mes, 1).plusMonths(1).minusDays(1);
+                    int edad = java.time.Period.between(fn, finMes).getYears();
+                    if (edad >= 65) {
+                        esMayor65 = true;
+                        log.info("Exonerando Prima Seguro AFP automáticamente por edad >= 65. Empleado ID={}", empleado.getId());
+                    }
+                }
+            }
+
+            if (tasaPrima.signum() > 0 && !esMayor65) {
                 BigDecimal tope = (vig != null && vig.getRemuneracionMaximaAseg() != null)
                         ? vig.getRemuneracionMaximaAseg()
                         : parametroService.obtenerValor("TOPE_SEGURO_AFP", anioFiscal, null);
@@ -1078,45 +1134,39 @@ public class GeneradorPlanillaService {
 
         // LEY-03 — 5ta categoría aplica únicamente a 728 y SERVIR.
         String regimen = resolverRegimenLaboralCodigo(planilla.getRegimenLaboralId());
-        if (!REG_LABORAL_728.equals(regimen) && !REG_LABORAL_SERVIR.equals(regimen)) {
+        if (!REG_LABORAL_728.equals(regimen) && !esRegimenServir(regimen)) {
             return BigDecimal.ZERO;
         }
 
         int mes = mesDePeriodo(movimiento.getPeriodo());
 
-        // 1. Histórico del año: percibido + retención 5ta ya efectuada.
-        Historico5ta hist = acumularHistorico5ta(
-                movimiento.getEmpleadoId(), anioFiscal, mes, movimiento.getId());
+        // FASE 2 - Usar el servicio centralizado (QuintaCategoriaService)
+        com.indeci.rrhh.dto.CalculoRentaRequestDto req = new com.indeci.rrhh.dto.CalculoRentaRequestDto();
+        req.setEmpleadoId(movimiento.getEmpleadoId());
+        req.setAnioFiscal(anioFiscal);
+        req.setMes(mes);
+        req.setIngresosMesActual(baseRemuneracion);
 
-        // 2. Proyección de los meses restantes (incluye el mes actual).
-        BigDecimal mesesRestantes = baseRemuneracion.multiply(
-                BigDecimal.valueOf(12L - mes + 1L));
-
-        // 3. Aguinaldos/gratificaciones FUTURAS (parametrizado por régimen).
-        BigDecimal aguinaldos = proyectarAguinaldos5ta(
-                baseRemuneracion, mes, anioFiscal, planilla.getRegimenLaboralId());
-
-        BigDecimal brutaAnual = hist.percibido
-                .add(mesesRestantes)
-                .add(aguinaldos);
-
-        BigDecimal uit = parametroService.obtenerValor("UIT", anioFiscal, null);
-        Ir5taResultado r = calcularRetencion5taArt40(
-                brutaAnual, hist.retenido, mes, uit, anioFiscal);
+        com.indeci.rrhh.dto.CalculoRentaResponseDto resp = quintaCategoriaService.calcular(req);
+        BigDecimal retencionMes = resp.getRetencionCalculada() != null ? resp.getRetencionCalculada() : BigDecimal.ZERO;
 
         // 4. Línea trazable (solo si retiene) + snapshot IR5TA (siempre que aplica).
-        if (r.retencionMes.signum() > 0) {
-            grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_RETENCION_5TA), r.retencionMes,
-                    String.format("Retención IR 5ta (Art.40) | bruta=%s | neta=%s | impAnual=%s | "
-                            + "retenidoPrev=%s | divisor=%s | mes=%d",
-                            escala(brutaAnual), escala(r.rentaNeta), escala(r.impuestoAnual),
-                            escala(hist.retenido), r.divisor.toPlainString(), mes));
+        if (retencionMes.signum() > 0) {
+            grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_RETENCION_5TA), retencionMes,
+                    "Retención IR 5ta | obs: " + resp.getObservacion());
         }
-        registrarSnapshotIr5ta(movimiento.getEmpleadoId(), movimiento.getPeriodo(),
-                movimiento.getId(), anioFiscal, mes, uit, brutaAnual, mesesRestantes,
-                aguinaldos, hist, r);
+        
+        // Snapshot simplificado (para mantener la firma y trazabilidad)
+        BigDecimal uit = parametroService.obtenerValor("UIT", anioFiscal, null);
+        BigDecimal brutaAnual = baseRemuneracion.multiply(BigDecimal.valueOf(12L));
+        Historico5ta hist = new Historico5ta(BigDecimal.ZERO, BigDecimal.ZERO);
+        Ir5taResultado r = new Ir5taResultado(BigDecimal.ZERO, BigDecimal.ZERO, retencionMes, BigDecimal.ONE, retencionMes);
 
-        return r.retencionMes;
+        registrarSnapshotIr5ta(movimiento.getEmpleadoId(), movimiento.getPeriodo(),
+                movimiento.getId(), anioFiscal, mes, uit, brutaAnual, BigDecimal.ZERO,
+                BigDecimal.ZERO, hist, r);
+
+        return retencionMes;
     }
 
     /**
@@ -1793,8 +1843,11 @@ public class GeneradorPlanillaService {
      * {@code null} si no hay valor positivo.
      */
     static BigDecimal normalizarTasaEmpleado(Double explicita) {
-        if (explicita == null || explicita <= 0) {
+        if (explicita == null || explicita < 0) {
             return null;
+        }
+        if (explicita == 0) {
+            return BigDecimal.ZERO;
         }
         BigDecimal v = BigDecimal.valueOf(explicita);
         return v.compareTo(BigDecimal.ONE) > 0 ? v.divide(CIEN, 6, RoundingMode.HALF_UP) : v;
@@ -1815,7 +1868,7 @@ public class GeneradorPlanillaService {
             Double porcentajeEmpleado, BigDecimal oficialPct,
             java.util.function.Supplier<BigDecimal> fallback, BigDecimal maxFraccion) {
         BigDecimal emp = normalizarTasaEmpleado(porcentajeEmpleado);
-        if (emp != null && emp.signum() > 0 && emp.compareTo(maxFraccion) <= 0) {
+        if (emp != null && emp.compareTo(maxFraccion) <= 0) {
             return emp;
         }
         BigDecimal oficial = pctAFraccion(oficialPct);
@@ -2419,5 +2472,19 @@ public class GeneradorPlanillaService {
         }
         String codigo = regimenLaboralCodigo.trim().toUpperCase();
         return REG_LABORAL_CAS.equals(codigo) || REG_LABORAL_CAS_1057.equals(codigo);
+    }
+
+    /**
+     * true si el código corresponde al régimen SERVIR (Ley 30057). Acepta el
+     * código canónico de {@code INDECI_REGIMEN_LABORAL.CODIGO} ("30057") y el
+     * alias textual "SERVIR" usado en catálogos MEF/SUNAT. Mismo criterio que
+     * {@link #esRegimenCas} (que unifica "CAS" ≡ "1057").
+     */
+    public static boolean esRegimenServir(String regimenLaboralCodigo) {
+        if (regimenLaboralCodigo == null) {
+            return false;
+        }
+        String codigo = regimenLaboralCodigo.trim().toUpperCase();
+        return REG_LABORAL_SERVIR.equals(codigo) || REG_LABORAL_SERVIR_30057.equals(codigo);
     }
 }

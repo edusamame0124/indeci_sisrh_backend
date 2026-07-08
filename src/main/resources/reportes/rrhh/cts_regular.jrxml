@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio -->
+<jasperReport name="cts_regular" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="cts-regular-report-uuid">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
+	
+	<parameter name="EMPRESA_NOMBRE" class="java.lang.String"/>
+	<parameter name="EMPRESA_RUC" class="java.lang.String"/>
+	<parameter name="EMPRESA_DOMICILIO" class="java.lang.String"/>
+	<parameter name="REPRESENTANTE" class="java.lang.String"/>
+	<parameter name="EMPLEADO_NOMBRE" class="java.lang.String"/>
+	<parameter name="EMPLEADO_DNI" class="java.lang.String"/>
+	<parameter name="FECHA_DEPOSITO" class="java.lang.String"/>
+	<parameter name="NUMERO_CUENTA" class="java.lang.String"/>
+	<parameter name="ENTIDAD_BANCARIA" class="java.lang.String"/>
+	
+	<parameter name="PERIODO_DEL" class="java.lang.String"/>
+	<parameter name="PERIODO_AL" class="java.lang.String"/>
+	
+	<parameter name="SUELDO_BASICO" class="java.lang.String"/>
+	<parameter name="ASIGNACION_FAMILIAR" class="java.lang.String"/>
+	<parameter name="GRATIFICACION_ORDINARIA" class="java.lang.String"/>
+	<parameter name="PROMEDIO_HORAS_EXTRAS" class="java.lang.String"/>
+	<parameter name="PROMEDIO_COMISIONES" class="java.lang.String"/>
+	<parameter name="TOTAL_REMUNERACION" class="java.lang.String"/>
+	
+	<parameter name="DIAS_COMPUTABLES" class="java.lang.String"/>
+	<parameter name="TOTAL_A_PAGAR" class="java.lang.String"/>
+	<parameter name="FECHA_IMPRESION" class="java.lang.String"/>
+	
+	<detail>
+		<band height="700" splitType="Stretch">
+			<staticText>
+				<reportElement x="0" y="30" width="555" height="20" uuid="t1"/>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="12" isBold="true" isUnderline="true"/>
+				</textElement>
+				<text><![CDATA[LIQUIDACIÓN DE DEPÓSITO SEMESTRAL DE CTS]]></text>
+			</staticText>
+			
+			<textField textAdjust="StretchHeight">
+				<reportElement x="0" y="70" width="555" height="60" uuid="par1"/>
+				<textElement textAlignment="Justified">
+					<font size="10"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{EMPRESA_NOMBRE} + " con RUC Nº " + $P{EMPRESA_RUC} + ", domiciliado en " + $P{EMPRESA_DOMICILIO} + ", representado por Jefe de la Unidad de Recursos Humanos el Sr. " + $P{REPRESENTANTE} + ", en aplicación del artículo 248 del TUO del D.Leg. Nº 650, Ley de Compensación por Tiempo de Servicios aprobado mediante el D.S. Nº 001-97-TR, otorga a " + $P{EMPLEADO_NOMBRE} + " la presente constancia del depósito de su Compensación por Tiempo de Servicios realizado el " + $P{FECHA_DEPOSITO} + ", en la cuenta CTS Nº " + $P{NUMERO_CUENTA} + " en la institución financiera " + $P{ENTIDAD_BANCARIA} + " por los siguientes montos y periodos:"]]></textFieldExpression>
+			</textField>
+			
+			<staticText>
+				<reportElement x="0" y="140" width="200" height="15" uuid="t2"/>
+				<textElement><font isBold="true"/></textElement>
+				<text><![CDATA[1.- PERIODO COMPUTABLE :]]></text>
+			</staticText>
+			
+			<textField><reportElement x="100" y="160" width="100" height="15" uuid="pdel"/><textFieldExpression><![CDATA["DEL"]]></textFieldExpression></textField>
+			<textField><reportElement x="250" y="160" width="200" height="15" uuid="pdel_v"/><textFieldExpression><![CDATA[$P{PERIODO_DEL}]]></textFieldExpression></textField>
+			
+			<textField><reportElement x="100" y="180" width="100" height="15" uuid="pal"/><textFieldExpression><![CDATA["AL"]]></textFieldExpression></textField>
+			<textField><reportElement x="250" y="180" width="200" height="15" uuid="pal_v"/><textFieldExpression><![CDATA[$P{PERIODO_AL}]]></textFieldExpression></textField>
+			
+			<staticText>
+				<reportElement x="0" y="210" width="200" height="15" uuid="t3"/>
+				<textElement><font isBold="true"/></textElement>
+				<text><![CDATA[2.- REMUNERACIÓN COMPUTABLE]]></text>
+			</staticText>
+			
+			<textField><reportElement x="40" y="230" width="200" height="15" uuid="r1"/><textFieldExpression><![CDATA["Sueldo Básico"]]></textFieldExpression></textField>
+			<textField><reportElement x="350" y="230" width="100" height="15" uuid="r1_v"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{SUELDO_BASICO}]]></textFieldExpression></textField>
+			
+			<textField><reportElement x="40" y="245" width="200" height="15" uuid="r2"/><textFieldExpression><![CDATA["Asignación Familiar"]]></textFieldExpression></textField>
+			<textField><reportElement x="350" y="245" width="100" height="15" uuid="r2_v"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{ASIGNACION_FAMILIAR}]]></textFieldExpression></textField>
+			
+			<textField><reportElement x="40" y="260" width="200" height="15" uuid="r3"/><textFieldExpression><![CDATA["Gratificación Ordinaria"]]></textFieldExpression></textField>
+			<textField><reportElement x="350" y="260" width="100" height="15" uuid="r3_v"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{GRATIFICACION_ORDINARIA}]]></textFieldExpression></textField>
+			
+			<textField><reportElement x="40" y="275" width="200" height="15" uuid="r4"/><textFieldExpression><![CDATA["Promedio Horas extras"]]></textFieldExpression></textField>
+			<textField><reportElement x="350" y="275" width="100" height="15" uuid="r4_v"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{PROMEDIO_HORAS_EXTRAS}]]></textFieldExpression></textField>
+			
+			<textField><reportElement x="40" y="290" width="200" height="15" uuid="r5"/><textFieldExpression><![CDATA["Promedio de comisiones"]]></textFieldExpression></textField>
+			<textField><reportElement x="350" y="290" width="100" height="15" uuid="r5_v"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{PROMEDIO_COMISIONES}]]></textFieldExpression></textField>
+			
+			<!-- Recuadro para TOTAL REMUNERACIÓN -->
+			<rectangle>
+				<reportElement x="340" y="315" width="120" height="20" uuid="box1"/>
+				<graphicElement>
+					<pen lineWidth="1.5"/>
+				</graphicElement>
+			</rectangle>
+			<textField><reportElement x="100" y="317" width="230" height="15" uuid="tot1"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA["TOTAL REMUNERACIÓN COMPUTABLE: "]]></textFieldExpression></textField>
+			<textField><reportElement x="340" y="317" width="110" height="15" uuid="tot1_v"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{TOTAL_REMUNERACION}]]></textFieldExpression></textField>
+			
+			
+			<staticText>
+				<reportElement x="0" y="360" width="200" height="15" uuid="t4"/>
+				<textElement><font isBold="true"/></textElement>
+				<text><![CDATA[3.- CÁLCULO DEL DEPÓSITO:]]></text>
+			</staticText>
+			
+			<!-- Tabla de cálculo -->
+			<rectangle>
+				<reportElement x="100" y="380" width="360" height="40" uuid="tbox1"/>
+			</rectangle>
+			<line><reportElement x="100" y="400" width="360" height="1" uuid="tline1"/></line>
+			<line><reportElement x="240" y="380" width="1" height="40" uuid="tline2"/></line>
+			<line><reportElement x="360" y="380" width="1" height="40" uuid="tline3"/></line>
+			
+			<staticText>
+				<reportElement x="100" y="382" width="140" height="15" uuid="th1"/>
+				<textElement textAlignment="Center"><font isBold="true"/></textElement>
+				<text><![CDATA[REMUNERACIÓN]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="240" y="382" width="120" height="15" uuid="th2"/>
+				<textElement textAlignment="Center"><font isBold="true"/></textElement>
+				<text><![CDATA[N° DE DÍAS]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="360" y="382" width="100" height="15" uuid="th3"/>
+				<textElement textAlignment="Center"><font isBold="true"/></textElement>
+				<text><![CDATA[TOTAL A PAGAR]]></text>
+			</staticText>
+			
+			<textField><reportElement x="100" y="402" width="140" height="15" uuid="td1"/><textElement textAlignment="Center"/><textFieldExpression><![CDATA[$P{TOTAL_REMUNERACION}]]></textFieldExpression></textField>
+			<textField><reportElement x="240" y="402" width="120" height="15" uuid="td2"/><textElement textAlignment="Center"/><textFieldExpression><![CDATA[$P{DIAS_COMPUTABLES}]]></textFieldExpression></textField>
+			<textField><reportElement x="360" y="402" width="100" height="15" uuid="td3"/><textElement textAlignment="Center"/><textFieldExpression><![CDATA[$P{TOTAL_A_PAGAR}]]></textFieldExpression></textField>
+			
+			
+			<!-- Recuadro para TOTAL FINAL -->
+			<rectangle>
+				<reportElement x="340" y="430" width="120" height="20" uuid="box2"/>
+				<graphicElement>
+					<pen lineWidth="1.5"/>
+				</graphicElement>
+			</rectangle>
+			<textField><reportElement x="250" y="432" width="80" height="15" uuid="tot2"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA["TOTAL: "]]></textFieldExpression></textField>
+			<textField><reportElement x="340" y="432" width="110" height="15" uuid="tot2_v"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{TOTAL_A_PAGAR}]]></textFieldExpression></textField>
+			
+			
+			<textField><reportElement x="255" y="480" width="300" height="15" uuid="fdate"/><textElement textAlignment="Right"><font isItalic="true" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{FECHA_IMPRESION}]]></textFieldExpression></textField>
+			
+			<!-- Firmas -->
+			<line><reportElement x="50" y="550" width="150" height="1" uuid="fline1"/></line>
+			<staticText>
+				<reportElement x="50" y="555" width="150" height="15" uuid="fsig1"/>
+				<textElement textAlignment="Center"><font isBold="true"/></textElement>
+				<text><![CDATA[EMPLEADOR]]></text>
+			</staticText>
+			
+			<line><reportElement x="300" y="550" width="200" height="1" uuid="fline2"/></line>
+			<textField><reportElement x="300" y="555" width="200" height="15" uuid="fsig2"/><textElement textAlignment="Center"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{EMPLEADO_NOMBRE}]]></textFieldExpression></textField>
+			<textField><reportElement x="300" y="570" width="200" height="15" uuid="fsig3"/><textElement textAlignment="Center"/><textFieldExpression><![CDATA["DNI " + $P{EMPLEADO_DNI}]]></textFieldExpression></textField>
+			
+		</band>
+	</detail>
+</jasperReport>

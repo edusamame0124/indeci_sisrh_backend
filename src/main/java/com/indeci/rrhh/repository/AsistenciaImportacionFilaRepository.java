@@ -39,4 +39,20 @@ public interface AsistenciaImportacionFilaRepository
             @Param("estado") String estado,
             @Param("soloErrores") boolean soloErrores,
             Pageable pageable);
+
+    /**
+     * F2 (COEN) — Nombres del marcador que quedaron SIN MAPEAR en una importación
+     * (identidad no resuelta por alias), agrupados con la cantidad de días afectados.
+     * El validador marca esas filas con mensaje "SIN_MAPEO: ...".
+     * Columnas: [0]=nombreCsv [1]=cantidad de días.
+     */
+    @Query("""
+            SELECT f.nombreCsv, COUNT(f)
+              FROM AsistenciaImportacionFila f
+             WHERE f.importacionId = :importacionId
+               AND f.mensajeValidacion LIKE 'SIN_MAPEO%'
+             GROUP BY f.nombreCsv
+             ORDER BY f.nombreCsv
+            """)
+    List<Object[]> resumenSinMapeo(@Param("importacionId") Long importacionId);
 }

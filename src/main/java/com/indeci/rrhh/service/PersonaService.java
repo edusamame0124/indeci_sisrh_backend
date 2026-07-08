@@ -143,6 +143,7 @@ public class PersonaService {
         persona.setDistritoId(dto.getDistritoId());
         persona.setCreatedAt(LocalDateTime.now());
         persona.setSexoId(dto.getSexoId());
+        persona.setFechaNacimiento(dto.getFechaNacimiento());
         persona.setEstadoCivilId(dto.getEstadoCivilId());
         persona.setTipoDocumentoId(dto.getTipoDocumentoId());
         persona.setNacionalidad(dto.getNacionalidad());
@@ -250,6 +251,7 @@ public class PersonaService {
         persona.setDireccion(dto.getDireccion());
         persona.setDistritoId(dto.getDistritoId());
         persona.setSexoId(dto.getSexoId());
+        persona.setFechaNacimiento(dto.getFechaNacimiento());
         persona.setEstadoCivilId(dto.getEstadoCivilId());
         persona.setTipoDocumentoId(dto.getTipoDocumentoId());
         persona.setNacionalidad(dto.getNacionalidad());

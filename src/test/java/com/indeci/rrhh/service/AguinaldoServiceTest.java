@@ -27,6 +27,7 @@ import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoConcepto;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
+import com.indeci.rrhh.entity.PlanillaLote;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -72,6 +73,12 @@ class AguinaldoServiceTest {
                     return m;
                 });
         when(motor.conceptoPorCodigoMef(any())).thenReturn(new ConceptoPlanilla());
+        when(planillaLoteRepository.save(any(PlanillaLote.class)))
+                .thenAnswer(inv -> {
+                    PlanillaLote l = inv.getArgument(0);
+                    if (l.getId() == null) l.setId(500L);
+                    return l;
+                });
     }
 
     @Test

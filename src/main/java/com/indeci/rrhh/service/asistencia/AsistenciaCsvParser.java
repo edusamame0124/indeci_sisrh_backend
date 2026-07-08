@@ -2,8 +2,6 @@ package com.indeci.rrhh.service.asistencia;
 
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -32,7 +30,7 @@ public class AsistenciaCsvParser {
     }
 
     public ParseResult parse(byte[] bytes) {
-        String texto = decodificar(bytes);
+        String texto = MarcadorEncoding.decodificar(bytes);
         validarSeparador(texto);
         String[] lineas = texto.split("\\r?\\n");
         int headerIndex = detectarCabecera(lineas);
@@ -59,7 +57,7 @@ public class AsistenciaCsvParser {
         }
 
         ParseResult result = new ParseResult();
-        result.setEncoding(detectarEncoding(bytes));
+        result.setEncoding(MarcadorEncoding.detectarEncoding(bytes));
         result.setFilas(filas);
         return result;
     }
@@ -172,50 +170,6 @@ public class AsistenciaCsvParser {
 
     private String[] splitSemicolon(String linea) {
         return linea.split(";", -1);
-    }
-
-    private String decodificar(byte[] bytes) {
-        byte[] sinBom = quitarBomBytes(bytes);
-        String utf8 = stripBom(new String(sinBom, StandardCharsets.UTF_8));
-        if (!utf8.contains("\uFFFD")) {
-            return utf8;
-        }
-        String windows1252 = stripBom(new String(sinBom, Charset.forName("Windows-1252")));
-        if (!windows1252.contains("\uFFFD")) {
-            return windows1252;
-        }
-        return stripBom(new String(sinBom, Charset.forName("ISO-8859-1")));
-    }
-
-    private byte[] quitarBomBytes(byte[] bytes) {
-        if (bytes.length >= 3
-                && (bytes[0] & 0xFF) == 0xEF
-                && (bytes[1] & 0xFF) == 0xBB
-                && (bytes[2] & 0xFF) == 0xBF) {
-            byte[] trimmed = new byte[bytes.length - 3];
-            System.arraycopy(bytes, 3, trimmed, 0, trimmed.length);
-            return trimmed;
-        }
-        return bytes;
-    }
-
-    private String stripBom(String texto) {
-        if (texto != null && !texto.isEmpty() && texto.charAt(0) == '\uFEFF') {
-            return texto.substring(1);
-        }
-        return texto;
-    }
-
-    private String detectarEncoding(byte[] bytes) {
-        String utf8 = new String(bytes, StandardCharsets.UTF_8);
-        if (!utf8.contains("\uFFFD")) {
-            return "UTF-8";
-        }
-        String windows1252 = new String(bytes, Charset.forName("Windows-1252"));
-        if (!windows1252.contains("\uFFFD")) {
-            return "Windows-1252";
-        }
-        return "ISO-8859-1";
     }
 
     @lombok.Data

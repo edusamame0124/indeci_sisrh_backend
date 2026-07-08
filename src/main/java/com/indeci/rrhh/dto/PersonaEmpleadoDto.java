@@ -41,6 +41,8 @@ public class PersonaEmpleadoDto {
 
     private String fotoPerfil;
 
+    private java.util.Date fechaNacimiento;
+
     // =====================================
     // EMPLEADO
     // =====================================

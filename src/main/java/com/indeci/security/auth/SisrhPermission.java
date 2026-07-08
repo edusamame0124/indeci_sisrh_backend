@@ -29,6 +29,9 @@ public final class SisrhPermission {
     public static final String PLA_CTS_WRITE = "PLA_CTS_WRITE";
     public static final String PLA_CTS_APPROVE = "PLA_CTS_APPROVE";
 
+    public static final String PLA_LBS_READ = "PLA_LBS_READ";
+    public static final String PLA_LBS_WRITE = "PLA_LBS_WRITE";
+
     public static final String RPT_READ = "RPT_READ";
     public static final String RPT_WRITE = "RPT_WRITE";
 

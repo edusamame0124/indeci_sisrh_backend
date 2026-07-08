@@ -67,7 +67,6 @@ class GeneradorPlanillaServiceTest {
     @Mock private EmpleadoEventoRepository empleadoEventoRepository;
     @Mock private EventoDistribucionMesRepository eventoDistribucionMesRepository;
     @Mock private Suspension4taService suspension4taService;
-    @Mock private TipoPersonalRepository tipoPersonalRepository;
     @Mock private CalculoSnapshotService calculoSnapshotService;
     @Mock private SubsidioCalculadorService subsidioCalculadorService;
     @Mock private com.indeci.rrhh.service.subsidio.SubsidioPlanillaIntegracionService subsidioPlanillaIntegracionService;
@@ -77,6 +76,7 @@ class GeneradorPlanillaServiceTest {
     @Mock private EmpleadoRemuneracionHistRepository remuneracionHistRepository;
     @Mock private Ir4taConfigService ir4taConfigService;
     @Mock private Ir4taControlAnualService ir4taControlAnualService;
+    @Mock private QuintaCategoriaService quintaCategoriaService;
     @Mock private PlanillaLoteRepository planillaLoteRepository;
     @Mock private com.indeci.rrhh.service.strategy.CalculadorConceptoFactory calculadorConceptoFactory;
     @Mock private com.indeci.rrhh.service.support.MovimientoPlanillaSnapshotFactory snapshotFactory;
@@ -87,6 +87,7 @@ class GeneradorPlanillaServiceTest {
     private static final Long REG_276     = 1L;
     private static final Long REG_728     = 2L;
     private static final Long REG_CAS     = 3L;
+    private static final Long REG_SERVIR  = 4L; // INDECI_REGIMEN_LABORAL.CODIGO = "30057"
     private static final Long REG_PENS_ONP_ID = 10L;
     private static final Long REG_PENS_AFP_ID = 11L;
     private static final Long REG_PENS_PENSIONISTA_ID = 12L;
@@ -119,7 +120,7 @@ class GeneradorPlanillaServiceTest {
                 suspension4taService,
                 ir4taConfigService,
                 ir4taControlAnualService,
-                tipoPersonalRepository,
+                quintaCategoriaService,
                 calculoSnapshotService,
                 subsidioCalculadorService,
                 subsidioPlanillaIntegracionService,
@@ -164,6 +165,12 @@ class GeneradorPlanillaServiceTest {
         lenient().when(calculadorConceptoFactory.obtenerEstrategia(any(), any()))
                 .thenReturn(strategyHaberes);
 
+        // 5ta categoría centralizada (FASE 2 — QuintaCategoriaService). El motor
+        // delega el cálculo en este servicio; por defecto responde SIN retención.
+        // Los casos que sí retienen sobrescriben este stub con el monto esperado.
+        lenient().when(quintaCategoriaService.calcular(any()))
+                .thenReturn(respRenta(BigDecimal.ZERO));
+
         // No hay movimiento anterior
         when(movimientoRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
                 .thenReturn(Optional.empty());
@@ -191,6 +198,8 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.of(regimenLaboral("728")));
         when(regimenLaboralRepository.findById(REG_CAS))
                 .thenReturn(Optional.of(regimenLaboral("CAS")));
+        when(regimenLaboralRepository.findById(REG_SERVIR))
+                .thenReturn(Optional.of(regimenLaboral("30057")));
         when(regimenPensionarioRepository.findById(REG_PENS_ONP_ID))
                 .thenReturn(Optional.of(regimenPensionario("ONP")));
         when(regimenPensionarioRepository.findById(REG_PENS_AFP_ID))
@@ -278,6 +287,8 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.of(conceptoBaseRem(10501L, "00501", "Remuneración CAS")));
         when(conceptoRepository.findByCodigoMefAndActivo("00102", 1))
                 .thenReturn(Optional.of(conceptoBaseRem(10102L, "00102", "Monto Único Consolidado")));
+        when(conceptoRepository.findByCodigoMefAndActivo("L002", 1))
+                .thenReturn(Optional.of(conceptoBaseRem(10002L, "L002", "Compensación SERVIR (directivo)")));
         when(conceptoRepository.findByCodigoMefAndActivo("L003", 1))
                 .thenReturn(Optional.of(conceptoBaseRem(10003L, "L003", "Compensación SERVIR (carrera)")));
 
@@ -339,6 +350,7 @@ class GeneradorPlanillaServiceTest {
         mockSueldo(4000.0);
         // FASE 3 — histórico ene-abr (4 meses) para proyección anual Art. 40.
         mockHistorico5ta(4102.50, 4);
+        mockRetencion5ta(117.80); // 5ta vía servicio centralizado
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -367,6 +379,69 @@ class GeneradorPlanillaServiceTest {
         // descuentos = aporte 410.25 + comisión 65.64 + prima 71.38 + 5ta 117.80 = 665.07
         assertThat(cabecera.getTotalDescuentos()).isCloseTo(665.07, within(0.01));
         assertThat(cabecera.getNetoPagar()).isCloseTo(4102.50 - 665.07, within(0.01));
+    }
+
+    // ==================================================================
+    // REGRESIÓN F1 — Régimen SERVIR codificado como "30057" (no "SERVIR")
+    // ==================================================================
+    /**
+     * Bug real (Sara Quiroz, 2026-07): el código del régimen SERVIR en
+     * INDECI_REGIMEN_LABORAL es "30057", pero el motor comparaba contra el literal
+     * "SERVIR" → baseMefDeRegimen devolvía null → la remuneración base NO se grababa
+     * → Ingresos S/ 0.00. Tras el fix (esRegimenServir acepta "30057" y "SERVIR"),
+     * el motor graba el concepto base SERVIR (L003) por el monto del sueldo.
+     */
+    @Test
+    void caso_SERVIR_30057_graba_remuneracion_base() {
+        // Sin grupo informado → fallback L003 (decisión RR.HH.).
+        EmpleadoPlanilla planilla = planilla(18707.14, REG_SERVIR, /*asigFam=*/0);
+
+        MovimientoPlanilla mov = new MovimientoPlanilla();
+        mov.setId(100L);
+        mov.setEmpleadoId(EMPLEADO_ID);
+        mov.setPeriodo(PERIODO);
+
+        GeneradorPlanillaService.RemunerativosResult rem =
+                service.calcularRemunerativos(mov, planilla, /*empleado=*/null,
+                        2026, new BigDecimal("18707.14"));
+
+        // Antes del fix: totalRemunerativo == 0 y ningún detalle grabado.
+        assertThat(rem.totalRemunerativo).isEqualByComparingTo("18707.14");
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository).save(capt.capture());
+        // Concepto base SERVIR (L003 → id 10003L) grabado por el monto del sueldo.
+        assertThat(detallePorConcepto(capt, 10003L).getMonto())
+                .isCloseTo(18707.14, within(0.01));
+    }
+
+    /**
+     * F2 — El grupo del servidor civil sale de EMPLEADO_PLANILLA.GRUPO_SERVIDOR_CIVIL
+     * (no de persona.tipo_persona_id). DIRECTIVO → concepto base L002 (Directivo),
+     * no el fallback L003 (Carrera). Caso real: Sara Quiroz (DIRECTIVO).
+     */
+    @Test
+    void caso_SERVIR_DIRECTIVO_graba_base_L002() {
+        EmpleadoPlanilla planilla = planilla(18707.14, REG_SERVIR, /*asigFam=*/0);
+        planilla.setGrupoServidorCivil("DIRECTIVO");
+
+        MovimientoPlanilla mov = new MovimientoPlanilla();
+        mov.setId(100L);
+        mov.setEmpleadoId(EMPLEADO_ID);
+        mov.setPeriodo(PERIODO);
+
+        GeneradorPlanillaService.RemunerativosResult rem =
+                service.calcularRemunerativos(mov, planilla, /*empleado=*/null,
+                        2026, new BigDecimal("18707.14"));
+
+        assertThat(rem.totalRemunerativo).isEqualByComparingTo("18707.14");
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository).save(capt.capture());
+        // Concepto base DIRECTIVO (L002 → id 10002L), no L003.
+        assertThat(detallePorConcepto(capt, 10002L).getMonto())
+                .isCloseTo(18707.14, within(0.01));
     }
 
     // ==================================================================
@@ -517,6 +592,7 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.empty());
         mockSueldo(5000.0);
         mockHistorico5ta(5000.0, 4); // ene-abr percibido → proyección anual
+        mockRetencion5ta(225.50); // 5ta vía servicio centralizado
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -587,6 +663,7 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.empty());
         mockSueldo(15000.0);
         mockHistorico5ta(15000.0, 4); // ene-abr percibido → proyección anual
+        mockRetencion5ta(2427.31); // 5ta vía servicio centralizado
 
         service.generar(EMPLEADO_ID, PERIODO);
 
@@ -661,6 +738,7 @@ class GeneradorPlanillaServiceTest {
                 .thenReturn(Optional.empty());
         mockSueldo(5000.0);
         mockHistorico5ta(5000.0, 4);
+        mockRetencion5ta(369.00); // 5ta vía servicio centralizado
         when(parametroService.obtenerValorOpcional(eq("IR5TA_INCLUYE_AGUINALDO"), anyInt(), any()))
                 .thenReturn(Optional.of(BigDecimal.ONE));
         when(parametroService.obtenerValorOpcional(eq("IR5TA_AGUINALDO_FACTOR"), anyInt(), any()))
@@ -711,6 +789,22 @@ class GeneradorPlanillaServiceTest {
             previos.add(mv);
         }
         when(movimientoRepository.findByEmpleadoIdAndActivo(EMPLEADO_ID, 1)).thenReturn(previos);
+    }
+
+    /** Respuesta del servicio centralizado de 5ta con la retención indicada. */
+    private com.indeci.rrhh.dto.CalculoRentaResponseDto respRenta(BigDecimal retencion) {
+        com.indeci.rrhh.dto.CalculoRentaResponseDto resp =
+                new com.indeci.rrhh.dto.CalculoRentaResponseDto();
+        resp.setRetencionCalculada(retencion);
+        resp.setCategoria("QUINTA");
+        resp.setObservacion("stub-test");
+        return resp;
+    }
+
+    /** Stub del servicio de 5ta para que retenga {@code monto} en el mes. */
+    private void mockRetencion5ta(double monto) {
+        when(quintaCategoriaService.calcular(any()))
+                .thenReturn(respRenta(BigDecimal.valueOf(monto)));
     }
 
     // ==================================================================

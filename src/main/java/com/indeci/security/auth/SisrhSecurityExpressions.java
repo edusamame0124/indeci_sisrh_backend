@@ -29,6 +29,9 @@ public final class SisrhSecurityExpressions {
     public static final String PLA_CTS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_WRITE   + "')";
     public static final String PLA_CTS_APPROVE = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_APPROVE + "')";
 
+    public static final String PLA_LBS_READ    = SA + " or hasAuthority('" + SisrhPermission.PLA_LBS_READ    + "')";
+    public static final String PLA_LBS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_LBS_WRITE   + "')";
+
     public static final String RPT_READ    = SA + " or hasAuthority('" + SisrhPermission.RPT_READ    + "')";
     public static final String RPT_WRITE   = SA + " or hasAuthority('" + SisrhPermission.RPT_WRITE   + "')";
 

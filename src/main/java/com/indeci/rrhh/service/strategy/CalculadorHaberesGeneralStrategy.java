@@ -81,7 +81,11 @@ public class CalculadorHaberesGeneralStrategy implements CalculadorConceptoStrat
 
         // Nota Track B: el AGUINALDO se genera en un PROCESO APARTE (tipo de planilla
         // AGUINALDO), no dentro de la planilla regular. Reglas por régimen
-        // (SERVIR 100% / CAS % manual / 276 fijo) → ver AguinaldoService. Aquí no se graba.
+        // (SERVIR 100% / CAS % manual / 276 fijo) → ver AguinaldoService.
+        // INTEGRACIÓN FINAL: Consolidar el Aguinaldo en la Planilla Ordinaria.
+        BigDecimal ingresosAguinaldo = motor.consolidarAguinaldo(
+                contexto.getEmpleadoId(), contexto.getPeriodo(), contexto.getMovimiento().getId());
+        totalIngresos = totalIngresos.add(ingresosAguinaldo);
 
         BigDecimal descuentoAsistencia =
                 motor.calcularDescuentoAsistencia(contexto.getMovimiento(), contexto.getEmpleadoId(), contexto.getPeriodo());

@@ -265,7 +265,7 @@ public class AguinaldoService {
         if ("CAS".equals(r) || "1057".equals(r)) {
             return mes == 7 ? "0077" : "0025";
         }
-        if ("SERVIR".equals(r)) {
+        if ("SERVIR".equals(r) || "30057".equals(r)) {
             return "AGUISRVPV"; // provisional PENDIENTE_VALIDACION (código MEF por RR.HH.)
         }
         return null;

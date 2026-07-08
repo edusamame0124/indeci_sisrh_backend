@@ -1,9 +1,11 @@
 package com.indeci.rrhh.service.asistencia;
 
 import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.EmpleadoMarcadorAlias;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.PeriodoPlanilla;
 import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.EmpleadoMarcadorAliasRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
@@ -33,6 +35,7 @@ class AsistenciaCsvValidatorTest {
     @Mock private PersonaRepository personaRepository;
     @Mock private EmpleadoRepository empleadoRepository;
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock private EmpleadoMarcadorAliasRepository aliasRepository;
 
     @InjectMocks private AsistenciaCsvValidator validator;
 
@@ -368,6 +371,55 @@ class AsistenciaCsvValidatorTest {
         assertThat(fila1.getEstadoFila()).isNotEqualTo("ERROR");
         assertThat(fila2.getEstadoFila()).isEqualTo("ERROR");
         assertThat(fila2.getErrores()).anyMatch(m -> m.contains("duplicada"));
+    }
+
+    // ── Reloj 2 / COEN: identidad por alias (sin DNI) ──────────────────────────
+
+    @Test
+    void validaFilaCoen_aliasEncontrado_resuelveEmpleado() {
+        MarcadorCsvRow fila = filaCoen("AGUIRRE SAENZ, HUGO RAFAEL", LocalDate.of(2026, 5, 10));
+        String norm = NombreMarcadorNormalizer.normalizar("AGUIRRE SAENZ, HUGO RAFAEL");
+        EmpleadoMarcadorAlias alias = new EmpleadoMarcadorAlias();
+        alias.setEmpleadoId(42L);
+        when(aliasRepository.findFirstByNombreMarcadorNormAndActivo(norm, 1))
+                .thenReturn(Optional.of(alias));
+
+        validator.validarFilas(List.of(fila), periodo, FormatoMarcador.RELOJ2_COEN);
+
+        assertThat(fila.getEmpleadoId()).isEqualTo(42L);
+        assertThat(fila.getEstadoFila()).isEqualTo("VALIDA");
+    }
+
+    @Test
+    void validaFilaCoen_sinAlias_marcaErrorSinMapeo() {
+        MarcadorCsvRow fila = filaCoen("NUEVO TRABAJADOR, JUAN", LocalDate.of(2026, 5, 10));
+        // Sin stub: el repositorio devuelve Optional.empty() por defecto (no mapeado).
+
+        validator.validarFilas(List.of(fila), periodo, FormatoMarcador.RELOJ2_COEN);
+
+        assertThat(fila.getEstadoFila()).isEqualTo("ERROR");
+        assertThat(fila.getEmpleadoId()).isNull();
+        assertThat(fila.getErrores()).anyMatch(m -> m.contains("SIN_MAPEO"));
+    }
+
+    @Test
+    void validaFilaCoen_fechaFueraDePeriodo_marcaError() {
+        MarcadorCsvRow fila = filaCoen("AGUIRRE SAENZ, HUGO RAFAEL", LocalDate.of(2026, 6, 1));
+
+        validator.validarFilas(List.of(fila), periodo, FormatoMarcador.RELOJ2_COEN);
+
+        assertThat(fila.getEstadoFila()).isEqualTo("ERROR");
+        assertThat(fila.getErrores()).anyMatch(m -> m.contains("período"));
+    }
+
+    private MarcadorCsvRow filaCoen(String nombre, LocalDate fecha) {
+        MarcadorCsvRow fila = new MarcadorCsvRow();
+        fila.setDni("");                 // COEN no trae DNI
+        fila.setNombre(nombre);
+        fila.setFecha(fecha);
+        fila.setMarca1("08:00");
+        fila.setMarca2("17:00");
+        return fila;
     }
 
     private MarcadorCsvRow filaBase(String dni, LocalDate fecha) {

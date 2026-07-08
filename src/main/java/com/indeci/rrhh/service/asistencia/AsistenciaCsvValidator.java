@@ -1,9 +1,11 @@
 package com.indeci.rrhh.service.asistencia;
 
 import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.entity.EmpleadoMarcadorAlias;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.PeriodoPlanilla;
 import com.indeci.rrhh.entity.Persona;
+import com.indeci.rrhh.repository.EmpleadoMarcadorAliasRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.PersonaRepository;
@@ -13,8 +15,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -31,10 +35,23 @@ public class AsistenciaCsvValidator {
     private final PersonaRepository personaRepository;
     private final EmpleadoRepository empleadoRepository;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    private final EmpleadoMarcadorAliasRepository aliasRepository;
 
+    /** Compat: reportes con DNI (Reloj 1 diario). */
     public void validarFilas(List<MarcadorCsvRow> filas, PeriodoPlanilla periodo) {
+        validarFilas(filas, periodo, FormatoMarcador.RELOJ1_DIARIO);
+    }
+
+    public void validarFilas(
+            List<MarcadorCsvRow> filas, PeriodoPlanilla periodo, FormatoMarcador formato) {
+        // Un mismo empleado (DNI/nombre) se repite ~30 veces (un día por fila). El biométrico de un
+        // mes trae miles de filas pero solo cientos de trabajadores distintos. Sin caché, cada fila
+        // dispara ~4 consultas a Oracle (persona/alias + empleados + activos + vínculos) → decenas de
+        // miles de round-trips que sobre red lenta parecen "colgados". La caché por importación
+        // memoiza la resolución por DNI/persona/empleado/alias: mismas consultas, una sola vez cada una.
+        ResolucionCache cache = new ResolucionCache();
         for (MarcadorCsvRow fila : filas) {
-            validarFila(fila, periodo);
+            validarFila(fila, periodo, cache, formato);
         }
         marcarDuplicadosEnArchivo(filas);
     }
@@ -61,6 +78,65 @@ public class AsistenciaCsvValidator {
     }
 
     public void validarFila(MarcadorCsvRow fila, PeriodoPlanilla periodo) {
+        // Uso individual (tests / caso puntual): caché de un solo uso, mismas consultas.
+        validarFila(fila, periodo, new ResolucionCache(), FormatoMarcador.RELOJ1_DIARIO);
+    }
+
+    /**
+     * Enruta según el formato: COEN sin DNI usa el camino por alias (SPEC D1); el
+     * resto (Reloj 1 con DNI) usa la resolución clásica por DNI.
+     */
+    private void validarFila(
+            MarcadorCsvRow fila, PeriodoPlanilla periodo, ResolucionCache cache, FormatoMarcador formato) {
+        if (formato == FormatoMarcador.RELOJ2_COEN && esVacio(fila.getDni())) {
+            validarFilaCoen(fila, periodo, cache);
+            return;
+        }
+        validarFilaReloj1(fila, periodo, cache);
+    }
+
+    /**
+     * Reporte COEN ("Reloj 2"): no trae DNI. La identidad se resuelve por la tabla
+     * de alias (nombre normalizado → empleado). Sin alias → ERROR "SIN_MAPEO" (no
+     * procesa, no descuenta) hasta que se mapee o se registre en Empleados (M03).
+     */
+    private void validarFilaCoen(MarcadorCsvRow fila, PeriodoPlanilla periodo, ResolucionCache cache) {
+        if (fila.getFecha() == null) {
+            marcarError(fila, null, null,
+                    "Fecha inválida — use dd/MM/yyyy, d/M/yyyy o dd-MM-yyyy.");
+            return;
+        }
+        if (fila.getFecha().isBefore(periodo.getFechaInicio())
+                || fila.getFecha().isAfter(periodo.getFechaFin())) {
+            marcarError(fila, null, null, "La fecha no pertenece al período seleccionado.");
+            return;
+        }
+        String norm = NombreMarcadorNormalizer.normalizar(fila.getNombre());
+        if (norm.isEmpty()) {
+            marcarError(fila, null, null,
+                    "Marca sin nombre de trabajador; no se puede identificar.");
+            return;
+        }
+        Optional<EmpleadoMarcadorAlias> aliasOpt = cache.alias(norm);
+        if (aliasOpt.isEmpty()) {
+            marcarError(fila, null, null,
+                    "SIN_MAPEO: el nombre \"" + fila.getNombre() + "\" no está asociado a ningún "
+                            + "empleado. Mapéelo o regístrelo en Empleados (M03) antes de procesar.");
+            return;
+        }
+        Long empleadoId = aliasOpt.get().getEmpleadoId();
+        fila.setEmpleadoId(empleadoId);
+
+        if (!vinculoVigenteEnFecha(empleadoId, fila.getFecha(), cache)) {
+            marcarError(fila, null, empleadoId,
+                    "La fecha de asistencia está fuera del vínculo laboral vigente del empleado "
+                            + "(ingreso/cese). Verifique el contrato del periodo.");
+            return;
+        }
+        validarObservacionMarcador(fila);
+    }
+
+    private void validarFilaReloj1(MarcadorCsvRow fila, PeriodoPlanilla periodo, ResolucionCache cache) {
         if (fila.getDni() == null || fila.getDni().length() != 8) {
             marcarError(fila, null, null, "DNI inválido — debe tener 8 dígitos.");
             return;
@@ -76,7 +152,7 @@ public class AsistenciaCsvValidator {
             return;
         }
 
-        Optional<Persona> personaOpt = personaRepository.findByDniNormalizado(fila.getDni());
+        Optional<Persona> personaOpt = cache.persona(fila.getDni());
         if (personaOpt.isEmpty()) {
             marcarError(fila, null, null, "DNI no encontrado en INDECI_PERSONA.");
             return;
@@ -85,7 +161,7 @@ public class AsistenciaCsvValidator {
         Persona persona = personaOpt.get();
         fila.setNombreSistema(persona.getNombreCompleto());
 
-        ResolucionEmpleado resolucion = resolverEmpleado(persona, fila.getFecha());
+        ResolucionEmpleado resolucion = resolverEmpleado(persona, fila.getFecha(), cache);
         if (resolucion.tipo() == TipoResolucionEmpleado.SIN_EMPLEADO) {
             marcarError(fila, persona.getId(), null,
                     "DNI existe en persona, pero no tiene empleado asociado.");
@@ -104,7 +180,7 @@ public class AsistenciaCsvValidator {
         Empleado empleado = resolucion.empleado();
         fila.setEmpleadoId(empleado.getId());
 
-        if (!vinculoVigenteEnFecha(empleado.getId(), fila.getFecha())) {
+        if (!vinculoVigenteEnFecha(empleado.getId(), fila.getFecha(), cache)) {
             marcarError(fila, persona.getId(), empleado.getId(),
                     "La fecha de asistencia está fuera del vínculo laboral vigente del empleado "
                             + "(ingreso/cese). Verifique el contrato del periodo.");
@@ -120,14 +196,13 @@ public class AsistenciaCsvValidator {
      * F3 — Resuelve el empleado activo asociado a la persona.
      * Si hay varios ACTIVO, elige el único con vínculo planilla vigente en la fecha.
      */
-    private ResolucionEmpleado resolverEmpleado(Persona persona, LocalDate fecha) {
-        List<Empleado> todos = empleadoRepository.findAllByPersonaId(persona.getId());
+    private ResolucionEmpleado resolverEmpleado(Persona persona, LocalDate fecha, ResolucionCache cache) {
+        List<Empleado> todos = cache.empleados(persona.getId());
         if (todos.isEmpty()) {
             return ResolucionEmpleado.sinEmpleado();
         }
 
-        List<Empleado> activos =
-                empleadoRepository.findAllByPersonaIdAndEstado(persona.getId(), "ACTIVO");
+        List<Empleado> activos = cache.empleadosActivos(persona.getId());
         if (activos.isEmpty()) {
             return ResolucionEmpleado.inactivo();
         }
@@ -136,7 +211,7 @@ public class AsistenciaCsvValidator {
         }
 
         List<Empleado> vigentesEnFecha = activos.stream()
-                .filter(e -> vinculoVigenteEnFecha(e.getId(), fecha))
+                .filter(e -> vinculoVigenteEnFecha(e.getId(), fecha, cache))
                 .toList();
         if (vigentesEnFecha.size() == 1) {
             return ResolucionEmpleado.ok(vigentesEnFecha.get(0));
@@ -156,9 +231,8 @@ public class AsistenciaCsvValidator {
      * claramente fuera del rango. Si no hay registro de planilla o faltan fechas,
      * se acepta (no se puede determinar lo contrario) para no bloquear de más.
      */
-    private boolean vinculoVigenteEnFecha(Long empleadoId, LocalDate fecha) {
-        List<EmpleadoPlanilla> vinculos =
-                empleadoPlanillaRepository.findByEmpleadoIdAndActivo(empleadoId, 1);
+    private boolean vinculoVigenteEnFecha(Long empleadoId, LocalDate fecha, ResolucionCache cache) {
+        List<EmpleadoPlanilla> vinculos = cache.vinculosActivos(empleadoId);
         if (vinculos.isEmpty()) {
             return true;
         }
@@ -203,6 +277,10 @@ public class AsistenciaCsvValidator {
         logDiagnosticoFila(fila, personaId, empleadoId, fila.getNombreSistema());
     }
 
+    private static boolean esVacio(String s) {
+        return s == null || s.isBlank();
+    }
+
     private void logDiagnosticoFila(
             MarcadorCsvRow fila, Long personaId, Long empleadoId, String nombrePersona) {
         if (!LOG.isDebugEnabled()) {
@@ -224,6 +302,46 @@ public class AsistenciaCsvValidator {
                 fila.getFecha(),
                 fila.getEstadoFila(),
                 mensaje);
+    }
+
+    /**
+     * Caché por importación que memoiza la resolución de identidad (persona → empleados →
+     * vínculos) reutilizando exactamente los mismos métodos de repositorio. Cada clave
+     * (DNI, personaId, empleadoId) consulta a Oracle a lo sumo una vez, aunque el mismo
+     * empleado aparezca en decenas de filas del mes. No es thread-safe: vive dentro de una
+     * sola llamada a {@link #validarFilas} (misma transacción, un solo hilo).
+     */
+    private final class ResolucionCache {
+
+        private final Map<String, Optional<Persona>> personas = new HashMap<>();
+        private final Map<Long, List<Empleado>> empleadosPorPersona = new HashMap<>();
+        private final Map<Long, List<Empleado>> activosPorPersona = new HashMap<>();
+        private final Map<Long, List<EmpleadoPlanilla>> vinculosPorEmpleado = new HashMap<>();
+        private final Map<String, Optional<EmpleadoMarcadorAlias>> aliasPorNombre = new HashMap<>();
+
+        Optional<Persona> persona(String dni) {
+            return personas.computeIfAbsent(dni, personaRepository::findByDniNormalizado);
+        }
+
+        Optional<EmpleadoMarcadorAlias> alias(String nombreNorm) {
+            return aliasPorNombre.computeIfAbsent(
+                    nombreNorm, n -> aliasRepository.findFirstByNombreMarcadorNormAndActivo(n, 1));
+        }
+
+        List<Empleado> empleados(Long personaId) {
+            return empleadosPorPersona.computeIfAbsent(
+                    personaId, empleadoRepository::findAllByPersonaId);
+        }
+
+        List<Empleado> empleadosActivos(Long personaId) {
+            return activosPorPersona.computeIfAbsent(
+                    personaId, id -> empleadoRepository.findAllByPersonaIdAndEstado(id, "ACTIVO"));
+        }
+
+        List<EmpleadoPlanilla> vinculosActivos(Long empleadoId) {
+            return vinculosPorEmpleado.computeIfAbsent(
+                    empleadoId, id -> empleadoPlanillaRepository.findByEmpleadoIdAndActivo(id, 1));
+        }
     }
 
     private enum TipoResolucionEmpleado {

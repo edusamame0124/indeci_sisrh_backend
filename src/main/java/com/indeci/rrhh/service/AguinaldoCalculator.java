@@ -51,7 +51,7 @@ public final class AguinaldoCalculator {
         }
         String r = regimenCodigo.trim().toUpperCase();
 
-        if ("SERVIR".equals(r)) {
+        if ("SERVIR".equals(r) || "30057".equals(r)) {
             return escala(base); // 100% del sueldo
         }
         if ("CAS".equals(r) || "1057".equals(r)) {
