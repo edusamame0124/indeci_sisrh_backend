@@ -4,9 +4,11 @@ import com.indeci.rrhh.entity.AsistenciaImportacionFila;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AsistenciaImportacionFilaRepository
@@ -15,6 +17,18 @@ public interface AsistenciaImportacionFilaRepository
     List<AsistenciaImportacionFila> findByImportacionIdOrderByNumeroFila(Long importacionId);
 
     void deleteByImportacionId(Long importacionId);
+
+    /**
+     * Data Lifecycle — purga por antigüedad (P0 auditoría transitoria).
+     * IDs de filas con FECHA_IMPORTACION anterior al corte, acotados por lote
+     * (evita traer a memoria toda la tabla vencida de una sola vez).
+     */
+    @Query("SELECT f.id FROM AsistenciaImportacionFila f WHERE f.fechaImportacion < :corte ORDER BY f.id")
+    List<Long> buscarIdsAnterioresA(@Param("corte") LocalDateTime corte, Pageable pageable);
+
+    @Modifying
+    @Query("DELETE FROM AsistenciaImportacionFila f WHERE f.id IN :ids")
+    int eliminarPorIds(@Param("ids") List<Long> ids);
 
     /**
      * F2 — Detalle paginado server-side con filtros (req 11/12, P8).
