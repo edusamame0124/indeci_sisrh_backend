@@ -959,7 +959,13 @@ public class AsistenciaImportService {
             AsistenciaImportacionFila fila = new AsistenciaImportacionFila();
             fila.setImportacionId(importacionId);
             fila.setNumeroFila(row.getNumeroFila());
-            fila.setLineaOriginal(truncar(row.getLineaOriginal(), 4000));
+            // No persistir la línea cruda del CSV en filas VALIDA: evita duplicar
+            // hasta 4000 chars por fila en la mayoría de los casos (crecimiento
+            // desproporcionado del tablespace). Se conserva solo donde sirve para
+            // depurar (WARN/ERROR/OBSERVADA).
+            if (!"VALIDA".equals(row.getEstadoFila())) {
+                fila.setLineaOriginal(truncar(row.getLineaOriginal(), 4000));
+            }
             fila.setDni(row.getDni());
             fila.setNombreCsv(truncar(row.getNombre(), 150));
             fila.setNombreSistema(truncar(row.getNombreSistema(), 150));
