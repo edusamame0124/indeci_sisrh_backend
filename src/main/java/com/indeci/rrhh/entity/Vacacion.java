@@ -55,6 +55,37 @@ public class Vacacion {
 	        insertable = false,
 	        updatable = false)
 	private Empleado empleado;
+
+	@Column(name = "ANIO_PERIODO")
+	private Integer anioPeriodo;
+
+	@Column(name = "TIPO_GOCE")
+	private String tipoGoce;
+
+	@Column(name = "DIAS")
+	private Integer dias;
+
+	@Column(name = "ESTADO")
+	private String estado;
+
+	@Column(name = "ES_ADELANTO")
+	private Integer esAdelanto;
+
+	@Column(name = "DOCUMENTO_SUSTENTO")
+	private String documentoSustento;
+
+	@Column(name = "MOTIVO_EXCEPCION")
+	private String motivoExcepcion;
+
+	@Column(name = "FECHA_REINCORPORACION")
+	private LocalDate fechaReincorporacion;
+
+	@Column(name = "ORIGEN")
+	private String origen;
+
+	@Column(name = "SOLICITUD_RRHH_ID")
+	private Long solicitudRrhhId;
+	
 	
 	
 }

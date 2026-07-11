@@ -48,6 +48,10 @@ public class EmpleadoPlanilla {
     @Column(name = "FECHA_INICIO_CONTRATO")
     private LocalDate fechaInicioContrato;
 
+    /** SPEC_VACACIONES F9.1 — override de jornada por empleado (NULL=hereda del régimen). 6=operativo COEN/DDI. */
+    @Column(name = "DIAS_SEMANA_OPERATIVO")
+    private Integer diasSemanaOperativo;
+
     @Column(name = "FECHA_FIN")
     private LocalDate fechaFin;
 
@@ -136,6 +140,14 @@ public class EmpleadoPlanilla {
     
     @Column(name = "TIENE_AIRHSP")
     private Integer tieneAirhsp;
+
+    /**
+     * Gate de Modalidad de Teletrabajo (Ley N° 31572, V012_28): 1 = el servidor
+     * cuenta con resolución/adenda de teletrabajo activa en su legajo y puede
+     * generar reportes diarios de teletrabajo. Default 0.
+     */
+    @Column(name = "ES_TELETRABAJADOR")
+    private Integer esTeletrabajador;
 
     @Column(name = "AIRHSP_VIGENCIA_ID")
     private Long airhspVigenciaId;

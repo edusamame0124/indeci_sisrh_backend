@@ -108,6 +108,7 @@ public class AsistenciaImportService {
     @Transactional
     public AsistenciaImportPreviewDto preview(String periodo, MultipartFile archivo) {
         validarPeriodo(periodo);
+        descartarBorradoresPrevios(periodo);
         byte[] bytes = leerBytes(archivo);
         String hash = sha256(bytes);
         // Detecta el formato (Reloj 1 diario vs Reloj 2 / COEN) y elige el lector.
@@ -152,6 +153,36 @@ public class AsistenciaImportService {
         preview.setImportacionId(importacion.getId());
         preview.setMensaje("El archivo fue leído correctamente. Revise las observaciones antes de confirmar.");
         return preview;
+    }
+
+    /**
+     * P0 fix — a lo sumo un borrador (BORRADOR_PREVIEW) sin confirmar por periodo.
+     * Sin esto, cada preview() sucesivo del mismo periodo (p. ej. el mapeo iterativo
+     * de alias COEN, que regenera el preview por cada nombre resuelto) deja el intento
+     * anterior como fila huerfana: 1000+ filas de INDECI_ASISTENCIA_IMPORTACION_FILA
+     * por cada reintento, sin que nadie las use. El borrador nunca tiene una
+     * INDECI_ASISTENCIA_CABECERA asociada (esa FK solo se setea en confirmar()),
+     * así que descartarlo por completo aquí es seguro.
+     */
+    private void descartarBorradoresPrevios(String periodo) {
+        List<AsistenciaImportacion> previos =
+                importacionRepository.findByPeriodoAndEstado(periodo, ESTADO_PREVIEW);
+        for (AsistenciaImportacion previo : previos) {
+            filaRepository.deleteByImportacionId(previo.getId());
+            eliminarArchivoSiExiste(previo.getRutaArchivo());
+            importacionRepository.delete(previo);
+        }
+    }
+
+    private void eliminarArchivoSiExiste(String ruta) {
+        if (ruta == null || ruta.isBlank()) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(Path.of(ruta));
+        } catch (IOException ex) {
+            log.warn("No se pudo eliminar el archivo de un borrador de importacion previo: {}", ruta, ex);
+        }
     }
 
     private void inicializarContadoresPreview(AsistenciaImportacion importacion, int filasTotal) {
@@ -1051,9 +1082,14 @@ public class AsistenciaImportService {
             // F3 — un solo calendario para todo el período (feriados/descansos).
             PeriodoPlanilla periodoPlan = obtenerPeriodo(importacion.getPeriodo());
             CalendarioLaboralService.Calendario calendario = calendarioDe(periodoPlan);
+            
+            java.util.Set<Long> conConflicto = cabeceraRepository.findEmpleadosIdsConCabeceraActiva(
+                    porEmpleado.keySet(), importacion.getPeriodo(), 1);
+
             for (Map.Entry<Long, List<MarcadorCsvRow>> entry : porEmpleado.entrySet()) {
+                boolean tieneConflicto = conConflicto.contains(entry.getKey());
                 preview.getEmpleados().add(construirResumenEmpleado(
-                        periodoPlan, calendario, entry.getKey(), entry.getValue()));
+                        periodoPlan, calendario, entry.getKey(), entry.getValue(), tieneConflicto));
             }
         }
         return preview;
@@ -1069,7 +1105,8 @@ public class AsistenciaImportService {
             PeriodoPlanilla periodoPlan,
             CalendarioLaboralService.Calendario calendario,
             Long empleadoId,
-            List<MarcadorCsvRow> filas) {
+            List<MarcadorCsvRow> filas,
+            boolean conflictoExistente) {
 
         String periodo = periodoPlan.getPeriodo();
         AsistenciaImportEmpleadoResumenDto resumen = new AsistenciaImportEmpleadoResumenDto();
@@ -1078,8 +1115,7 @@ public class AsistenciaImportService {
         resumen.setDni(filas.get(0).getDni());
         resumen.setNombreMarcador(filas.get(0).getNombre());
         resumen.setNombreSistema(filas.get(0).getNombreSistema());
-        resumen.setConflictoExistente(
-                cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1).isPresent());
+        resumen.setConflictoExistente(conflictoExistente);
 
         List<AsistenciaDiaDto> dias = filas.stream()
                 .sorted(Comparator.comparing(MarcadorCsvRow::getFecha))

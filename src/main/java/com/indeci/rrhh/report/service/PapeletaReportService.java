@@ -112,6 +112,8 @@ private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
 private final TipoDescansoDocRepository tipoDescansoDocRepository;
 
 private final TipoLicenciaRepository tipoLicenciaRepository;
+// SPEC_VACACIONES F9.1-bis — nombre del documento de sustento adjunto (papeleta sin goce).
+private final com.indeci.rrhh.repository.SolicitudRrhhDocRepository solicitudRrhhDocReportRepository;
 
 private final TipoVacacionRepository tipoVacacionRepository;
 
@@ -513,10 +515,24 @@ public String generarPdf(
 
         System.out.println("ANTES DE CARGAR JASPER");
         
-        JasperReport jasperReport =
-                (JasperReport)
-                JRLoader.loadObject(
-                        jasperStream);
+        // SPEC_VACACIONES F9.1-bis — licencia sin goce usa una plantilla propia (firma digital).
+        boolean esLicenciaSinGoce =
+                solicitud.getTipoLicenciaId() != null
+                && tipoLicenciaRepository.findById(solicitud.getTipoLicenciaId())
+                        .map(t -> Integer.valueOf(1).equals(t.getEsSinGoce()))
+                        .orElse(false);
+
+        JasperReport jasperReport;
+        if (esLicenciaSinGoce) {
+            InputStream jrxml = getClass().getResourceAsStream(
+                    "/reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
+            if (jrxml == null) {
+                throw new RuntimeException("No existe /reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
+            }
+            jasperReport = JasperCompileManager.compileReport(jrxml);
+        } else {
+            jasperReport = (JasperReport) JRLoader.loadObject(jasperStream);
+        }
 
         System.out.println("DESPUES DE CARGAR JASPER");
 
@@ -527,6 +543,13 @@ public String generarPdf(
      
         Map<String, Object> params =
                 new HashMap<>();
+
+        // SPEC_VACACIONES F9.1-bis — insumos de la plantilla de licencia sin goce.
+        if (esLicenciaSinGoce) {
+            params.put("P_HEADER",
+                    getClass().getResourceAsStream("/reportes/img/header_formato.jpg"));
+            params.put("P_CODIGO_FIRMA", "SOL-" + solicitud.getId());
+        }
 
         params.put(
                 "P_LOGO_PERU",
@@ -984,9 +1007,10 @@ private Double calcularDias(
                                 new NegocioException(
                                         "Tipo licencia no encontrado"));
 
+        // SPEC_VACACIONES F9.1-bis — mostrar el NOMBRE legible (no el código LIC_SIN_PAR).
         params.put(
                 "P_TIPO_LICENCIA",
-                licencia.getCodigo());
+                licencia.getNombre());
 
         params.put(
                 "P_MOTIVO",
@@ -1002,7 +1026,27 @@ private Double calcularDias(
                 "P_FECHA_FIN",
                 formatearFecha(
                         solicitud.getFechaFin()));
-        
+
+        // SPEC_VACACIONES F9.1-bis — Total de días (fallback: calcular desde las fechas).
+        long diasLic = 0L;
+        if (solicitud.getCantidadDias() != null) {
+            diasLic = solicitud.getCantidadDias().longValue();
+        } else if (solicitud.getFechaInicio() != null && solicitud.getFechaFin() != null) {
+            diasLic = java.time.temporal.ChronoUnit.DAYS.between(
+                    solicitud.getFechaInicio(), solicitud.getFechaFin()) + 1;
+        }
+        params.put("P_DIAS", String.valueOf(diasLic));
+
+        // SPEC_VACACIONES F9.1-bis — nombre del documento de sustento adjunto.
+        String adjunto = solicitudRrhhDocReportRepository
+                .findBySolicitudIdAndActivoOrderByVersionDocAsc(solicitud.getId(), 1)
+                .stream()
+                .filter(d -> "SUSTENTO".equals(d.getEtapa()))
+                .map(com.indeci.rrhh.entity.SolicitudRrhhDoc::getNombreArchivo)
+                .findFirst()
+                .orElse("—");
+        params.put("P_ADJUNTO", adjunto);
+
         params.put(
                 "P_DOCUMENTO_1",
                 valor(

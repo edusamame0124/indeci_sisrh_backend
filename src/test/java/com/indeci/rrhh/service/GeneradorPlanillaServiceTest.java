@@ -1565,6 +1565,81 @@ class GeneradorPlanillaServiceTest {
     }
 
     // ======================================================================
+    // SPEC_VACACIONES F9.1 (LSG) — Licencia SIN GOCE descuenta el haber
+    //
+    // E2E del motor (generar completo): una papeleta de licencia sin goce
+    // materializada como EMPLEADO_EVENTO (afectaDiasLaborados='S', 3 días) debe
+    // (a) reducir los días laborados persistidos a 27 y (b) prorratear el haber
+    // exactamente 27/30. Antes del fix el haber pagaba el mes completo (bug).
+    // ======================================================================
+    @Test
+    void lsg_tres_dias_prorratea_haber_27_de_30_y_persiste_dias_laborados() {
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, /*asigFam=*/0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+        // Asistencia validada sin faltas (para que el conteo de días sea limpio).
+        // Licencia sin goce de 3 días como evento del período.
+        when(empleadoEventoRepository.findVigentesParaMotor(eq(EMPLEADO_ID), eq(PERIODO), any(), any()))
+                .thenReturn(List.of(eventoLicenciaSinGoce(3)));
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        // detalles: base(10102) + ONP(501) + ESSALUD(601) = 3
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, times(3)).save(capt.capture());
+
+        // (b) Haber base prorrateado: 3000 × 27/30 = 2700.00 (descuento exacto de 3 días).
+        assertThat(detallePorConcepto(capt, 10102L).getMonto())
+                .isCloseTo(2700.00, within(0.01));
+        // ONP sobre el haber ya prorrateado: 2700 × 0.13 = 351.00.
+        assertThat(detallePorConcepto(capt, 501L).getMonto())
+                .isCloseTo(351.00, within(0.01));
+
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getTotalIngresos()).isCloseTo(2700.00, within(0.01));
+        assertThat(cabecera.getTotalDescuentos()).isCloseTo(351.00, within(0.01));
+        assertThat(cabecera.getNetoPagar()).isCloseTo(2349.00, within(0.01));
+        // (a) Días laborados persistidos = 30 − 3 LSG = 27.
+        assertThat(cabecera.getDiasLaborados()).isEqualTo(27);
+    }
+
+    /** Mes completo (sin LSG) sigue pagando 30/30 — cero regresión. */
+    @Test
+    void sin_lsg_paga_mes_completo_30_de_30() {
+        when(planillaRepository.findVinculosVigentesEnPeriodo(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(List.of(planilla(3000.0, REG_276, 0)));
+        when(empleadoPensionRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.of(pension(REG_PENS_ONP_ID, null, null, null)));
+        mockSueldo(3000.0);
+        // Sin eventos: findVigentesParaMotor devuelve lista vacía por defecto.
+
+        service.generar(EMPLEADO_ID, PERIODO);
+
+        ArgumentCaptor<MovimientoPlanillaDetalle> capt =
+                ArgumentCaptor.forClass(MovimientoPlanillaDetalle.class);
+        verify(detalleRepository, times(3)).save(capt.capture());
+        assertThat(detallePorConcepto(capt, 10102L).getMonto())
+                .isCloseTo(3000.00, within(0.01));
+
+        MovimientoPlanilla cabecera = capturarCabeceraFinal();
+        assertThat(cabecera.getTotalIngresos()).isCloseTo(3000.00, within(0.01));
+        assertThat(cabecera.getDiasLaborados()).isEqualTo(30);
+    }
+
+    /** Evento de licencia sin goce del período con {@code diasAfectos} días. */
+    private EmpleadoEvento eventoLicenciaSinGoce(int dias) {
+        EmpleadoEvento e = new EmpleadoEvento();
+        e.setId(5001L);
+        e.setEmpleadoId(EMPLEADO_ID);
+        e.setActivo(1);
+        e.setDiasAfectos(dias);
+        return e;
+    }
+
+    // ======================================================================
     // F1.3 — Tests del prorrateo por días laborados (helpers nuevos).
     //
     // Estos tests no ejercen el flujo completo de generar(); validan los

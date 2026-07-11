@@ -55,7 +55,11 @@ public class SolicitudRrhhDto {
 	
 	private List<SolicitudCompensacionDetDto>
     detallesCompensacion;
-	
+
+	// Papeleta de Teletrabajo (Ley N° 31572): actividades del día.
+	private List<SolicitudTeletrabajoDetDto>
+    detallesTeletrabajo;
+
 	private Double cantidadHoras;
 	//*****************************************
 	private List<DocumentoAdjuntoDto>

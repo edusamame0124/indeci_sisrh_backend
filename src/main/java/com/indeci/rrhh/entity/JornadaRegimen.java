@@ -56,6 +56,10 @@ public class JornadaRegimen {
     @Column(name = "JORNADA_HORAS", nullable = false)
     private BigDecimal jornadaHoras = BigDecimal.valueOf(8);
 
+    /** SPEC_VACACIONES F9.1 — días/semana del régimen para el récord vacacional (5=210 / 6=260). */
+    @Column(name = "DIAS_SEMANA")
+    private Integer diasSemana = 5;
+
     @Column(name = "ACTIVO", nullable = false)
     private Integer activo = 1;
 

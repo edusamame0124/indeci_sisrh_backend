@@ -18,6 +18,24 @@ public interface AsistenciaDetalleRepository
     void deleteByCabeceraId(Long cabeceraId);
 
     /**
+     * SPEC_VACACIONES F9.1 — cuenta faltas (TIPO_DIA IN ('FALTA','SANCION_PAD')) del
+     * empleado en [desde, hasta]. Base de las inasistencias no computables al récord
+     * vacacional. SANCION_PAD (sanción por PAD) se equipara a FALTA para este cómputo.
+     */
+    @Query("""
+            SELECT COUNT(det)
+              FROM AsistenciaDetalle det, AsistenciaCabecera cab
+             WHERE det.cabeceraId = cab.id
+               AND cab.empleadoId = :empleadoId
+               AND det.tipoDia    IN ('FALTA', 'SANCION_PAD')
+               AND det.dia BETWEEN :desde AND :hasta
+            """)
+    long contarFaltas(
+            @Param("empleadoId") Long empleadoId,
+            @Param("desde") LocalDate desde,
+            @Param("hasta") LocalDate hasta);
+
+    /**
      * Consulta diaria paginada: detalle del día + cabecera activa + persona.
      * Retorna Object[] con columnas en orden fijo (ver AsistenciaService#mapearDiariaRow).
      */

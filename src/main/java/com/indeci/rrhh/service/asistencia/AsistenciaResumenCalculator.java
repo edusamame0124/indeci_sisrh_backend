@@ -29,7 +29,7 @@ public final class AsistenciaResumenCalculator {
             if (tipo != null && TIPOS_LABORADOS.contains(tipo)) {
                 diasLaborados++;
             }
-            if ("FALTA".equals(tipo) || esObservadoNoAutorizado(d)) {
+            if ("FALTA".equals(tipo) || "SANCION_PAD".equals(tipo) || esObservadoNoAutorizado(d)) {
                 diasFalta++;
             }
             if ("TARDANZA".equals(tipo) && d.getMinutosTardanza() != null) {

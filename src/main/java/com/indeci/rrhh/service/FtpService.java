@@ -266,6 +266,9 @@ public class FtpService {
 
         ftp.enterLocalPassiveMode();
         ftp.setFileType(FTP.BINARY_FILE_TYPE);
+        // Buffer amplio → transferencia más rápida (papeletas/sustentos). El costo dominante
+        // sigue siendo el handshake de conexión por descarga (ver nota de arquitectura).
+        ftp.setBufferSize(1024 * 1024);
         return ftp;
     }
 

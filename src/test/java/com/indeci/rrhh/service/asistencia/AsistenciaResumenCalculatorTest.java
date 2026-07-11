@@ -47,4 +47,45 @@ class AsistenciaResumenCalculatorTest {
 
         assertThat(resumen.getDiasFalta()).isZero();
     }
+
+    @Test
+    void sancion_pad_cuenta_como_falta_y_descuenta_igual() {
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setTipoDia("SANCION_PAD");
+        dia.setObservacion("Expediente PAD N° 045-2026 — Res. de sanción");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(dia), 3000.0);
+
+        assertThat(resumen.getDiasFalta()).isEqualTo(1);
+        assertThat(resumen.getDescuentoFalta()).isEqualTo(100.0);
+    }
+
+    @Test
+    void mezcla_falta_y_sancion_pad_suma_ambas_al_descuento() {
+        AsistenciaDiaDto falta = new AsistenciaDiaDto();
+        falta.setTipoDia("FALTA");
+
+        AsistenciaDiaDto sancionPad = new AsistenciaDiaDto();
+        sancionPad.setTipoDia("SANCION_PAD");
+        sancionPad.setObservacion("Expediente PAD N° 045-2026");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(falta, sancionPad), 3000.0);
+
+        assertThat(resumen.getDiasFalta()).isEqualTo(2);
+        assertThat(resumen.getDescuentoFalta()).isEqualTo(200.0);
+    }
+
+    @Test
+    void mes_sin_incidencias_no_genera_descuento_por_sancion_pad() {
+        AsistenciaDiaDto laboral = new AsistenciaDiaDto();
+        laboral.setTipoDia("LABORAL");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(laboral), 3000.0);
+
+        assertThat(resumen.getDiasFalta()).isZero();
+        assertThat(resumen.getDescuentoFalta()).isZero();
+    }
 }

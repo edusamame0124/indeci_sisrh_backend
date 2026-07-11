@@ -100,11 +100,15 @@ public class EmpleadoPlanillaService {
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
         entity.setModalidadCasId(dto.getModalidadCasId());
+        // Gate de Teletrabajo (Ley N° 31572, V012_28): default 0 si no viene.
+        entity.setEsTeletrabajador(
+                Integer.valueOf(1).equals(dto.getEsTeletrabajador()) ? 1 : 0);
         entity.setGrupoServidorCivil(dto.getGrupoServidorCivil());
         entity.setEsConfianza(dto.getEsConfianza());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
         entity.setFechaInicioContrato(dto.getFechaInicioContrato());
+        entity.setDiasSemanaOperativo(dto.getDiasSemanaOperativo());
         aplicarFechasYCese(entity, dto);
         entity.setActivo(1);
         entity.setFechaInicio(LocalDate.now());
@@ -139,11 +143,13 @@ public class EmpleadoPlanillaService {
                     dto.setTipoContratoId(e.getTipoContratoId());
                     dto.setCondicionLaboralId(e.getCondicionLaboralId());
                     dto.setModalidadCasId(e.getModalidadCasId());
+                    dto.setEsTeletrabajador(e.getEsTeletrabajador());
                     dto.setGrupoServidorCivil(e.getGrupoServidorCivil());
                     dto.setEsConfianza(e.getEsConfianza());
                     dto.setTipoPersonaMefId(e.getTipoPersonaMefId());
                     dto.setRegistroPlazaAirhsp(e.getRegistroPlazaAirhsp());
                     dto.setFechaInicioContrato(e.getFechaInicioContrato());
+                    dto.setDiasSemanaOperativo(e.getDiasSemanaOperativo());
                     dto.setFechaFin(e.getFechaFin());
                     dto.setFechaCese(e.getFechaCese());
                     dto.setMotivoCese(e.getMotivoCese());
@@ -257,11 +263,15 @@ public class EmpleadoPlanillaService {
         entity.setTipoContratoId(dto.getTipoContratoId());
         entity.setCondicionLaboralId(dto.getCondicionLaboralId());
         entity.setModalidadCasId(dto.getModalidadCasId());
+        // Gate de Teletrabajo (Ley N° 31572, V012_28): default 0 si no viene.
+        entity.setEsTeletrabajador(
+                Integer.valueOf(1).equals(dto.getEsTeletrabajador()) ? 1 : 0);
         entity.setGrupoServidorCivil(dto.getGrupoServidorCivil());
         entity.setEsConfianza(dto.getEsConfianza());
         entity.setTipoPersonaMefId(dto.getTipoPersonaMefId());
         entity.setRegistroPlazaAirhsp(dto.getRegistroPlazaAirhsp());
         entity.setFechaInicioContrato(dto.getFechaInicioContrato());
+        entity.setDiasSemanaOperativo(dto.getDiasSemanaOperativo());
         aplicarFechasYCese(entity, dto);
 
         repository.save(entity);

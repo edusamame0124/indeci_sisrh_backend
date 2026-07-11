@@ -32,6 +32,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -204,6 +207,86 @@ class AsistenciaImportServicePreviewTest {
         assertThat(result.getErrores().get(1).getSeveridad()).isEqualTo("WARN");
         assertThat(result.getErrores().get(2).getSeveridad()).isEqualTo("OBSERVADA");
         assertThat(result.getErrores().get(3).getSeveridad()).isEqualTo("ERROR");
+    }
+
+    @Test
+    void previewDescartaBorradorAnteriorDelMismoPeriodo() throws Exception {
+        PeriodoPlanilla periodo = new PeriodoPlanilla();
+        periodo.setPeriodo("2026-06");
+        periodo.setFechaInicio(LocalDate.of(2026, 6, 1));
+        periodo.setFechaFin(LocalDate.of(2026, 6, 30));
+
+        MarcadorCsvRow row = fila(2, "VALIDA");
+        AsistenciaCsvParser.ParseResult parseResult = new AsistenciaCsvParser.ParseResult();
+        parseResult.setEncoding("UTF-8");
+        parseResult.setFilas(List.of(row));
+
+        AsistenciaImportacion borradorPrevio = new AsistenciaImportacion();
+        borradorPrevio.setId(77L);
+        borradorPrevio.setPeriodo("2026-06");
+        borradorPrevio.setEstado("BORRADOR_PREVIEW");
+        borradorPrevio.setRutaArchivo(null);
+
+        when(importacionRepository.findByPeriodoAndEstado("2026-06", "BORRADOR_PREVIEW"))
+                .thenReturn(List.of(borradorPrevio));
+        when(periodoRepository.findByPeriodoAndActivo("2026-06", 1))
+                .thenReturn(Optional.of(periodo));
+        when(lectorRouter.leer(any())).thenReturn(
+                new AsistenciaLectorRouter.ResultadoLectura(FormatoMarcador.RELOJ1_DIARIO, parseResult));
+        when(importacionRepository.save(any(AsistenciaImportacion.class))).thenAnswer(invocation -> {
+            AsistenciaImportacion importacion = invocation.getArgument(0);
+            importacion.setId(200L);
+            return importacion;
+        });
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        MockMultipartFile archivo = new MockMultipartFile(
+                "archivo",
+                "asistencia.csv",
+                "text/csv",
+                "DNI;FECHA;MARCA1;MARCA2\n12345678;01/06/2026;08:00;17:00".getBytes());
+
+        service.preview("2026-06", archivo);
+
+        verify(filaRepository, times(1)).deleteByImportacionId(77L);
+        verify(importacionRepository, times(1)).delete(borradorPrevio);
+    }
+
+    @Test
+    void previewSinBorradorAnteriorNoIntentaBorrarNada() throws Exception {
+        PeriodoPlanilla periodo = new PeriodoPlanilla();
+        periodo.setPeriodo("2026-06");
+        periodo.setFechaInicio(LocalDate.of(2026, 6, 1));
+        periodo.setFechaFin(LocalDate.of(2026, 6, 30));
+
+        MarcadorCsvRow row = fila(2, "VALIDA");
+        AsistenciaCsvParser.ParseResult parseResult = new AsistenciaCsvParser.ParseResult();
+        parseResult.setEncoding("UTF-8");
+        parseResult.setFilas(List.of(row));
+
+        when(importacionRepository.findByPeriodoAndEstado("2026-06", "BORRADOR_PREVIEW"))
+                .thenReturn(List.of());
+        when(periodoRepository.findByPeriodoAndActivo("2026-06", 1))
+                .thenReturn(Optional.of(periodo));
+        when(lectorRouter.leer(any())).thenReturn(
+                new AsistenciaLectorRouter.ResultadoLectura(FormatoMarcador.RELOJ1_DIARIO, parseResult));
+        when(importacionRepository.save(any(AsistenciaImportacion.class))).thenAnswer(invocation -> {
+            AsistenciaImportacion importacion = invocation.getArgument(0);
+            importacion.setId(200L);
+            return importacion;
+        });
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        MockMultipartFile archivo = new MockMultipartFile(
+                "archivo",
+                "asistencia.csv",
+                "text/csv",
+                "DNI;FECHA;MARCA1;MARCA2\n12345678;01/06/2026;08:00;17:00".getBytes());
+
+        service.preview("2026-06", archivo);
+
+        verify(filaRepository, never()).deleteByImportacionId(any());
+        verify(importacionRepository, never()).delete(any(AsistenciaImportacion.class));
     }
 
     private MarcadorCsvRow fila(int numeroFila, String estado) {

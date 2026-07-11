@@ -104,6 +104,21 @@ public class GlobalExceptionHandler {
     }
 
     // ============================
+    // VÍNCULO NO ENCONTRADO (404) — SPEC_VACACIONES F1
+    // ============================
+    @ExceptionHandler(VinculoNoEncontradoException.class)
+    public ResponseEntity<?> handleVinculoNoEncontrado(
+            VinculoNoEncontradoException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 404);
+        response.put("mensaje", ex.getMessage());
+        response.put("requiereCaptcha", false);
+
+        return ResponseEntity.status(404).body(response);
+    }
+
+    // ============================
     // VALIDACIÓN @VALID (400)
     // ============================
     @ExceptionHandler(MethodArgumentNotValidException.class)

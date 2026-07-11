@@ -230,6 +230,45 @@ class AsistenciaServiceTest {
     }
 
     @Test
+    void guardar_sancion_pad_sin_observacion_lanza_excepcion() {
+        AsistenciaGuardarDto dto = dtoBase();
+        dto.setDias(List.of(dia("SANCION_PAD", 0, 8)));
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("motivo/expediente PAD");
+    }
+
+    @Test
+    void guardar_sancion_pad_con_observacion_descuenta_como_falta() {
+        AsistenciaDiaDto sancionPad = dia("SANCION_PAD", 0, 8);
+        sancionPad.setObservacion("Expediente PAD N° 045-2026 — Res. de sanción");
+
+        AsistenciaGuardarDto dto = dtoBase();
+        dto.setDias(List.of(dia("LABORAL", 0, 4), sancionPad));
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(
+                EMPLEADO_ID, PERIODO, 1)).thenReturn(Optional.empty());
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class)))
+                .thenAnswer(inv -> {
+                    AsistenciaCabecera c = inv.getArgument(0);
+                    c.setId(11L);
+                    return c;
+                });
+
+        service.guardar(dto);
+
+        ArgumentCaptor<AsistenciaCabecera> capt =
+                ArgumentCaptor.forClass(AsistenciaCabecera.class);
+        verify(cabeceraRepository).save(capt.capture());
+        AsistenciaCabecera cab = capt.getValue();
+
+        assertThat(cab.getDiasFalta()).isEqualTo(1);
+        // (3000/30) * 1 = 100.00
+        assertThat(cab.getDescuentoFalta()).isEqualTo(100.00);
+    }
+
+    @Test
     void obtener_inexistente_devuelve_dto_vacio() {
         when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(
                 EMPLEADO_ID, PERIODO, 1)).thenReturn(Optional.empty());

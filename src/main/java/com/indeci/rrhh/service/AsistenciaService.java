@@ -84,7 +84,10 @@ public class AsistenciaService {
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
             "LABORAL", "FALTA", "TARDANZA", "LICENCIA", "VACACIONES", "DESCANSO",
-            "FERIADO", "OBSERVADO");
+            "FERIADO", "OBSERVADO", "SANCION_PAD");
+
+    /** Tipo de día que exige observación obligatoria (motivo/expediente PAD). */
+    private static final String TIPO_DIA_SANCION_PAD = "SANCION_PAD";
 
     private static final Set<String> ESTADOS_CABECERA = Set.of(
             "BORRADOR", "PREVALIDADA", "LISTA_PARA_VALIDAR", "OBSERVADA", "VALIDADA");
@@ -311,6 +314,11 @@ public class AsistenciaService {
         } else if (dto.getTipoDia() != null) {
             if (!TIPOS_DIA.contains(dto.getTipoDia())) {
                 throw new NegocioException("Tipo de día inválido: " + dto.getTipoDia());
+            }
+            if (TIPO_DIA_SANCION_PAD.equals(dto.getTipoDia())
+                    && (dto.getObservacion() == null || dto.getObservacion().isBlank())) {
+                throw new NegocioException(
+                        "Debe indicar el motivo/expediente PAD para marcar el día como Sanción PAD.");
             }
             det.setTipoDia(dto.getTipoDia());
         }
@@ -738,6 +746,12 @@ public class AsistenciaService {
             String tipo = d.getTipoDia();
             if (tipo == null || !TIPOS_DIA.contains(tipo)) {
                 throw new NegocioException("Tipo de día inválido: " + tipo);
+            }
+            if (TIPO_DIA_SANCION_PAD.equals(tipo)
+                    && (d.getObservacion() == null || d.getObservacion().isBlank())) {
+                throw new NegocioException(
+                        "Debe indicar el motivo/expediente PAD para el día "
+                                + d.getDia() + " marcado como Sanción PAD.");
             }
         }
     }

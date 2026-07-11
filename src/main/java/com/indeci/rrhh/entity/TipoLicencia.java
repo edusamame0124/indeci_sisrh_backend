@@ -24,7 +24,19 @@ public class TipoLicencia {
 
     @Column(name = "ACTIVO")
     private Integer activo;
-    
+
     @Column(name = "CODIGO")
     private String codigo;
+
+    /** SPEC_VACACIONES F9.1 — 1=licencia sin goce de haber (afecta récord y días laborados). */
+    @Column(name = "ES_SIN_GOCE")
+    private Integer esSinGoce;
+
+    /** 1=requiere Resolución Directoral de sustento (auditoría Contraloría/SERVIR). */
+    @Column(name = "REQUIERE_RESOLUCION")
+    private Integer requiereResolucion;
+
+    /** Código oficial Tabla 21 PLAME (SUNAT); las sin goce se agrupan en '05'. */
+    @Column(name = "COD_PLAME_SUNAT")
+    private String codPlameSunat;
 }

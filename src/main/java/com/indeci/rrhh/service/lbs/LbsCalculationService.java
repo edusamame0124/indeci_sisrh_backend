@@ -17,6 +17,7 @@ import com.indeci.rrhh.dto.lbs.LbsResultDto;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.MovimientoPlanilla;
+import com.indeci.rrhh.entity.MovimientoPlanillaDetalle;
 import com.indeci.rrhh.entity.PlanillaLote;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
@@ -27,7 +28,13 @@ import com.indeci.rrhh.service.GeneradorPlanillaService;
 import com.indeci.rrhh.service.ParametroRemunerativoService;
 import com.indeci.rrhh.service.cts.CtsCalculadorService;
 import com.indeci.rrhh.dto.cts.CtsLiquidacionResponseDto;
-
+import com.indeci.rrhh.dto.TiempoServicioDto;
+import com.indeci.rrhh.dto.VacacionCalculoInput;
+import com.indeci.rrhh.dto.VacacionCalculoDto;
+import com.indeci.rrhh.entity.VacacionSaldo;
+import com.indeci.rrhh.repository.VacacionSaldoRepository;
+import com.indeci.rrhh.service.TiempoServicioService;
+import com.indeci.rrhh.service.VacacionCalculoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 
@@ -44,6 +51,9 @@ public class LbsCalculationService {
     private final ConceptoPlanillaRepository conceptoRepository;
     private final GeneradorPlanillaService motor;
     private final CtsCalculadorService ctsCalculadorService;
+    private final TiempoServicioService tiempoServicioService;
+    private final VacacionCalculoService vacacionCalculoService;
+    private final VacacionSaldoRepository vacacionSaldoRepository;
 
     @Transactional
     public LbsResultDto generarLbs(String periodo, Long regimenLaboralId) {
@@ -81,15 +91,35 @@ public class LbsCalculationService {
             // Cálculos básicos (POSIBLE_CAMBIO_RRHH: Fórmulas simplificadas, pendientes de validación normativa final)
             BigDecimal baseRemunerativa = motor.resolverBaseRemunerativa(v, periodo);
             
-            // 1. Vacaciones Truncas
-            // Se asume 2.5 días por mes trabajado en el año. A efectos del MVP, calculamos proporcional al mes de cese.
-            int mesCese = cese.getMonthValue();
-            BigDecimal montoVacacionesTruncas = baseRemunerativa.divide(new BigDecimal("12"), 2, RoundingMode.HALF_UP)
-                    .multiply(new BigDecimal(mesCese));
+            // 1. Vacaciones No Gozadas y Truncas
+            double diasGanadosHistoricos = vacacionSaldoRepository.findByEmpleadoIdInAndActivo(List.of(v.getEmpleadoId()), 1).stream()
+                    .mapToDouble(s -> s.getDiasGanados() != null ? s.getDiasGanados() : 0d)
+                    .sum();
+            double diasGozados = vacacionSaldoRepository.findByEmpleadoIdInAndActivo(List.of(v.getEmpleadoId()), 1).stream()
+                    .mapToDouble(s -> s.getDiasGozados() != null ? s.getDiasGozados() : 0d)
+                    .sum();
+
+            TiempoServicioDto ts = tiempoServicioService.calcularDesde(List.of(v), v.getEmpleadoId(), cese)
+                    .orElseThrow(() -> new NegocioException("ERR_LBS_TIEMPO_SERVICIO|" + v.getEmpleadoId()));
+
+            VacacionCalculoInput vacInput = new VacacionCalculoInput(
+                    v.getEmpleadoId(),
+                    null, null,
+                    ts.anios(), ts.meses(), ts.dias(), ts.totalDias360(),
+                    diasGanadosHistoricos, diasGozados,
+                    baseRemunerativa,
+                    5, 0
+            );
+
+            VacacionCalculoDto vacDto = vacacionCalculoService.calcular(vacInput);
+
+            BigDecimal montoVacacionesNoGozadas = vacDto.costoNoGozadas().max(BigDecimal.ZERO);
+            BigDecimal montoVacacionesTruncas = vacDto.costoTruncasMes().add(vacDto.costoTruncasDia()).max(BigDecimal.ZERO);
             
             // 2. Aguinaldo Trunco
             // Si el cese es antes de Julio o antes de Diciembre, se paga la parte proporcional
             BigDecimal montoAguinaldoTrunco = BigDecimal.ZERO;
+            int mesCese = cese.getMonthValue();
             if ("CAS".equalsIgnoreCase(regimen) || "1057".equalsIgnoreCase(regimen) || "276".equalsIgnoreCase(regimen)) {
                 BigDecimal aguinaldoAnual = new BigDecimal("300.00"); // Asumido
                 int mesesParaAguinaldo = (mesCese <= 7) ? mesCese : (mesCese - 7);
@@ -110,7 +140,7 @@ public class LbsCalculationService {
                 }
             }
 
-            BigDecimal montoLbs = montoVacacionesTruncas.add(montoAguinaldoTrunco).add(montoCtsTrunca);
+            BigDecimal montoLbs = montoVacacionesNoGozadas.add(montoVacacionesTruncas).add(montoAguinaldoTrunco).add(montoCtsTrunca);
 
             if (montoLbs.signum() <= 0) {
                 fallidos.add(new LbsResultDto.LbsErrorDto(v.getEmpleadoId(), "LBS calculada es cero o negativa"));
@@ -161,7 +191,12 @@ public class LbsCalculationService {
             mov.setRegimenLaboralSnapshot(regimen);
             MovimientoPlanilla saved = movimientoRepository.save(mov);
 
-            // Se graban los detalles. En producción deben existir estos conceptos en ConceptoPlanilla.
+            // Se graban los detalles. En produccin deben existir estos conceptos en ConceptoPlanilla.
+            ConceptoPlanilla cVacNoGozada = buscarConceptoPorCodigoInterno("VAC_NO_GOZADA");
+            if (cVacNoGozada != null && montoVacacionesNoGozadas.signum() > 0) {
+                motor.grabarDetalle(saved.getId(), cVacNoGozada, montoVacacionesNoGozadas, "Vacaciones No Gozadas LBS");
+            }
+
             ConceptoPlanilla cVacaciones = buscarConceptoPorCodigoInterno("VAC_TRUNCAS");
             if (cVacaciones != null && montoVacacionesTruncas.signum() > 0) {
                 motor.grabarDetalle(saved.getId(), cVacaciones, montoVacacionesTruncas, "Vacaciones Truncas LBS");
@@ -229,23 +264,36 @@ public class LbsCalculationService {
                 .orElse(null);
             
             BigDecimal vacTruncas = BigDecimal.ZERO;
+            BigDecimal vacNoGozadas = BigDecimal.ZERO;
             BigDecimal aguinaldoTrunco = BigDecimal.ZERO;
             BigDecimal ctsTrunca = BigDecimal.ZERO;
             BigDecimal neto = BigDecimal.ZERO;
 
             if (mov != null) {
                 neto = BigDecimal.valueOf(mov.getNetoPagar());
-                // En un sistema real se buscan los detalles por código. Aquí mockeado por simplicidad.
+                List<MovimientoPlanillaDetalle> detalles = movimientoPlanillaDetalleRepository.findByMovimientoPlanillaId(mov.getId());
+                for (MovimientoPlanillaDetalle d : detalles) {
+                    if ("VAC_TRUNCAS".equals(d.getConceptoCodigo())) {
+                        vacTruncas = BigDecimal.valueOf(d.getMonto());
+                    } else if ("VAC_NO_GOZADA".equals(d.getConceptoCodigo())) {
+                        vacNoGozadas = BigDecimal.valueOf(d.getMonto());
+                    } else if ("AGUINALDO_TRUNCO".equals(d.getConceptoCodigo())) {
+                        aguinaldoTrunco = BigDecimal.valueOf(d.getMonto());
+                    } else if ("CTS_TRUNCA".equals(d.getConceptoCodigo())) {
+                        ctsTrunca = BigDecimal.valueOf(d.getMonto());
+                    }
+                }
             }
 
             // Para LSC / 276
-            params.put("COMPENSACION_VACACIONAL_TOTAL", "S/ " + String.format("%.2f", vacTruncas));
-            params.put("VAC_PENDIENTES_DIAS", "0 DÍAS");
-            params.put("VAC_PENDIENTES_MONTO", "S/ 0.00");
-            params.put("VAC_TRUNCAS_MESES", "0 MESES");
-            params.put("VAC_TRUNCAS_MESES_MONTO", "S/ 0.00");
-            params.put("VAC_TRUNCAS_DIAS", "0 DÍAS");
-            params.put("VAC_TRUNCAS_DIAS_MONTO", "S/ 0.00");
+            BigDecimal totalVacacional = vacTruncas.add(vacNoGozadas);
+            params.put("COMPENSACION_VACACIONAL_TOTAL", "S/ " + String.format("%.2f", totalVacacional));
+            params.put("VAC_PENDIENTES_DIAS", vacNoGozadas.signum() > 0 ? "PAGADO" : "0 DÍAS");
+            params.put("VAC_PENDIENTES_MONTO", "S/ " + String.format("%.2f", vacNoGozadas));
+            params.put("VAC_TRUNCAS_MESES", vacTruncas.signum() > 0 ? "LIQUIDADOS" : "0 MESES");
+            params.put("VAC_TRUNCAS_MESES_MONTO", "S/ " + String.format("%.2f", vacTruncas));
+            params.put("VAC_TRUNCAS_DIAS", vacTruncas.signum() > 0 ? "LIQUIDADOS" : "0 DÍAS");
+            params.put("VAC_TRUNCAS_DIAS_MONTO", "S/ 0.00"); // Combined with meses monto in our model
             params.put("REINTEGROS_TOTAL", "S/ 0.00");
             params.put("REINTEGROS_DETALLE", "");
             params.put("CTS_TOTAL", "S/ " + String.format("%.2f", ctsTrunca));

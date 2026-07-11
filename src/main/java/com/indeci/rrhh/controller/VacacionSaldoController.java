@@ -18,6 +18,9 @@ import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
+import com.indeci.rrhh.service.VacacionProvisionService;
+import org.springframework.web.bind.annotation.RequestParam;
+
 @RestController
 @RequestMapping("/api/rrhh/vacacion-saldo")
 @RequiredArgsConstructor
@@ -25,6 +28,17 @@ import lombok.RequiredArgsConstructor;
 public class VacacionSaldoController {
 
     private final VacacionSaldoService service;
+    private final VacacionProvisionService provisionService;
+
+    @PostMapping("/provisionar/{empleadoId}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    public ApiResponse<Void> provisionar(
+            @PathVariable Long empleadoId,
+            @RequestParam(required = false) Integer anioPeriodo) {
+        int anio = (anioPeriodo != null) ? anioPeriodo : java.time.LocalDate.now().getYear();
+        provisionService.provisionar(empleadoId, anio);
+        return new ApiResponse<>("OK", "Provisión generada correctamente", null);
+    }
 
     @PostMapping
     @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)

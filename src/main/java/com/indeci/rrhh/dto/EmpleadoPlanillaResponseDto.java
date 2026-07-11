@@ -49,6 +49,9 @@ public class EmpleadoPlanillaResponseDto {
 
     private Long modalidadCasId;
 
+    /** Gate de Modalidad de Teletrabajo (Ley N° 31572, V012_28). */
+    private Integer esTeletrabajador;
+
     /** Ley 30057 (V012_07). */
     private String grupoServidorCivil;
 
@@ -72,6 +75,9 @@ public class EmpleadoPlanillaResponseDto {
     // =====================================
 
     private java.time.LocalDate fechaInicioContrato;
+
+    /** SPEC_VACACIONES F9.1 — override de jornada (null=hereda régimen; 6=operativo COEN/DDI). */
+    private Integer diasSemanaOperativo;
 
     /** Fecha fin contractual (término previsto del vínculo). */
     private java.time.LocalDate fechaFin;

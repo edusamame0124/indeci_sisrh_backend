@@ -48,7 +48,7 @@
 			<staticText>
 				<reportElement x="0" y="140" width="200" height="15" uuid="t2"/>
 				<textElement><font isBold="true"/></textElement>
-				<text><![CDATA[1.- PERIODO COMPUTABLE :]]></text>
+				<text><![CDATA[1.- TIEMPO EFECTIVO :]]></text>
 			</staticText>
 			
 			<textField><reportElement x="100" y="160" width="100" height="15" uuid="pdel"/><textFieldExpression><![CDATA["DEL"]]></textFieldExpression></textField>

@@ -23,6 +23,25 @@ import lombok.RequiredArgsConstructor;
 public class SolicitudRrhhController {
 
     private final SolicitudRrhhService service;
+    private final com.indeci.rrhh.report.service.PapeletaReportService papeletaReportService;
+
+    /**
+     * SPEC_VACACIONES F9.1-bis — descarga el PDF oficial de la papeleta para firmar.
+     * Reusa PapeletaReportService (Jasper) que exporta a archivo local y devuelve su ruta.
+     */
+    @GetMapping("/{id}/papeleta/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> descargarPapeleta(
+            @PathVariable Long id) throws java.io.IOException {
+
+        String ruta = papeletaReportService.generarPdf(id);
+        byte[] pdf = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(ruta));
+
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=papeleta_" + id + ".pdf")
+                .body(pdf);
+    }
 
     // ==========================================
     // REGISTRAR
@@ -30,7 +49,7 @@ public class SolicitudRrhhController {
     @PostMapping(
             value="/registrar",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<Void> registrar(
+    public ApiResponse<Long> registrar(
 
             @RequestPart("datos")
             SolicitudRrhhDto dto,
@@ -45,7 +64,7 @@ public class SolicitudRrhhController {
                     required=false)
             List<MultipartFile> documentos) {
 
-        service.registrar(
+        Long id = service.registrar(
                 dto,
                 sustento,
                 documentos);
@@ -53,7 +72,7 @@ public class SolicitudRrhhController {
         return new ApiResponse<>(
                 "OK",
                 "Solicitud registrada",
-                null);
+                id);
     }
 
     // ==========================================
@@ -78,6 +97,16 @@ public class SolicitudRrhhController {
 
     }
 
+    /**
+     * Gate de Modalidad de Teletrabajo (Ley N° 31572) — indica si el empleado
+     * logueado puede generar reportes de teletrabajo (resolución activa en legajo).
+     * Alimenta el bloqueo Poka-Yoke del botón "Reporte Teletrabajo" en el dashboard.
+     */
+    @GetMapping("/mi-teletrabajo")
+    public ApiResponse<Boolean> miTeletrabajo() {
+        return new ApiResponse<>("OK", "Habilitación teletrabajo", service.esTeletrabajadorActual());
+    }
+
     @PutMapping("/enviar/{id}")
     //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> enviar(
@@ -91,7 +120,7 @@ public class SolicitudRrhhController {
     }
 
     
-    //@PreAuthorize("hasAuthority('PAP_JEFE')")
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/aprobar-jefe/{id}")
     //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> aprobarJefe(
@@ -105,7 +134,7 @@ public class SolicitudRrhhController {
     }
 
     
-    //@PreAuthorize("hasAuthority('PAP_JEFE')")
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
     @PutMapping("/rechazar-jefe/{id}")
    // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> rechazarJefe(@PathVariable Long id) {
@@ -114,7 +143,7 @@ public class SolicitudRrhhController {
     }
 
     
-    //@PreAuthorize("hasAuthority('PAP_RRHH')")
+    @PreAuthorize("hasAuthority('PAP_APROBAR_RRHH')")
     @PutMapping("/aprobar-rrhh/{id}")
     public ApiResponse<Void>
     aprobarRrhh(
@@ -141,7 +170,7 @@ public class SolicitudRrhhController {
     }
 
   
-    //@PreAuthorize("hasAuthority('PAP_RRHH')")
+    @PreAuthorize("hasAuthority('PAP_APROBAR_RRHH')")
     @PutMapping("/rechazar-rrhh/{id}")
    // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> rechazarRrhh(@PathVariable Long id) {
@@ -164,7 +193,7 @@ public class SolicitudRrhhController {
     }
     
 
-  //  @PreAuthorize("hasAuthority('PAP_JEFE')")
+    @PreAuthorize("hasAuthority('PAP_JEFE')")
     @GetMapping("/mis-colaboradores")
     public ApiResponse<List<SolicitudRrhhResponseDto>>
     misColaboradores() {
@@ -182,7 +211,7 @@ public class SolicitudRrhhController {
 
     }
     
-  //  @PreAuthorize("hasAuthority('PAP_RRHH')")
+    @PreAuthorize("hasAuthority('PAP_RRHH')")
     @GetMapping("/todas")
     public ApiResponse<List<SolicitudRrhhResponseDto>> listarTodas() {
         return new ApiResponse<>("OK", "Listado correcto", service.listarTodas());

@@ -1,6 +1,7 @@
 package com.indeci.rrhh.service.cts;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.DiasNoComputablesDto;
 import com.indeci.rrhh.dto.cts.CtsLiquidacionResponseDto;
 import com.indeci.rrhh.entity.CalculoSnapshot;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -13,6 +14,7 @@ import com.indeci.rrhh.service.ParametroRemunerativoService;
 import com.indeci.rrhh.service.cts.CtsTiempoServiciosCalculator.TiempoServicios;
 import com.indeci.rrhh.service.cts.strategy.CtsStrategy;
 import com.indeci.rrhh.service.cts.strategy.CtsStrategyFactory;
+import com.indeci.rrhh.service.incidencia.IncidenciaLaboralCompuesta;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,7 @@ public class CtsCalculadorService {
     private final CtsStrategyFactory strategyFactory;
     private final CtsCasGuard casGuard;
     private final CtsTiempoServiciosCalculator tiempoCalculator;
+    private final IncidenciaLaboralCompuesta incidenciaLaboralCompuesta;
 
     @Transactional
     public CtsLiquidacionResponseDto calcular(Long empleadoId, Long empleadoPlanillaId, String periodo) {
@@ -91,9 +94,14 @@ public class CtsCalculadorService {
         BigDecimal factor = estrategia.resolverFactorAnual(anioFiscal, vinculo.getRegimenLaboralId());
         BigDecimal divisor = parametroService.obtenerValor(PARAM_DIVISOR, anioFiscal, null);
 
-        // 4) Tiempo de servicios computable (del vínculo exacto).
+        // 4) Tiempo de servicios computable (del vínculo exacto), neto de LSG + faltas
+        // injustificadas (Art. 8 TUO Ley de CTS — descansos médicos y maternidad SÍ computan,
+        // por eso reutilizamos la misma fuente que Vacaciones: es_sin_goce=1 los excluye).
         LocalDate ingreso = resolverIngreso(vinculo);
-        TiempoServicios t = tiempoCalculator.computar(ingreso, vinculo.getFechaCese());
+        TiempoServicios ideal = tiempoCalculator.computar(ingreso, vinculo.getFechaCese());
+        DiasNoComputablesDto noComp = incidenciaLaboralCompuesta
+                .calcularDesglose(empleadoId, ingreso, vinculo.getFechaCese());
+        TiempoServicios t = tiempoCalculator.descontar(ideal, noComp.total());
 
         // 5) Monto: (años × base × factor) + ((base × factor / divisor) × díasFracción).
         BigDecimal baseFactor = base.multiply(factor);
@@ -129,7 +137,10 @@ public class CtsCalculadorService {
                         .param("montoAnios", montoAnios)
                         .param("montoFraccion", montoFraccion)
                         .param("fechaIngreso", ingreso)
-                        .param("fechaCese", vinculo.getFechaCese()));
+                        .param("fechaCese", vinculo.getFechaCese())
+                        .param("diasNoComputablesLsg", noComp.lsg())
+                        .param("diasNoComputablesFaltas", noComp.faltas())
+                        .param("diasNoComputablesTotal", noComp.total()));
 
         // 7) Persistir (upsert por UK vínculo/período; recalculable si no CERRADO).
         LiquidacionCts liq = liquidacionRepository

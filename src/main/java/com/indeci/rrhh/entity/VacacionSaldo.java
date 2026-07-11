@@ -36,6 +36,14 @@ public class VacacionSaldo {
     @Column(name = "ACTIVO")
     private Integer activo;
 
+    /** SPEC_VACACIONES F8 — MIGRACION_INICIAL_2026 (línea base Excel) | MOTOR (automatizado). */
+    @Column(name = "ORIGEN")
+    private String origen;
+
+    /** SPEC_VACACIONES F8 — fecha de corte del cálculo del Excel (col K). */
+    @Column(name = "FECHA_CORTE")
+    private java.time.LocalDate fechaCorte;
+
     @Column(name = "CREATED_AT")
     private LocalDateTime createdAt;
 }

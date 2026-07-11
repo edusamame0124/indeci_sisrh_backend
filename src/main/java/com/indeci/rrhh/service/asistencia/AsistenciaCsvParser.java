@@ -9,6 +9,7 @@ import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Component
 public class AsistenciaCsvParser {
@@ -41,6 +42,8 @@ public class AsistenciaCsvParser {
 
         String lineaCabecera = lineas[headerIndex].trim();
         String[] headers = splitSemicolon(lineaCabecera);
+        Map<String, Integer> headerIndices = buildHeaderIndices(headers);
+
         List<MarcadorCsvRow> filas = new ArrayList<>();
         for (int i = headerIndex + 1; i < lineas.length; i++) {
             String cruda = lineas[i].trim();
@@ -50,7 +53,7 @@ public class AsistenciaCsvParser {
             if (!cruda.contains(";")) {
                 continue;
             }
-            MarcadorCsvRow row = parseFila(cruda, i + 1, headers);
+            MarcadorCsvRow row = parseFila(cruda, i + 1, headers.length, headerIndices);
             if (tieneDniValido(row)) {
                 filas.add(row);
             }
@@ -62,43 +65,52 @@ public class AsistenciaCsvParser {
         return result;
     }
 
-    private MarcadorCsvRow parseFila(String cruda, int numeroFila, String[] headers) {
+    private Map<String, Integer> buildHeaderIndices(String[] headers) {
+        Map<String, Integer> map = new java.util.HashMap<>();
+        for (int i = 0; i < headers.length; i++) {
+            String h = headers[i].trim().toUpperCase(Locale.ROOT);
+            map.putIfAbsent(h, i);
+        }
+        return map;
+    }
+
+    private MarcadorCsvRow parseFila(String cruda, int numeroFila, int maxColumns, Map<String, Integer> headerIndices) {
         String[] valores = splitSemicolon(cruda);
         MarcadorCsvRow row = new MarcadorCsvRow();
         row.setNumeroFila(numeroFila);
         row.setLineaOriginal(cruda);
-        row.setDiaSemana(valor(headers, valores, "DÍA", "DIA"));
-        row.setFecha(parseFecha(valor(headers, valores, "FECHA")));
-        row.setDni(normalizarDni(valor(headers, valores, "DNI")));
-        row.setNombre(valor(headers, valores, "NOMBRE"));
-        row.setHoraEntradaEsperada(valor(headers, valores, "ENTRADA", "ENT.", "ENT"));
-        row.setSalidaProgramada(valor(headers, valores, "SALIDA", "SAL."));
-        row.setMarca1(valor(headers, valores, "MARCA1"));
-        row.setMarca2(valor(headers, valores, "MARCA2"));
-        row.setMarca3(valor(headers, valores, "MARCA3"));
-        row.setMarca4(valor(headers, valores, "MARCA4"));
-        row.setTardanza(valor(headers, valores, "TARD.", "TARD"));
-        row.setEmpresa(valor(headers, valores, "EMPRESA"));
-        row.setGrupo(valor(headers, valores, "GRUPO"));
-        row.setRefrigerio(valor(headers, valores, "REFRIG.", "REFRIG"));
-        row.setExcesoRefrigerio(valor(headers, valores, "E/REFRIG.", "E/REFRIG"));
-        row.setTiempoRefrigerio(valor(headers, valores, "T/REFRIG", "T/REFRIG."));
-        row.setTiempoAntesSalida(valor(headers, valores, "T/AS", "T/AS."));
-        row.setHorasTrabajadas(valor(headers, valores, "H/TRAB.", "H/TRAB", "T/H.TRAB", "T/H.Trab"));
-        row.setHorasExtra25(valor(headers, valores, "H25%"));
-        row.setHorasExtra35(valor(headers, valores, "H35%"));
-        row.setHorasExtra100(valor(headers, valores, "H100%"));
-        row.setHorasExtraTotal(valor(headers, valores, "T/H.EXT", "T/H.Ext"));
-        row.setObservacion(valor(headers, valores, "OBSERVACIONES", "OBSERVACIÓN", "OBSERVACION"));
+        row.setDiaSemana(valor(headerIndices, valores, maxColumns, "DÍA", "DIA"));
+        row.setFecha(parseFecha(valor(headerIndices, valores, maxColumns, "FECHA")));
+        row.setDni(normalizarDni(valor(headerIndices, valores, maxColumns, "DNI")));
+        row.setNombre(valor(headerIndices, valores, maxColumns, "NOMBRE"));
+        row.setHoraEntradaEsperada(valor(headerIndices, valores, maxColumns, "ENTRADA", "ENT.", "ENT"));
+        row.setSalidaProgramada(valor(headerIndices, valores, maxColumns, "SALIDA", "SAL."));
+        row.setMarca1(valor(headerIndices, valores, maxColumns, "MARCA1"));
+        row.setMarca2(valor(headerIndices, valores, maxColumns, "MARCA2"));
+        row.setMarca3(valor(headerIndices, valores, maxColumns, "MARCA3"));
+        row.setMarca4(valor(headerIndices, valores, maxColumns, "MARCA4"));
+        row.setTardanza(valor(headerIndices, valores, maxColumns, "TARD.", "TARD"));
+        row.setEmpresa(valor(headerIndices, valores, maxColumns, "EMPRESA"));
+        row.setGrupo(valor(headerIndices, valores, maxColumns, "GRUPO"));
+        row.setRefrigerio(valor(headerIndices, valores, maxColumns, "REFRIG.", "REFRIG"));
+        row.setExcesoRefrigerio(valor(headerIndices, valores, maxColumns, "E/REFRIG.", "E/REFRIG"));
+        row.setTiempoRefrigerio(valor(headerIndices, valores, maxColumns, "T/REFRIG", "T/REFRIG."));
+        row.setTiempoAntesSalida(valor(headerIndices, valores, maxColumns, "T/AS", "T/AS."));
+        row.setHorasTrabajadas(valor(headerIndices, valores, maxColumns, "H/TRAB.", "H/TRAB", "T/H.TRAB", "T/H.Trab"));
+        row.setHorasExtra25(valor(headerIndices, valores, maxColumns, "H25%"));
+        row.setHorasExtra35(valor(headerIndices, valores, maxColumns, "H35%"));
+        row.setHorasExtra100(valor(headerIndices, valores, maxColumns, "H100%"));
+        row.setHorasExtraTotal(valor(headerIndices, valores, maxColumns, "T/H.EXT", "T/H.Ext"));
+        row.setObservacion(valor(headerIndices, valores, maxColumns, "OBSERVACIONES", "OBSERVACIÓN", "OBSERVACION"));
         return row;
     }
 
-    private String valor(String[] headers, String[] valores, String... candidatos) {
+    private String valor(Map<String, Integer> headerIndices, String[] valores, int maxColumns, String... candidatos) {
         for (String candidato : candidatos) {
-            for (int i = 0; i < headers.length && i < valores.length; i++) {
-                if (headers[i].trim().equalsIgnoreCase(candidato)) {
-                    return valores[i].trim();
-                }
+            String key = candidato.toUpperCase(Locale.ROOT);
+            Integer idx = headerIndices.get(key);
+            if (idx != null && idx < valores.length && idx < maxColumns) {
+                return valores[idx].trim();
             }
         }
         return "";

@@ -17,6 +17,12 @@ public interface AsistenciaCabeceraRepository
             String periodo,
             Integer activo);
 
+    @Query("SELECT c.empleadoId FROM AsistenciaCabecera c WHERE c.periodo = :periodo AND c.activo = :activo AND c.empleadoId IN :empleadosIds")
+    java.util.Set<Long> findEmpleadosIdsConCabeceraActiva(
+            @Param("empleadosIds") java.util.Collection<Long> empleadosIds,
+            @Param("periodo") String periodo,
+            @Param("activo") Integer activo);
+
     List<AsistenciaCabecera>
     findByPeriodoAndActivo(
             String periodo,

@@ -23,4 +23,14 @@ public interface VacacionRepository extends JpaRepository<Vacacion, Long>{
 	        LocalDate fecha1,
 	        LocalDate fecha2);
 
+	/**
+	 * Hub Vacacional — periodos aprobados aún no gozados (futuros) y no sustituidos por una
+	 * reprogramación/fraccionamiento previa. Fuente del dropdown Poka-Yoke.
+	 */
+	List<Vacacion> findByEmpleadoIdAndActivoAndPeriodoDesdeGreaterThanEqualAndEstadoNot(
+	        Long empleadoId,
+	        Integer activo,
+	        LocalDate periodoDesde,
+	        String estado);
+
 }

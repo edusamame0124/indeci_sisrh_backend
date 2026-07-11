@@ -583,6 +583,25 @@ public class GeneradorPlanillaService {
         return v == null ? "0.00" : v.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
+    /** Motivo del prorrateo del haber para la línea trazable (subsidio / LSG / cese-alta). */
+    private static String motivoProrrateo(int diasSubsidio, int diasLicencia) {
+        StringBuilder sb = new StringBuilder(" (");
+        boolean any = false;
+        if (diasSubsidio > 0) {
+            sb.append("subsidio ").append(diasSubsidio).append(" d");
+            any = true;
+        }
+        if (diasLicencia > 0) {
+            if (any) sb.append(", ");
+            sb.append("licencia sin goce ").append(diasLicencia).append(" d");
+            any = true;
+        }
+        if (!any) {
+            sb.append("cese/alta");
+        }
+        return sb.append(")").toString();
+    }
+
     // ======================================================================
     // PASO 5 — REMUNERATIVOS automáticos (asignación familiar)
     // ======================================================================
@@ -614,11 +633,15 @@ public class GeneradorPlanillaService {
         // es OBLIGATORIA e INCONDICIONAL (sin feature flag); el módulo de subsidios
         // la provee vía contrato diasSubsidioMotor. La asignación familiar
         // (beneficio fijo, D.S. 035-90-TR) se paga completa, no se prorratea.
-        // Cero regresión: sin subsidio diasSubsidio=0 → diasHaber=diasVinc.
+        // Cero regresión: sin subsidio ni licencia diasHaber=diasVinc.
+        // SPEC_VACACIONES F9.1 — los días de licencia SIN GOCE (y suspensión no
+        // subsidiada) tampoco se remuneran: reducen el haber igual que el subsidio.
         int diasVinc = diasVinculoEnPeriodo(planilla, movimiento.getPeriodo());
         int diasSubsidio = subsidioPlanillaIntegracionService
                 .diasSubsidioMotor(planilla.getEmpleadoId(), movimiento.getPeriodo());
-        int diasHaber = Math.max(0, diasVinc - diasSubsidio);
+        int diasLicencia = sumarDiasEventosNoSubsidiados(
+                planilla.getEmpleadoId(), movimiento.getPeriodo());
+        int diasHaber = Math.max(0, diasVinc - diasSubsidio - diasLicencia);
         boolean prorrateado = diasHaber < DIAS_LAB_DEFAULT;
         sueldoBasico = prorratear(sueldoBasico, diasHaber);
 
@@ -629,9 +652,7 @@ public class GeneradorPlanillaService {
                 String desc = "Remuneración base (" + regimenCodigo + ")"
                         + (prorrateado
                             ? " — prorrateada " + diasHaber + "/30 días"
-                                + (diasSubsidio > 0
-                                    ? " (subsidio " + diasSubsidio + " d)"
-                                    : " (cese/alta)")
+                                + motivoProrrateo(diasSubsidio, diasLicencia)
                             : "");
                 grabarDetalle(movimiento.getId(), conceptoBase, sueldoBasico, desc);
                 acumular(result, conceptoBase, sueldoBasico);
@@ -2200,14 +2221,30 @@ public class GeneradorPlanillaService {
      * <p>Defensivo: si el repo devuelve {@code null} o lista vacía, retorna 0.</p>
      */
     private int sumarDiasAfectosEventos(Long empleadoId, String periodo) {
-        java.time.LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
-        java.time.LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
-
         int totalDistribucion = eventoDistribucionMesRepository
                 .findTramosDiasLaboradosPorEmpleadoYPeriodo(empleadoId, periodo)
                 .stream()
                 .mapToInt(d -> d.getDiasSubsidio() != null ? d.getDiasSubsidio() : 0)
                 .sum();
+
+        return totalDistribucion + sumarDiasEventosNoSubsidiados(empleadoId, periodo);
+    }
+
+    /**
+     * SPEC_VACACIONES F9.1 (LSG) — Días afectos de los eventos del período cuyo
+     * tipo {@code afectaDiasLaborados='S'} y que <b>NO</b> tienen distribución de
+     * subsidio (licencia sin goce, suspensión no subsidiada, permiso sin goce,
+     * cese-evento). Es el subconjunto de {@link #sumarDiasAfectosEventos} que el
+     * empleador <b>no remunera</b> y que, por tanto, reduce tanto los días
+     * laborados persistidos como el <b>haber prorrateado</b> (PASO 3/5).
+     *
+     * <p>Aislado a propósito de los días de subsidio ({@code diasSubsidioMotor},
+     * origen {@code SUBSIDIO_LIQUIDACION}) para no descontar dos veces: los
+     * subsidiados los cubre EsSalud y ya reducen el haber por su propia vía.</p>
+     */
+    private int sumarDiasEventosNoSubsidiados(Long empleadoId, String periodo) {
+        java.time.LocalDate inicio = ParametroRemunerativoService.periodoToFechaInicio(periodo);
+        java.time.LocalDate fin = inicio.withDayOfMonth(inicio.lengthOfMonth());
 
         java.util.Set<Long> eventosConDistribucion = new java.util.HashSet<>(
                 eventoDistribucionMesRepository.findEventoIdsConTramoEnPeriodo(
@@ -2228,7 +2265,7 @@ public class GeneradorPlanillaService {
                         .between(e.getFechaInicio(), e.getFechaFin()) + 1);
             }
         }
-        return totalDistribucion + totalEventos;
+        return totalEventos;
     }
 
     /** P0 — true si el evento tiene desglose en más de un periodo de planilla. */

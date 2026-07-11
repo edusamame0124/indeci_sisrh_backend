@@ -10,6 +10,12 @@ public interface VacacionSaldoRepository extends JpaRepository<VacacionSaldo, Lo
 
     List<VacacionSaldo> findByEmpleadoIdAndActivo(Long empleadoId, Integer activo);
 
+    /** SPEC_VACACIONES F4 — batch de saldos para el padrón (evita N+1). */
+    List<VacacionSaldo> findByEmpleadoIdInAndActivo(List<Long> empleadoIds, Integer activo);
+
     Optional<VacacionSaldo> findByEmpleadoIdAndAnioAndActivo(
             Long empleadoId, Integer anio, Integer activo);
+
+    List<VacacionSaldo> findByEmpleadoIdAndActivoOrderByAnioAsc(
+            Long empleadoId, Integer activo);
 }

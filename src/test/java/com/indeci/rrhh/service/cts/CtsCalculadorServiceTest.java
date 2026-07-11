@@ -14,6 +14,7 @@ import com.indeci.rrhh.service.ParametroRemunerativoService;
 import com.indeci.rrhh.service.cts.strategy.Cts276Strategy;
 import com.indeci.rrhh.service.cts.strategy.CtsServirStrategy;
 import com.indeci.rrhh.service.cts.strategy.CtsStrategyFactory;
+import com.indeci.rrhh.service.incidencia.IncidenciaLaboralCompuesta;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,7 @@ class CtsCalculadorServiceTest {
     private LiquidacionCtsRepository liquidacionRepository;
     private ParametroRemunerativoService parametroService;
     private CalculoSnapshotService snapshotService;
+    private IncidenciaLaboralCompuesta incidenciaLaboralCompuesta;
     private CtsCalculadorService service;
 
     @BeforeEach
@@ -57,6 +59,10 @@ class CtsCalculadorServiceTest {
         liquidacionRepository = mock(LiquidacionCtsRepository.class);
         parametroService = mock(ParametroRemunerativoService.class);
         snapshotService = mock(CalculoSnapshotService.class);
+        incidenciaLaboralCompuesta = mock(IncidenciaLaboralCompuesta.class);
+        // Por defecto sin incidencias (cero regresión en los tests existentes).
+        when(incidenciaLaboralCompuesta.calcularDesglose(any(), any(), any()))
+                .thenReturn(com.indeci.rrhh.dto.DiasNoComputablesDto.cero());
 
         CtsStrategyFactory factory = new CtsStrategyFactory(List.of(
                 new CtsServirStrategy(parametroService),
@@ -65,7 +71,7 @@ class CtsCalculadorServiceTest {
         service = new CtsCalculadorService(
                 planillaRepository, regimenLaboralRepository, liquidacionRepository,
                 parametroService, snapshotService, factory,
-                new CtsCasGuard(), new CtsTiempoServiciosCalculator());
+                new CtsCasGuard(), new CtsTiempoServiciosCalculator(), incidenciaLaboralCompuesta);
 
         when(liquidacionRepository.findByEmpleadoPlanillaIdAndPeriodo(VINCULO_ID, PERIODO))
                 .thenReturn(Optional.empty());
@@ -202,6 +208,47 @@ class CtsCalculadorServiceTest {
 
         assertEquals(LocalDate.of(2026, 1, 1), r.fechaIngreso()); // del vínculo B, no de A
         assertEquals(0, r.anios());
+    }
+
+    @Test
+    void lsg_y_faltas_reducen_el_tiempo_de_servicios_y_el_monto() {
+        // Igual que servir_vp_pura_calcula_total_exacto (4 años, 5m15d = 165 fracción),
+        // pero con 40 días de LSG + faltas → fracción neta 165-40=125 → 4 años, 4m 5d.
+        when(planillaRepository.findById(VINCULO_ID)).thenReturn(Optional.of(
+                vinculo(3L, 5400.0, LocalDate.of(2022, 1, 1), LocalDate.of(2026, 6, 15))));
+        stubRegimen(3L, "SERVIR");
+        when(parametroService.obtenerValor(eq("CTS_FACTOR_ANUAL_SERVIR"), eq(2026), isNull()))
+                .thenReturn(BigDecimal.ONE);
+        when(parametroService.obtenerValor(eq("CTS_DIVISOR_DIAS"), eq(2026), isNull()))
+                .thenReturn(new BigDecimal("360"));
+        when(incidenciaLaboralCompuesta.calcularDesglose(eq(EMPLEADO_ID), any(), any()))
+                .thenReturn(com.indeci.rrhh.dto.DiasNoComputablesDto.of(30, 10));
+
+        CtsLiquidacionResponseDto r = service.calcular(EMPLEADO_ID, VINCULO_ID, PERIODO);
+
+        assertEquals(4, r.anios());
+        // montoAnios sin cambio (4 años completos): 4 * 5400 * 1 = 21600.00
+        assertEquals(0, new BigDecimal("21600.00").compareTo(r.montoAnios()));
+        // fracción neta 125 días: (5400*1/360) * 125 = 1875.00 (antes 2475.00 sin descuento)
+        assertEquals(0, new BigDecimal("1875.00").compareTo(r.montoFraccion()));
+        assertEquals(0, new BigDecimal("23475.00").compareTo(r.montoTotal()));
+    }
+
+    @Test
+    void sin_incidencias_el_monto_es_identico_al_caso_base() {
+        // Cero regresión explícita: con DiasNoComputablesDto.cero() (default del setUp),
+        // el resultado debe ser idéntico al caso servir_vp_pura_calcula_total_exacto.
+        when(planillaRepository.findById(VINCULO_ID)).thenReturn(Optional.of(
+                vinculo(3L, 5400.0, LocalDate.of(2022, 1, 1), LocalDate.of(2026, 6, 15))));
+        stubRegimen(3L, "SERVIR");
+        when(parametroService.obtenerValor(eq("CTS_FACTOR_ANUAL_SERVIR"), eq(2026), isNull()))
+                .thenReturn(BigDecimal.ONE);
+        when(parametroService.obtenerValor(eq("CTS_DIVISOR_DIAS"), eq(2026), isNull()))
+                .thenReturn(new BigDecimal("360"));
+
+        CtsLiquidacionResponseDto r = service.calcular(EMPLEADO_ID, VINCULO_ID, PERIODO);
+
+        assertEquals(0, new BigDecimal("24075.00").compareTo(r.montoTotal()));
     }
 
     @Test

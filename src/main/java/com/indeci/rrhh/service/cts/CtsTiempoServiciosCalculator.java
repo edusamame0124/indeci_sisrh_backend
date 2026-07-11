@@ -32,4 +32,22 @@ public class CtsTiempoServiciosCalculator {
         long diasFraccion = (long) meses * DIAS_POR_MES + dias;
         return new TiempoServicios(anios, meses, dias, diasFraccion);
     }
+
+    /**
+     * SPEC_VACACIONES F9.1 / CTS — Resta días NO computables (LSG + faltas injustificadas,
+     * Art. 8 TUO Ley de CTS) de un tiempo de servicios ya calculado, re-derivando años/meses/días
+     * en base 30/360 (puede "pedir prestado" un mes o un año completo si el descuento lo cruza).
+     *
+     * <p>Puro y determinístico (sin dependencias): recibe el total ya calculado y el descuento ya
+     * resuelto por el caller — mantiene la calculadora testeable de forma aislada.</p>
+     */
+    public TiempoServicios descontar(TiempoServicios ideal, int diasNoComputables) {
+        long totalIdeal = (long) ideal.anios() * 360 + ideal.diasFraccion();
+        long totalReal = Math.max(0, totalIdeal - Math.max(0, diasNoComputables));
+        int anios = (int) (totalReal / 360);
+        long restoFraccion = totalReal - (long) anios * 360;
+        int meses = (int) (restoFraccion / DIAS_POR_MES);
+        int dias = (int) (restoFraccion - (long) meses * DIAS_POR_MES);
+        return new TiempoServicios(anios, meses, dias, restoFraccion);
+    }
 }

@@ -38,6 +38,32 @@ public interface EmpleadoEventoRepository
             Long empleadoId,
             Integer activo);
 
+    /** SPEC_VACACIONES F9.1 — idempotencia al materializar licencia sin goce. */
+    boolean existsByEmpleadoIdAndTipoEventoIdAndFechaInicioAndActivo(
+            Long empleadoId, Long tipoEventoId, LocalDate fechaInicio, Integer activo);
+
+    /**
+     * SPEC_VACACIONES F9.1 — eventos VALIDADOS que restan días laborados
+     * ({@code afectaDiasLaborados='S'}: LSG, suspensiones no subsidiadas) y solapan el
+     * rango [desde, hasta]. Base del récord vacacional (días no computables por eventos).
+     */
+    @Query("""
+            SELECT e
+              FROM EmpleadoEvento e
+              JOIN e.tipoEvento t
+             WHERE e.empleadoId          = :empleadoId
+               AND e.activo              = 1
+               AND e.estado              = 'VALIDADO'
+               AND t.activo              = 1
+               AND t.afectaDiasLaborados = 'S'
+               AND e.fechaInicio        <= :hasta
+               AND e.fechaFin           >= :desde
+            """)
+    List<EmpleadoEvento> findNoComputablesRecord(
+            @Param("empleadoId") Long empleadoId,
+            @Param("desde") LocalDate desde,
+            @Param("hasta") LocalDate hasta);
+
     /** F3.6 — bandeja operativa paginada con filtros opcionales. */
     @Query("""
             SELECT e
