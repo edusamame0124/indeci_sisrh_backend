@@ -50,6 +50,9 @@ public class SolicitudRrhhDto {
 	private Integer totalFolios;
 	
 	private Long tipoVacacionId;
+
+	/** Papeleta de Teletrabajo — modalidad elegida (PARCIAL/COMPLETA). */
+	private String modalidadTeletrabajo;
 	
 	private List<SolicitudVacacionDetDto> detallesVacacion;
 	

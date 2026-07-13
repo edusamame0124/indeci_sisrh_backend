@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 
 import com.indeci.exception.NegocioException;
 import com.indeci.exception.VinculoNoEncontradoException;
+import com.indeci.rrhh.dto.AcumulacionDecisionInputDto;
+import com.indeci.rrhh.dto.AcumulacionDecisionResponseDto;
 import com.indeci.rrhh.dto.DiasNoComputablesDto;
 import com.indeci.rrhh.dto.PeriodoProgramadoDto;
 import com.indeci.rrhh.dto.SaldoProporcionalDto;
@@ -23,15 +25,18 @@ import com.indeci.rrhh.entity.EstadoSolicitud;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.entity.Vacacion;
+import com.indeci.rrhh.entity.VacacionAcumulacionDecision;
 import com.indeci.rrhh.repository.EstadoSolicitudRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
+import com.indeci.rrhh.repository.VacacionAcumulacionDecisionRepository;
 import com.indeci.rrhh.repository.VacacionRepository;
 import com.indeci.rrhh.repository.VacacionSaldoRepository;
 import com.indeci.rrhh.repository.SolicitudVacacionDetRepository;
 import com.indeci.rrhh.entity.SolicitudRrhhDoc;
 import com.indeci.rrhh.entity.SolicitudVacacionDet;
 import com.indeci.rrhh.entity.VacacionSaldo;
+import com.indeci.security.util.SecurityUtil;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -56,6 +61,11 @@ public class VacacionService {
     private final TiempoServicioService tiempoServicioService;
 
     private final IncidenciaLaboralCompuesta incidenciaLaboralCompuesta;
+
+    private final VacacionAcumulacionDecisionRepository acumulacionDecisionRepository;
+
+    /** F9.3 — D.S. 013-2019-PCM: tope de períodos vacacionales acumulables sin gozar. */
+    public static final int TOPE_PERIODOS_ACUMULACION = 2;
 
     /** Devengo mensual (D.S. 013-2019-PCM Art. 10): 30 días / 12 meses = 2.5 días por mes completo. */
     private static final BigDecimal DIAS_POR_MES = BigDecimal.valueOf(2.5);
@@ -176,6 +186,71 @@ public class VacacionService {
 	            .map(v -> new PeriodoProgramadoDto(
 	                    v.getId(), v.getPeriodoDesde(), v.getPeriodoHasta(),
 	                    v.getDias(), v.getTipoGoce()))
+	            .toList();
+	}
+
+	// ══════════════════════════════════════════════════════════════════════════
+	// F9.3 — Acumulación de vacaciones (D.S. 013-2019-PCM): hasta 2 períodos sin
+	// gozar; el exceso NUNCA se pierde/bloquea automáticamente — se marca para
+	// evaluación de RR.HH. con sustento (auditoría append-only, no toca saldos).
+	// ══════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * Cuenta cuántos períodos (años) tienen saldo pendiente de gozar
+	 * ({@code diasGanados > diasGozados}). El consumo de saldo es FIFO por año
+	 * ({@link #descontarSaldoVacacional}), así que esto refleja fielmente cuántos
+	 * "períodos completos sin tocar" tiene el empleado — no una simple resta global.
+	 */
+	public static int contarPeriodosPendientes(List<VacacionSaldo> saldos) {
+	    return (int) saldos.stream()
+	            .filter(s -> (s.getDiasGanados() != null ? s.getDiasGanados() : 0d)
+	                    > (s.getDiasGozados() != null ? s.getDiasGozados() : 0d))
+	            .count();
+	}
+
+	@Transactional(readOnly = true)
+	public int calcularPeriodosAcumulados(Long empleadoId) {
+	    return contarPeriodosPendientes(
+	            vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(empleadoId, 1));
+	}
+
+	/**
+	 * Registra la decisión de RR.HH. sobre la acumulación de un empleado (auditoría
+	 * append-only). NO modifica ningún {@link VacacionSaldo} — es exclusivamente un
+	 * registro de trazabilidad; cualquier ajuste real de saldo sigue pasando por los
+	 * flujos existentes (papeleta de vacaciones / Goce Directo).
+	 */
+	@Transactional
+	public AcumulacionDecisionResponseDto registrarDecisionAcumulacion(
+	        Long empleadoId, AcumulacionDecisionInputDto dto) {
+	    int periodosPendientes = calcularPeriodosAcumulados(empleadoId);
+
+	    VacacionAcumulacionDecision entity = new VacacionAcumulacionDecision();
+	    entity.setEmpleadoId(empleadoId);
+	    entity.setPeriodosPendientesAlMomento(periodosPendientes);
+	    entity.setMotivoDecision(dto.getMotivoDecision());
+	    entity.setDocumentoSustento(dto.getDocumentoSustento());
+	    entity.setUsuarioRegistro(SecurityUtil.getUsername());
+	    entity.setActivo(1);
+	    acumulacionDecisionRepository.save(entity);
+
+	    // CREATED_AT es default de BD (insertable=false) — se aproxima con "ahora" para la
+	    // respuesta inmediata; el historial (listarDecisionesAcumulacion) sí trae el valor real.
+	    return new AcumulacionDecisionResponseDto(
+	            entity.getId(), empleadoId, periodosPendientes,
+	            entity.getMotivoDecision(), entity.getDocumentoSustento(),
+	            entity.getUsuarioRegistro(), java.time.LocalDateTime.now());
+	}
+
+	@Transactional(readOnly = true)
+	public List<AcumulacionDecisionResponseDto> listarDecisionesAcumulacion(Long empleadoId) {
+	    return acumulacionDecisionRepository
+	            .findByEmpleadoIdAndActivoOrderByCreatedAtDesc(empleadoId, 1)
+	            .stream()
+	            .map(d -> new AcumulacionDecisionResponseDto(
+	                    d.getId(), d.getEmpleadoId(), d.getPeriodosPendientesAlMomento(),
+	                    d.getMotivoDecision(), d.getDocumentoSustento(), d.getUsuarioRegistro(),
+	                    d.getCreatedAt()))
 	            .toList();
 	}
 
@@ -424,7 +499,7 @@ public class VacacionService {
 
             vacacion.setAnioPeriodo(det.getFechaInicio().getYear());
             vacacion.setTipoGoce(det.getTipo());
-            vacacion.setDias(det.getTotalDias() != null ? det.getTotalDias().intValue() : 0);
+            vacacion.setDias(det.getTotalDias() != null ? det.getTotalDias() : 0d);
             vacacion.setEstado("GOZADO");
             vacacion.setEsAdelanto("ADELANTO".equals(det.getTipo()) ? 1 : 0);
             vacacion.setOrigen("MOTOR");
@@ -520,11 +595,11 @@ public class VacacionService {
                 List<Vacacion> vacacionesAnio = vacacionRepository.findByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1)
                         .stream().filter(v -> v.getAnioPeriodo() != null && v.getAnioPeriodo() == anioPeriodo).toList();
                 
-                int diasFraccionadosUsados = vacacionesAnio.stream()
+                double diasFraccionadosUsados = vacacionesAnio.stream()
                         .filter(v -> v.getDias() != null && v.getDias() < 7)
-                        .mapToInt(Vacacion::getDias)
+                        .mapToDouble(Vacacion::getDias)
                         .sum();
-                        
+
                 if (diasFraccionadosUsados + diasTotales > 7) {
                     throw new com.indeci.rrhh.exception.FraccionamientoIlegalException(
                             "El servidor civil ya agotó su pool de 7 días fraccionables para este periodo. " +
@@ -544,7 +619,7 @@ public class VacacionService {
         
         vacacion.setAnioPeriodo(dto.getFechaInicio().getYear());
         vacacion.setTipoGoce(Boolean.TRUE.equals(dto.getEsAdelanto()) ? "ADELANTO" : "REGULAR");
-        vacacion.setDias(diasTotales);
+        vacacion.setDias((double) diasTotales);
         vacacion.setEstado("GOZADO");
         vacacion.setEsAdelanto(Boolean.TRUE.equals(dto.getEsAdelanto()) ? 1 : 0);
         vacacion.setOrigen("OVERRIDE_RRHH");

@@ -27,9 +27,11 @@ class PapeletaLicenciaSinGoceTemplateTest {
             JasperReport report = JasperCompileManager.compileReport(jrxml);
             assertThat(report).isNotNull();
 
+            // Plantilla unificada Con Goce / Sin Goce: la modalidad y el motivo van en
+            // parámetros separados (P_MODALIDAD_LICENCIA / P_MOTIVO_LICENCIA).
             assertThat(report.getParameters())
                     .extracting(JRParameter::getName)
-                    .contains("P_HEADER", "P_TIPO_LICENCIA", "P_DIAS",
+                    .contains("P_HEADER", "P_MODALIDAD_LICENCIA", "P_MOTIVO_LICENCIA", "P_DIAS",
                             "P_FECHA_INICIO", "P_FECHA_FIN", "P_CODIGO_FIRMA",
                             "P_NOMBRE_TRABAJADOR", "P_DEPENDENCIA");
         }

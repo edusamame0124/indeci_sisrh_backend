@@ -13,7 +13,9 @@ import java.util.Set;
  */
 public final class AsistenciaResumenCalculator {
 
-    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA");
+    // TELETRABAJO = trabajo efectivo remoto (Ley 31572): cuenta como laborado, no descuenta.
+    // PERMISO (con goce aprobado) NO está aquí: justificado, no descuenta y no cuenta laborado.
+    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA", "TELETRABAJO");
 
     private AsistenciaResumenCalculator() {}
 

@@ -29,6 +29,8 @@ import com.indeci.rrhh.dto.VacacionResponseDto;
 import com.indeci.rrhh.service.ImportadorVacacionesService;
 import com.indeci.rrhh.service.PadronVacacionalService;
 import com.indeci.rrhh.service.TiempoServicioService;
+import com.indeci.rrhh.service.VacacionProvisionService;
+import com.indeci.rrhh.service.VacacionSaldoService;
 import com.indeci.rrhh.service.VacacionService;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 import com.indeci.security.util.SecurityUtil;
@@ -45,6 +47,9 @@ public class VacacionController {
 	private final TiempoServicioService tiempoServicioService;
 	private final PadronVacacionalService padronVacacionalService;
 	private final ImportadorVacacionesService importadorVacacionesService;
+	private final VacacionProvisionService vacacionProvisionService;
+	private final VacacionSaldoService vacacionSaldoService;
+	private final com.indeci.rrhh.repository.FeriadoRepository feriadoRepository;
 
 	/**
 	 * SPEC_VACACIONES F8 / D7 — importa la línea base del Excel del especialista
@@ -226,6 +231,87 @@ public class VacacionController {
 				"OK",
 				"Goce directo registrado correctamente",
 				null);
+	}
+
+	/**
+	 * F9.3 — D.S. 013-2019-PCM: registra la decisión de RR.HH. sobre la acumulación de
+	 * períodos sin gozar de un empleado (auditoría append-only, no modifica saldos).
+	 */
+	@PostMapping("/padron/{empleadoId}/acumulacion-decision")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+	public ApiResponse<com.indeci.rrhh.dto.AcumulacionDecisionResponseDto> registrarDecisionAcumulacion(
+			@PathVariable Long empleadoId,
+			@org.springframework.validation.annotation.Validated @RequestBody
+			com.indeci.rrhh.dto.AcumulacionDecisionInputDto dto) {
+
+		return new ApiResponse<>(
+				"OK",
+				"Decisión de acumulación registrada correctamente",
+				vacacionService.registrarDecisionAcumulacion(empleadoId, dto));
+	}
+
+	/**
+	 * Art. 35 — feriados del año (ISO {@code yyyy-MM-dd}) para que la UI compute los días
+	 * hábiles de las fracciones igual que el backend (sin sorpresas al guardar).
+	 */
+	@GetMapping("/feriados")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+	public ApiResponse<List<String>> feriados(@RequestParam int anio) {
+		List<String> fechas = feriadoRepository.findByAnioAndActivoOrderByFecha(anio, 1).stream()
+				.map(f -> f.getFecha().toString())
+				.toList();
+		return new ApiResponse<>("OK", "Feriados del año " + anio, fechas);
+	}
+
+	/** F9.3 — historial de decisiones de acumulación registradas para un empleado. */
+	@GetMapping("/padron/{empleadoId}/acumulacion-decision")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+	public ApiResponse<List<com.indeci.rrhh.dto.AcumulacionDecisionResponseDto>> listarDecisionesAcumulacion(
+			@PathVariable Long empleadoId) {
+
+		return new ApiResponse<>(
+				"OK",
+				"Historial de decisiones de acumulación",
+				vacacionService.listarDecisionesAcumulacion(empleadoId));
+	}
+
+	/**
+	 * Botón "Provisionar Auto" del Padrón Vacacional: recalcula TODO el saldo del empleado
+	 * (récord real por año de aniversario + LSG/faltas). Nunca edita in-place: las filas mal
+	 * calculadas se anulan (soft-delete) y se reemplazan por una fila nueva y limpia — ver
+	 * {@link VacacionProvisionService#recalcularProvisionManual}. El sustento es obligatorio
+	 * (Poka-Yoke — la UI siempre lo exige antes de llamar este endpoint).
+	 */
+	@PostMapping("/padron/{empleadoId}/provisionar-auto")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+	public ApiResponse<com.indeci.rrhh.dto.RecalculoManualResultDto> provisionarAuto(
+			@PathVariable Long empleadoId,
+			@org.springframework.validation.annotation.Validated @RequestBody
+			com.indeci.rrhh.dto.ProvisionarAutoRequestDto dto) {
+
+		com.indeci.rrhh.dto.RecalculoManualResultDto resultado =
+				vacacionProvisionService.recalcularProvisionManual(empleadoId, dto.getSustento());
+		String mensaje = resultado.cambios().isEmpty()
+				? "El saldo ya estaba correcto — sin cambios"
+				: resultado.cambios().size() + " período(s) actualizado(s) correctamente";
+
+		return new ApiResponse<>("OK", mensaje, resultado);
+	}
+
+	/**
+	 * Trazabilidad Visual — "Historial de Recálculos": ciclo de vida COMPLETO del saldo de un
+	 * empleado (activos + anulados por "Provisionar Auto"), para que RR.HH. entienda de dónde
+	 * salió un recálculo sin perder visibilidad del dato importado original.
+	 */
+	@GetMapping("/padron/{empleadoId}/historial-saldo")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+	public ApiResponse<List<com.indeci.rrhh.dto.HistorialSaldoDto>> historialSaldo(
+			@PathVariable Long empleadoId) {
+
+		return new ApiResponse<>(
+				"OK",
+				"Historial de saldo vacacional",
+				vacacionSaldoService.listarHistorialCompleto(empleadoId));
 	}
 
 }

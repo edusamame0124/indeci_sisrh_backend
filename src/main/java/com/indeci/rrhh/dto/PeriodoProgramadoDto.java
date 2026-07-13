@@ -13,6 +13,6 @@ public record PeriodoProgramadoDto(
         Long id,
         LocalDate periodoDesde,
         LocalDate periodoHasta,
-        Integer dias,
+        Double dias,
         String tipoGoce) {
 }

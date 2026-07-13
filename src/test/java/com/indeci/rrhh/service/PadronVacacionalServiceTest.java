@@ -196,6 +196,51 @@ class PadronVacacionalServiceTest {
     }
 
     /**
+     * FUENTE ÚNICA DE VERDAD: "Corresponden" y "Saldo" se LEEN de la BD (suma de filas
+     * ACTIVAS), NO se calculan al vuelo (años×30). Empleado de 5 meses con una fila activa
+     * de ganados=0 / gozados=51 (estado base del dato inconsistente, aún no anulado) → el
+     * Padrón expone exactamente 0 / 51 / -51 tal cual está en Oracle, sin inflar ni inventar.
+     */
+    @Test
+    void consultar_lee_corresponden_y_saldo_desde_la_bd_sin_formula() {
+        when(personaService.listarPaginado("abad", 0, 25)).thenReturn(new PersonaResumenPageDto(
+                List.of(persona(1, 1690, "ABAD GIRON EVER", "41868447", "1057")), 1L, 1, 0, 25));
+
+        EmpleadoPlanilla v = new EmpleadoPlanilla();
+        v.setEmpleadoId(1690L);
+        v.setActivo(1);
+        v.setFechaInicioContrato(LocalDate.now().minusMonths(5)); // 5 meses → ts.anios()==0
+        v.setSueldoBasico(2364.19);
+        when(empleadoPlanillaRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(v));
+        when(empleadoPuestoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of());
+        when(cargoRepository.findAll()).thenReturn(List.of());
+        when(dependenciaRepository.findAll()).thenReturn(List.of());
+        when(incidenciaLaboralCompuesta.calcularDesglose(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(com.indeci.rrhh.dto.DiasNoComputablesDto.cero());
+
+        // Estado base leído de Oracle: 0 ganados, 51 gozados (dato inconsistente, activo=1).
+        VacacionSaldo s = new VacacionSaldo();
+        s.setEmpleadoId(1690L);
+        s.setAnio(2026);
+        s.setDiasGanados(0.0);
+        s.setDiasGozados(51.0);
+        when(vacacionSaldoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(s));
+
+        PadronVacacionalRowDto r = service.consultar("abad", 0, 25).content().get(0);
+
+        assertThat(r.diasCorresponden()).isZero();   // leído de BD, NO calculado por años×30
+        assertThat(r.diasGozados()).isEqualTo(51.0);
+        assertThat(r.saldo()).isEqualTo(-51.0);       // realidad matemática: 0 - 51
+        assertThat(r.estadoRecord()).isEqualTo("EN_ACUMULACION");
+    }
+
+    /**
      * Refactor Récord Anual Estricto — certifica que el bloqueo YA NO se diluye por antigüedad
      * acumulada. Antes del fix: ts.totalDias360() de 3 años (~1080 días) − 250 días no
      * computables ≈ 830 efectivos, muy por encima de 210/260 → SIEMPRE mostraba "OK" sin
@@ -230,6 +275,93 @@ class PadronVacacionalServiceTest {
 
         assertThat(r.aniosServicio()).isGreaterThanOrEqualTo(2); // antigüedad real, varios años
         assertThat(r.estadoRecord()).isEqualTo(com.indeci.rrhh.dto.VacacionCalculoDto.RECORD_SIN);
+    }
+
+    /**
+     * F9.3 — D.S. 013-2019-PCM: 3 años con saldo pendiente de gozar supera el tope de 2 →
+     * requiereDecisionAcumulacion=true (solo marca para evaluación de RR.HH.; NUNCA bloquea
+     * ni pierde saldo automáticamente).
+     */
+    @Test
+    void consultar_marca_requiere_decision_cuando_supera_el_tope_de_periodos_acumulados() {
+        when(personaService.listarPaginado("z", 0, 25)).thenReturn(new PersonaResumenPageDto(
+                List.of(persona(1, 70, "LUIS TORRES", "70055443", "276")), 1L, 1, 0, 25));
+
+        EmpleadoPlanilla v = new EmpleadoPlanilla();
+        v.setEmpleadoId(70L);
+        v.setActivo(1);
+        v.setFechaInicioContrato(LocalDate.now().minusYears(4));
+        v.setSueldoBasico(1500.0);
+        when(empleadoPlanillaRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(v));
+        when(empleadoPuestoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of());
+        when(cargoRepository.findAll()).thenReturn(List.of());
+        when(dependenciaRepository.findAll()).thenReturn(List.of());
+        when(incidenciaLaboralCompuesta.calcularDesglose(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(com.indeci.rrhh.dto.DiasNoComputablesDto.cero());
+
+        VacacionSaldo s2023 = new VacacionSaldo();
+        s2023.setEmpleadoId(70L);
+        s2023.setAnio(2023);
+        s2023.setDiasGanados(30.0);
+        s2023.setDiasGozados(0.0);
+        VacacionSaldo s2024 = new VacacionSaldo();
+        s2024.setEmpleadoId(70L);
+        s2024.setAnio(2024);
+        s2024.setDiasGanados(30.0);
+        s2024.setDiasGozados(0.0);
+        VacacionSaldo s2025 = new VacacionSaldo();
+        s2025.setEmpleadoId(70L);
+        s2025.setAnio(2025);
+        s2025.setDiasGanados(30.0);
+        s2025.setDiasGozados(10.0); // parcial: sigue pendiente
+        when(vacacionSaldoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(s2023, s2024, s2025));
+
+        PadronVacacionalRowDto r = service.consultar("z", 0, 25).content().get(0);
+
+        assertThat(r.periodosAcumuladosSinGozar()).isEqualTo(3);
+        assertThat(r.requiereDecisionAcumulacion()).isTrue();
+    }
+
+    @Test
+    void consultar_no_marca_requiere_decision_dentro_del_tope() {
+        when(personaService.listarPaginado("w", 0, 25)).thenReturn(new PersonaResumenPageDto(
+                List.of(persona(1, 71, "MARIA LOPEZ", "70044332", "276")), 1L, 1, 0, 25));
+
+        EmpleadoPlanilla v = new EmpleadoPlanilla();
+        v.setEmpleadoId(71L);
+        v.setActivo(1);
+        v.setFechaInicioContrato(LocalDate.now().minusYears(3));
+        v.setSueldoBasico(1500.0);
+        when(empleadoPlanillaRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(v));
+        when(empleadoPuestoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of());
+        when(cargoRepository.findAll()).thenReturn(List.of());
+        when(dependenciaRepository.findAll()).thenReturn(List.of());
+        when(incidenciaLaboralCompuesta.calcularDesglose(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(com.indeci.rrhh.dto.DiasNoComputablesDto.cero());
+
+        VacacionSaldo s2025 = new VacacionSaldo();
+        s2025.setEmpleadoId(71L);
+        s2025.setAnio(2025);
+        s2025.setDiasGanados(30.0);
+        s2025.setDiasGozados(0.0);
+        when(vacacionSaldoRepository.findByEmpleadoIdInAndActivo(anyList(), eq(1)))
+                .thenReturn(List.of(s2025));
+
+        PadronVacacionalRowDto r = service.consultar("w", 0, 25).content().get(0);
+
+        assertThat(r.periodosAcumuladosSinGozar()).isEqualTo(1);
+        assertThat(r.requiereDecisionAcumulacion()).isFalse();
     }
 
     @Test

@@ -97,19 +97,24 @@ public class PadronVacacionalService {
                 : empleadoPuestoRepository.findByEmpleadoIdInAndActivo(empIds, 1).stream()
                         .collect(Collectors.toMap(EmpleadoPuesto::getEmpleadoId, p -> p, (a, b) -> a));
 
-        final Map<Long, Double> ganadosPorEmp = empIds.isEmpty()
+        final Map<Long, List<VacacionSaldo>> saldosPorEmp = empIds.isEmpty()
                 ? Map.of()
                 : vacacionSaldoRepository.findByEmpleadoIdInAndActivo(empIds, 1).stream()
-                        .collect(Collectors.groupingBy(
-                                VacacionSaldo::getEmpleadoId,
-                                Collectors.summingDouble(s -> s.getDiasGanados() != null ? s.getDiasGanados() : 0d)));
+                        .collect(Collectors.groupingBy(VacacionSaldo::getEmpleadoId));
 
-        final Map<Long, Double> gozadosPorEmp = empIds.isEmpty()
-                ? Map.of()
-                : vacacionSaldoRepository.findByEmpleadoIdInAndActivo(empIds, 1).stream()
-                        .collect(Collectors.groupingBy(
-                                VacacionSaldo::getEmpleadoId,
-                                Collectors.summingDouble(s -> s.getDiasGozados() != null ? s.getDiasGozados() : 0d)));
+        final Map<Long, Double> ganadosPorEmp = saldosPorEmp.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
+                        .mapToDouble(s -> s.getDiasGanados() != null ? s.getDiasGanados() : 0d).sum()));
+
+        final Map<Long, Double> gozadosPorEmp = saldosPorEmp.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
+                        .mapToDouble(s -> s.getDiasGozados() != null ? s.getDiasGozados() : 0d).sum()));
+
+        // F9.3 — D.S. 013-2019-PCM: períodos (años) con saldo pendiente de gozar, reusando
+        // el mismo batch de VacacionSaldo (sin query adicional).
+        final Map<Long, Integer> periodosPendientesPorEmp = saldosPorEmp.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey,
+                        e -> VacacionService.contarPeriodosPendientes(e.getValue())));
 
         final Map<Long, String> cargoNombre = cargoRepository.findAll().stream()
                 .filter(c -> c.getId() != null)
@@ -138,6 +143,8 @@ public class PadronVacacionalService {
             final String dependencia = puesto != null ? dependenciaNombre.get(puesto.getDependenciaId()) : null;
             final double ganados = empId != null ? ganadosPorEmp.getOrDefault(empId, 0d) : 0d;
             final double gozados = empId != null ? gozadosPorEmp.getOrDefault(empId, 0d) : 0d;
+            final int periodosPendientes = empId != null ? periodosPendientesPorEmp.getOrDefault(empId, 0) : 0;
+            final boolean requiereDecision = periodosPendientes > VacacionService.TOPE_PERIODOS_ACUMULACION;
 
             final Optional<TiempoServicioDto> tsOpt =
                     tiempoServicioService.calcularDesde(vinculos, empId, corte);
@@ -149,7 +156,8 @@ public class PadronVacacionalService {
                         null, null, null,
                         null, null, null, null, null,
                         0, gozados, -gozados,
-                        "SIN_VINCULO", true));
+                        "SIN_VINCULO", true,
+                        periodosPendientes, requiereDecision));
                 continue;
             }
 
@@ -200,13 +208,20 @@ public class PadronVacacionalService {
 
             final String estadoRecordFinal = enAcumulacion ? ESTADO_EN_ACUMULACION : calc.estadoRecord();
 
+            // FUENTE ÚNICA DE VERDAD: "Corresponden" y "Saldo" se leen directamente de la BD
+            // (suma de DIAS_GANADOS/DIAS_GOZADOS de las filas ACTIVAS — ver ganadosPorEmp/
+            // gozadosPorEmp, construidos con findByEmpleadoIdInAndActivo(...,1)). NO se calculan
+            // al vuelo: eso ignoraría los períodos SIN_RECORD_LEGAL y las provisiones por
+            // override manual. El Write Path (recálculo) ya garantiza que las filas malas se
+            // anulan (activo=0) y no se infla nada, así que la simple suma refleja la realidad.
             content.add(new PadronVacacionalRowDto(
                     empId, f.getDni(), f.getNombreCompleto(), f.getRegimenLaboral(),
                     cargo, dependencia,
                     ts.anios(), ts.meses(), ts.dias(),
                     noComp.lsg(), noComp.faltas(), aniosEf, mesesEf, diasEf,
                     calc.diasCorresponden(), calc.diasGozados(), calc.saldo(),
-                    estadoRecordFinal, false));
+                    estadoRecordFinal, false,
+                    periodosPendientes, requiereDecision));
         }
 
         return new PadronVacacionalPageDto(

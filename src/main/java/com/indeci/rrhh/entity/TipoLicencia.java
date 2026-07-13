@@ -39,4 +39,8 @@ public class TipoLicencia {
     /** Código oficial Tabla 21 PLAME (SUNAT); las sin goce se agrupan en '05'. */
     @Column(name = "COD_PLAME_SUNAT")
     private String codPlameSunat;
+
+    /** SPEC_VACACIONES F9.2 — tope de días permitido por motivo (NULL = sin tope). */
+    @Column(name = "MAX_DIAS")
+    private Integer maxDias;
 }

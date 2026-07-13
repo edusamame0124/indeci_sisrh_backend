@@ -84,7 +84,7 @@ public class AsistenciaService {
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
             "LABORAL", "FALTA", "TARDANZA", "LICENCIA", "VACACIONES", "DESCANSO",
-            "FERIADO", "OBSERVADO", "SANCION_PAD");
+            "FERIADO", "OBSERVADO", "SANCION_PAD", "TELETRABAJO", "PERMISO");
 
     /** Tipo de día que exige observación obligatoria (motivo/expediente PAD). */
     private static final String TIPO_DIA_SANCION_PAD = "SANCION_PAD";
@@ -92,8 +92,8 @@ public class AsistenciaService {
     private static final Set<String> ESTADOS_CABECERA = Set.of(
             "BORRADOR", "PREVALIDADA", "LISTA_PARA_VALIDAR", "OBSERVADA", "VALIDADA");
 
-    /** Tipos que cuentan como día efectivamente laborado. */
-    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA");
+    /** Tipos que cuentan como día efectivamente laborado (TELETRABAJO = remoto, Ley 31572). */
+    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA", "TELETRABAJO");
 
     // ==========================================
     // CONSULTAR (empleado + período)

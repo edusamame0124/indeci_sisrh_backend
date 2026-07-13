@@ -78,6 +78,34 @@ class AsistenciaResumenCalculatorTest {
     }
 
     @Test
+    void teletrabajo_cuenta_como_laborado_y_no_descuenta() {
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setTipoDia("TELETRABAJO");
+        dia.setObservacion("Justificado por papeleta aprobada: Reporte de Teletrabajo — Ley N° 31572");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(dia), 3000.0);
+
+        assertThat(resumen.getDiasLaborados()).isEqualTo(1);
+        assertThat(resumen.getDiasFalta()).isZero();
+        assertThat(resumen.getDescuentoFalta()).isZero();
+    }
+
+    @Test
+    void permiso_con_goce_no_descuenta_y_no_cuenta_como_laborado() {
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setTipoDia("PERMISO");
+        dia.setObservacion("Justificado por papeleta aprobada: Permiso con goce");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(dia), 3000.0);
+
+        assertThat(resumen.getDiasFalta()).isZero();
+        assertThat(resumen.getDescuentoFalta()).isZero();
+        assertThat(resumen.getDiasLaborados()).isZero();
+    }
+
+    @Test
     void mes_sin_incidencias_no_genera_descuento_por_sancion_pad() {
         AsistenciaDiaDto laboral = new AsistenciaDiaDto();
         laboral.setTipoDia("LABORAL");

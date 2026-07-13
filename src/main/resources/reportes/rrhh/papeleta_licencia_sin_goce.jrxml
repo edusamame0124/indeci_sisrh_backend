@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- SPEC_VACACIONES F9.1-bis — Papeleta de Licencia Sin Goce (formato oficio corporativo, firma digital). -->
+<!-- SPEC_VACACIONES F9.1-bis / F9.2 — Papeleta de Licencia Unificada (Con Goce / Sin Goce).
+     Layout compactado para caber en una sola hoja A4:
+       detail(496) + pageFooter(190) + margins(40) = 726 <= 842 (pageHeight).
+       title(100) + detail(496) + pageFooter(190) = 786 <= 802 (usable) -> una sola página. -->
 <jasperReport name="papeleta_licencia_sin_goce" language="java" pageWidth="595" pageHeight="842" columnWidth="531" leftMargin="32" rightMargin="32" topMargin="20" bottomMargin="20" uuid="a1000000-0000-0000-0000-000000000000">
 	<parameter name="INSTITUCION" class="java.lang.String"/>
 	<parameter name="P_HEADER" class="java.io.InputStream"/>
 	<parameter name="P_NOMBRE_TRABAJADOR" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
 	<parameter name="P_DEPENDENCIA" class="java.lang.String"/>
 	<parameter name="P_REGIMEN_NOMBRE" class="java.lang.String"/>
-	<parameter name="P_TIPO_LICENCIA" class="java.lang.String"/>
+	<parameter name="P_MODALIDAD_LICENCIA" class="java.lang.String"/>
+	<parameter name="P_MOTIVO_LICENCIA" class="java.lang.String"/>
+	<parameter name="P_OTROS_MOTIVOS" class="java.lang.String"/>
 	<parameter name="P_DIAS" class="java.lang.String"/>
 	<parameter name="P_FECHA_INICIO" class="java.lang.String"/>
 	<parameter name="P_FECHA_FIN" class="java.lang.String"/>
@@ -15,140 +21,196 @@
 	<parameter name="P_FECHA_PERMISO" class="java.lang.String"/>
 	<query language="sql"><![CDATA[]]></query>
 	<background splitType="Stretch"/>
-	<title height="126" splitType="Stretch">
-		<element kind="image" uuid="a1000000-0000-0000-0000-000000000001" x="0" y="0" width="531" height="60" scaleImage="RetainShape" hImageAlign="Center" onErrorType="Blank">
+	<title height="100" splitType="Stretch">
+		<element kind="image" uuid="a1000000-0000-0000-0000-000000000001" x="0" y="0" width="531" height="50" scaleImage="RetainShape" hImageAlign="Center" onErrorType="Blank">
 			<expression><![CDATA[$P{P_HEADER}]]></expression>
 		</element>
-		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000003" x="0" y="72" width="531" height="26" fontSize="17.0" bold="true" hTextAlign="Center">
-			<text><![CDATA[PAPELETA DE LICENCIA SIN GOCE DE HABER]]></text>
+		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000003" x="0" y="56" width="531" height="24" fontSize="13.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE LICENCIA CON GOCE / SIN GOCE DE REMUNERACIONES]]></text>
 		</element>
-		<element kind="textField" uuid="a1000000-0000-0000-0000-000000000004" x="0" y="100" width="531" height="16" fontSize="10.0" hTextAlign="Center" forecolor="#555555">
+		<element kind="textField" uuid="a1000000-0000-0000-0000-000000000004" x="0" y="82" width="531" height="14" fontSize="10.0" hTextAlign="Center" forecolor="#555555">
 			<expression><![CDATA["Instituto Nacional de Defensa Civil - " + String.valueOf($P{INSTITUCION})]]></expression>
 		</element>
 	</title>
 	<detail>
-		<band height="500" splitType="Stretch">
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000005" x="0" y="4" width="531" height="30" fontSize="10.5" bold="true">
-				<text><![CDATA[SEÑOR/A JEFE/A DE LA OFICINA DE RECURSOS HUMANOS DE LA OFICINA GENERAL DE ADMINISTRACIÓN DEL INDECI]]></text>
+		<band height="496" splitType="Stretch">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000005" x="0" y="0" width="531" height="26" fontSize="10.5" bold="true">
+				<text><![CDATA[SEÑOR/A JEFE/A DE LA UNIDAD DE RECURSOS HUMANOS DE LA OFICINA GENERAL DE ADMINISTRACIÓN DEL INDECI]]></text>
 			</element>
 
 			<!-- DATOS DEL SERVIDOR -->
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000010" x="0" y="44" width="531" height="122" radius="3" mode="Transparent">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000010" x="0" y="30" width="531" height="116" radius="3" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000011" x="0" y="44" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000011" x="0" y="30" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
 				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000012" x="12" y="47" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<element kind="image" uuid="a1000000-0000-0000-0000-0000000000a1" x="12" y="34" width="14" height="14" scaleImage="RetainShape" onErrorType="Blank">
+				<expression><![CDATA[getClass().getResourceAsStream("/reportes/rrhh/icons/servidor.svg")]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000012" x="34" y="33" width="400" height="16" fontSize="11.0" bold="true" forecolor="#333333">
 				<text><![CDATA[DATOS DEL SERVIDOR]]></text>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000013" x="16" y="78" width="150" height="18" fontSize="11.0" bold="true">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000013" x="16" y="54" width="150" height="18" fontSize="11.0" bold="true">
 				<text><![CDATA[Servidor:]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000014" x="175" y="78" width="356" height="18" fontSize="11.0">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000014" x="175" y="54" width="356" height="18" fontSize="11.0">
 				<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000015" x="16" y="110" width="150" height="18" fontSize="11.0" bold="true">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-00000000001c" x="16" y="78" width="150" height="18" fontSize="11.0" bold="true">
+				<text><![CDATA[Cargo:]]></text>
+			</element>
+			<element kind="textField" uuid="a1000000-0000-0000-0000-00000000001d" x="175" y="78" width="356" height="18" fontSize="11.0">
+				<expression><![CDATA[$P{P_CARGO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000015" x="16" y="102" width="150" height="18" fontSize="11.0" bold="true">
 				<text><![CDATA[Dependencia:]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000016" x="175" y="110" width="356" height="18" fontSize="11.0">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000016" x="175" y="102" width="356" height="18" fontSize="11.0">
 				<expression><![CDATA[$P{P_DEPENDENCIA}]]></expression>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000017" x="16" y="142" width="150" height="18" fontSize="11.0" bold="true">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000017" x="16" y="124" width="150" height="18" fontSize="11.0" bold="true">
 				<text><![CDATA[Régimen:]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000018" x="175" y="142" width="356" height="18" fontSize="11.0">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000018" x="175" y="124" width="356" height="18" fontSize="11.0">
 				<expression><![CDATA[$P{P_REGIMEN_NOMBRE}]]></expression>
 			</element>
 
 			<!-- Párrafo de solicitud -->
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000019" x="0" y="176" width="531" height="34" fontSize="10.5">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000019" x="0" y="150" width="531" height="30" fontSize="10.5">
 				<text><![CDATA[Ante usted, con el debido respeto, me presento y conforme al artículo 27 del Reglamento Interno de Servidores Civiles del INDECI y a la normativa vigente, solicito:]]></text>
 			</element>
 
 			<!-- TIPO DE LICENCIA -->
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000020" x="0" y="216" width="531" height="64" radius="3" mode="Transparent">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000020" positionType="Float" x="0" y="184" width="531" height="44" radius="3" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000021" x="0" y="216" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000021" positionType="Float" x="0" y="184" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
 				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000022" x="12" y="219" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<element kind="image" uuid="a1000000-0000-0000-0000-0000000000a2" positionType="Float" x="12" y="188" width="14" height="14" scaleImage="RetainShape" onErrorType="Blank">
+				<expression><![CDATA[getClass().getResourceAsStream("/reportes/rrhh/icons/documento.svg")]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000022" positionType="Float" x="34" y="187" width="400" height="16" fontSize="11.0" bold="true" forecolor="#333333">
 				<text><![CDATA[TIPO DE LICENCIA]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000023" x="16" y="250" width="515" height="20" fontSize="12.0">
-				<expression><![CDATA[$P{P_TIPO_LICENCIA}]]></expression>
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000023" positionType="Float" x="16" y="206" width="515" height="20" fontSize="12.0">
+				<expression><![CDATA[$P{P_MODALIDAD_LICENCIA}]]></expression>
+			</element>
+
+			<!-- MOTIVO -->
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000024" positionType="Float" x="0" y="232" width="531" height="44" radius="3" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000025" positionType="Float" x="0" y="232" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="image" uuid="a1000000-0000-0000-0000-0000000000a3" positionType="Float" x="12" y="236" width="14" height="14" scaleImage="RetainShape" onErrorType="Blank">
+				<expression><![CDATA[getClass().getResourceAsStream("/reportes/rrhh/icons/motivo.svg")]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000026" positionType="Float" x="34" y="235" width="400" height="16" fontSize="11.0" bold="true" forecolor="#333333">
+				<text><![CDATA[MOTIVO]]></text>
+			</element>
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000027" positionType="Float" x="16" y="254" width="515" height="20" fontSize="12.0">
+				<expression><![CDATA[$P{P_MOTIVO_LICENCIA}]]></expression>
+			</element>
+
+			<!-- DETALLE DE OTROS MOTIVOS: la sección siempre se muestra; si no hay datos queda vacía. -->
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000028" positionType="Float" x="0" y="280" width="531" height="52" radius="3" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000029" positionType="Float" x="0" y="280" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-00000000002a" positionType="Float" x="12" y="283" width="400" height="16" fontSize="11.0" bold="true" forecolor="#333333">
+				<text><![CDATA[DETALLE DE OTROS MOTIVOS]]></text>
+			</element>
+			<element kind="textField" uuid="a1000000-0000-0000-0000-00000000002b" positionType="Float" x="16" y="304" width="515" height="24" fontSize="12.0">
+				<expression><![CDATA[$P{P_OTROS_MOTIVOS} != null ? $P{P_OTROS_MOTIVOS} : ""]]></expression>
 			</element>
 
 			<!-- PERIODO -->
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000030" x="0" y="290" width="531" height="64" radius="3" mode="Transparent">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000030" positionType="Float" x="0" y="338" width="531" height="50" radius="3" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000031" x="0" y="290" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000031" positionType="Float" x="0" y="338" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
 				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000032" x="12" y="293" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<element kind="image" uuid="a1000000-0000-0000-0000-0000000000a4" positionType="Float" x="12" y="342" width="14" height="14" scaleImage="RetainShape" onErrorType="Blank">
+				<expression><![CDATA[getClass().getResourceAsStream("/reportes/rrhh/icons/periodo.svg")]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000032" positionType="Float" x="34" y="341" width="400" height="16" fontSize="11.0" bold="true" forecolor="#333333">
 				<text><![CDATA[PERIODO]]></text>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000033" x="16" y="324" width="60" height="18" fontSize="11.0" bold="true">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000033" positionType="Float" x="16" y="364" width="60" height="18" fontSize="11.0" bold="true">
 				<text><![CDATA[Desde:]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000034" x="80" y="324" width="180" height="18" fontSize="11.0">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000034" positionType="Float" x="80" y="364" width="180" height="18" fontSize="11.0">
 				<expression><![CDATA[$P{P_FECHA_INICIO}]]></expression>
 			</element>
-			<element kind="line" uuid="a1000000-0000-0000-0000-000000000035" x="288" y="320" width="1" height="26">
+			<element kind="line" uuid="a1000000-0000-0000-0000-000000000035" positionType="Float" x="288" y="360" width="1" height="24">
 				<pen lineWidth="0.5" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000036" x="305" y="324" width="55" height="18" fontSize="11.0" bold="true">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000036" positionType="Float" x="305" y="364" width="55" height="18" fontSize="11.0" bold="true">
 				<text><![CDATA[Hasta:]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000037" x="362" y="324" width="169" height="18" fontSize="11.0">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000037" positionType="Float" x="362" y="364" width="169" height="18" fontSize="11.0">
 				<expression><![CDATA[$P{P_FECHA_FIN}]]></expression>
 			</element>
 
-			<!-- ADJUNTO -->
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000040" x="0" y="364" width="531" height="56" radius="3" mode="Transparent">
+			<!-- ADJUNTO (opcional) -->
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000040" positionType="Float" x="0" y="394" width="531" height="46" radius="3" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000041" x="0" y="364" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000041" positionType="Float" x="0" y="394" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
 				<pen lineWidth="0.0" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000042" x="12" y="367" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<element kind="image" uuid="a1000000-0000-0000-0000-0000000000a5" positionType="Float" x="12" y="398" width="14" height="14" scaleImage="RetainShape" onErrorType="Blank">
+				<expression><![CDATA[getClass().getResourceAsStream("/reportes/rrhh/icons/adjunto.svg")]]></expression>
+			</element>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000042" positionType="Float" x="34" y="397" width="70" height="16" fontSize="11.0" bold="true" forecolor="#333333">
 				<text><![CDATA[ADJUNTO]]></text>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000043" x="16" y="396" width="515" height="18" fontSize="11.0">
-				<expression><![CDATA[$P{P_ADJUNTO}]]></expression>
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-00000000004a" positionType="Float" x="104" y="398" width="200" height="14" fontSize="9.0" bold="false" forecolor="#333333">
+				<text><![CDATA[(No obligatorio)]]></text>
+			</element>
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000043" positionType="Float" x="16" y="418" width="515" height="18" fontSize="11.0">
+				<expression><![CDATA[$P{P_ADJUNTO} != null && !$P{P_ADJUNTO}.isEmpty() ? $P{P_ADJUNTO} : "Sin adjunto"]]></expression>
 			</element>
 
 			<!-- TOTAL DE DÍAS -->
-			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000050" x="0" y="430" width="531" height="32" radius="3" mode="Transparent">
+			<element kind="rectangle" uuid="a1000000-0000-0000-0000-000000000050" positionType="Float" x="0" y="446" width="531" height="26" radius="3" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
 			</element>
-			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000051" x="0" y="437" width="531" height="20" fontSize="12.0" bold="true" hTextAlign="Center">
+			<element kind="textField" uuid="a1000000-0000-0000-0000-000000000051" positionType="Float" x="0" y="450" width="531" height="20" fontSize="12.0" bold="true" hTextAlign="Center">
 				<expression><![CDATA["Total de días:      " + String.valueOf($P{P_DIAS})]]></expression>
 			</element>
 
 			<!-- Cierre -->
-			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000052" x="0" y="472" width="531" height="20" fontSize="10.5">
+			<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000052" positionType="Float" x="0" y="476" width="531" height="18" fontSize="10.5">
 				<text><![CDATA[Por lo tanto, agradeceré disponer que se me conceda la licencia solicitada.]]></text>
 			</element>
 		</band>
 	</detail>
-	<pageFooter height="96" splitType="Stretch">
-		<element kind="line" uuid="a1000000-0000-0000-0000-000000000060" x="0" y="6" width="531" height="1">
-			<pen lineWidth="0.5" lineColor="#999999"/>
+	<pageFooter height="190" splitType="Stretch">
+		<!-- FIRMAS FÍSICAS: Jefe Inmediato (izq.) y Servidor (der.) -->
+		<element kind="line" uuid="a1000000-0000-0000-0000-000000000070" x="40" y="52" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#000000"/>
 		</element>
-		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000061" x="0" y="16" width="531" height="18" fontSize="11.0" bold="true">
-			<text><![CDATA[Documento firmado digitalmente por el servidor]]></text>
+		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000071" x="40" y="56" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[JEFE INMEDIATO]]></text>
 		</element>
-		<element kind="textField" uuid="a1000000-0000-0000-0000-000000000062" x="0" y="36" width="531" height="16" fontSize="9.0" forecolor="#555555">
-			<expression><![CDATA["Código de verificación: " + String.valueOf($P{P_CODIGO_FIRMA})]]></expression>
+
+		<element kind="line" uuid="a1000000-0000-0000-0000-000000000072" x="311" y="52" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#000000"/>
 		</element>
-		<element kind="textField" uuid="a1000000-0000-0000-0000-000000000063" x="0" y="54" width="531" height="16" fontSize="9.0" forecolor="#555555">
-			<expression><![CDATA["Emitido: " + String.valueOf($P{P_FECHA_PERMISO})]]></expression>
+		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000073" x="311" y="56" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[SERVIDOR]]></text>
 		</element>
-		<element kind="staticText" uuid="a1000000-0000-0000-0000-000000000064" x="0" y="74" width="531" height="18" fontSize="8.0" italic="true" forecolor="#777777">
-			<text><![CDATA[Base legal: D.Leg. 1405 y D.S. 013-2019-PCM. Validez sustentada en firma digital (Ley 27269).]]></text>
+
+		<!-- SPEC_VACACIONES F9.2 — texto de conformidad predeterminado (al pie). -->
+		<element kind="staticText" uuid="a1000000-0000-0000-0000-00000000005f" x="0" y="120" width="531" height="64" fontSize="8.0" hTextAlign="Justified" forecolor="#666666">
+			<text><![CDATA[Se otorga la conformidad a la solicitud de licencia presentada, de acuerdo a lo previsto en el Reglamento Interno de Servidores del INDECI vigente. Asimismo, se garantiza que la oficina a mi cargo continuará desarrollando sus actividades con la misma eficiencia y de manera regular, asegurando la continuidad del servicio y el cumplimiento normal de nuestras metas institucionales, mientras dure la licencia del servidor.]]></text>
 		</element>
 	</pageFooter>
 	<summary splitType="Stretch"/>

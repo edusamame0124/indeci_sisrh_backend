@@ -191,6 +191,17 @@ public class SolicitudRrhhController {
         service.anular(id);
         return new ApiResponse<>("OK", "Solicitud anulada", null);
     }
+
+    /**
+     * Elimina (soft-delete) una papeleta propia en BORRADOR. Endpoint de autoservicio:
+     * solo requiere estar autenticado (igual que registrar/enviar). La seguridad real la
+     * da el servicio, que valida propiedad (dueño == usuario) y estado (BORRADOR).
+     */
+    @DeleteMapping("/eliminar/{id}")
+    public ApiResponse<Void> eliminarBorrador(@PathVariable Long id) {
+        service.eliminarBorrador(id);
+        return new ApiResponse<>("OK", "Papeleta eliminada", null);
+    }
     
 
     @PreAuthorize("hasAuthority('PAP_JEFE')")

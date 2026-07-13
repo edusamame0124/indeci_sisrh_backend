@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Papeleta de Teletrabajo (INDECI) — formato institucional. ACTIVIDADES por banda detail
+     (una fila numerada por actividad); MEDIO/DECLARACIÓN/firmas en el cierre. -->
+<jasperReport name="papeleta_teletrabajo" language="java" pageWidth="595" pageHeight="842" columnWidth="531" leftMargin="32" rightMargin="32" topMargin="20" bottomMargin="20" uuid="c3000000-0000-0000-0000-000000000000">
+	<parameter name="P_HEADER" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRE_TRABAJADOR" class="java.lang.String"/>
+	<parameter name="P_DNI" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
+	<parameter name="P_DEPENDENCIA" class="java.lang.String"/>
+	<parameter name="P_MODALIDAD" class="java.lang.String"/>
+	<parameter name="P_FECHA_REPORTE" class="java.lang.String"/>
+	<parameter name="P_MEDIO_VERIFICACION" class="java.lang.String"/>
+	<field name="numero" class="java.lang.String"/>
+	<field name="actividad" class="java.lang.String"/>
+	<query language="sql"><![CDATA[]]></query>
+	<background splitType="Stretch"/>
+	<title height="378" splitType="Stretch">
+		<element kind="image" uuid="c3000000-0000-0000-0000-000000000001" x="0" y="0" width="531" height="56" scaleImage="RetainShape" hImageAlign="Left" onErrorType="Blank">
+			<expression><![CDATA[$P{P_HEADER}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000002" x="0" y="62" width="531" height="28" fontSize="20.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE TELETRABAJO]]></text>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000003" x="0" y="94" width="531" height="15" fontSize="10.0" hTextAlign="Center" forecolor="#555555">
+			<text><![CDATA[Instituto Nacional de Defensa Civil – INDECI]]></text>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000004" x="0" y="118" width="531" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[SEÑOR/A JEFE/A DE LA UNIDAD DE RECURSOS HUMANOS DEL INDECI]]></text>
+		</element>
+
+		<!-- ================= DATOS DEL SERVIDOR ================= -->
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000010" x="0" y="144" width="531" height="180" radius="2" mode="Transparent">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000011" x="0" y="144" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.0" lineColor="#ECECEC"/>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000012" x="14" y="148" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<text><![CDATA[DATOS DEL SERVIDOR]]></text>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000013" x="16" y="174" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[Servidor:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000014" x="200" y="174" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000015" x="0" y="194" width="531" height="1"><pen lineWidth="0.5" lineColor="#E5E5E5"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000016" x="16" y="200" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[DNI:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000017" x="200" y="200" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_DNI}]]></expression>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000018" x="0" y="220" width="531" height="1"><pen lineWidth="0.5" lineColor="#E5E5E5"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000019" x="16" y="226" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[Cargo:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000020" x="200" y="226" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_CARGO}]]></expression>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000021" x="0" y="246" width="531" height="1"><pen lineWidth="0.5" lineColor="#E5E5E5"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000022" x="16" y="252" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[Dependencia:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000023" x="200" y="252" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_DEPENDENCIA}]]></expression>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000024" x="0" y="272" width="531" height="1"><pen lineWidth="0.5" lineColor="#E5E5E5"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000025" x="16" y="278" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[Modalidad de teletrabajo:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000026" x="200" y="278" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_MODALIDAD}]]></expression>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000027" x="0" y="298" width="531" height="1"><pen lineWidth="0.5" lineColor="#E5E5E5"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000028" x="16" y="304" width="170" height="16" fontSize="10.5" bold="true">
+			<text><![CDATA[Fecha del reporte:]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000029" x="200" y="304" width="325" height="16" fontSize="10.5">
+			<expression><![CDATA[$P{P_FECHA_REPORTE}]]></expression>
+		</element>
+
+		<!-- Párrafo -->
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000030" x="0" y="332" width="531" height="16" fontSize="10.5">
+			<text><![CDATA[Ante usted, con el debido respeto, presento el siguiente reporte de teletrabajo:]]></text>
+		</element>
+
+		<!-- Cabecera ACTIVIDADES DEL DÍA -->
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000031" x="0" y="354" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000032" x="14" y="358" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<text><![CDATA[ACTIVIDADES DEL DÍA]]></text>
+		</element>
+	</title>
+
+	<!-- Una fila numerada por actividad (crece si el texto es largo) -->
+	<detail>
+		<band height="20" splitType="Stretch">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000041" x="16" y="3" width="22" height="14" fontSize="10.0" bold="true">
+				<expression><![CDATA[$F{numero} + "."]]></expression>
+			</element>
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000042" x="42" y="3" width="483" height="14" fontSize="10.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{actividad}]]></expression>
+			</element>
+		</band>
+	</detail>
+
+	<!-- MEDIO DE VERIFICACIÓN + DECLARACIÓN + firmas -->
+	<summary height="230" splitType="Stretch">
+		<!-- MEDIO DE VERIFICACIÓN -->
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000050" x="0" y="12" width="531" height="48" radius="2" mode="Transparent">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000051" x="0" y="12" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.0" lineColor="#ECECEC"/>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000052" x="14" y="16" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<text><![CDATA[MEDIO DE VERIFICACIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000053" x="16" y="40" width="509" height="16" fontSize="10.0">
+			<expression><![CDATA[$P{P_MEDIO_VERIFICACION}]]></expression>
+		</element>
+
+		<!-- DECLARACIÓN DE RESPONSABILIDAD -->
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000060" x="0" y="70" width="531" height="72" radius="2" mode="Transparent">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000061" x="0" y="70" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.0" lineColor="#ECECEC"/>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000062" x="14" y="74" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<text><![CDATA[DECLARACIÓN DE RESPONSABILIDAD]]></text>
+		</element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000063" x="16" y="98" width="509" height="40" fontSize="9.0" forecolor="#333333">
+			<text><![CDATA[La jefatura inmediata declara que la información consignada corresponde al seguimiento funcional realizado durante el día, la omisión injustificada, validación o remisión del reporte, podrá generar las responsabilidades administrativas que comprenda conforme a la normativa aplicable.]]></text>
+		</element>
+
+		<!-- Firmas -->
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000070" x="40" y="190" width="180" height="1"><pen lineWidth="0.75" lineColor="#333333"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000071" x="40" y="194" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[JEFE INMEDIATO]]></text>
+		</element>
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000072" x="311" y="190" width="180" height="1"><pen lineWidth="0.75" lineColor="#333333"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000073" x="311" y="194" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[SERVIDOR]]></text>
+		</element>
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000074" x="311" y="210" width="180" height="16" fontSize="9.5" hTextAlign="Center">
+			<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+		</element>
+	</summary>
+
+	<pageFooter height="28" splitType="Stretch">
+		<element kind="line" uuid="c3000000-0000-0000-0000-000000000080" x="0" y="6" width="531" height="1"><pen lineWidth="0.5" lineColor="#CCCCCC"/></element>
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000081" x="0" y="11" width="531" height="14" fontSize="8.0" italic="true" forecolor="#888888">
+			<text><![CDATA[Documento generado para uso interno de la entidad.]]></text>
+		</element>
+	</pageFooter>
+</jasperReport>

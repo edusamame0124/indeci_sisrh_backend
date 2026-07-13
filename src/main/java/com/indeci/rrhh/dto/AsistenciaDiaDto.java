@@ -13,7 +13,7 @@ public class AsistenciaDiaDto {
 
     private LocalDate dia;
 
-    /** LABORAL | FALTA | TARDANZA | LICENCIA | VACACIONES | DESCANSO | FERIADO | OBSERVADO | SANCION_PAD. */
+    /** LABORAL | FALTA | TARDANZA | LICENCIA | VACACIONES | DESCANSO | FERIADO | OBSERVADO | SANCION_PAD | TELETRABAJO | PERMISO. */
     private String tipoDia;
 
     private Integer minutosTardanza;

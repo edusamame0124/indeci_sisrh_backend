@@ -11,6 +11,9 @@ package com.indeci.rrhh.dto;
  * @param mesesEfectivos          meses efectivos (0-11)
  * @param diasEfectivos           días efectivos (0-29)
  * @param estadoRecord            evaluado sobre los días EFECTIVOS (netos de LSG/faltas) vs umbral por jornada
+ * @param periodosAcumuladosSinGozar F9.3 — cantidad de períodos (años) con saldo pendiente de gozar
+ * @param requiereDecisionAcumulacion F9.3 — true cuando supera el tope de 2 períodos acumulados
+ *        (D.S. 013-2019-PCM); NO bloquea nada, solo marca que RR.HH. debe evaluar y registrar sustento
  */
 public record PadronVacacionalRowDto(
         Long empleadoId,
@@ -31,5 +34,7 @@ public record PadronVacacionalRowDto(
         double diasGozados,
         double saldo,
         String estadoRecord,
-        boolean sinVinculo) {
+        boolean sinVinculo,
+        int periodosAcumuladosSinGozar,
+        boolean requiereDecisionAcumulacion) {
 }

@@ -24,12 +24,17 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.IsoFields;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import java.util.Set;
@@ -69,6 +74,9 @@ public class SolicitudRrhhService {
     private final PersonaRepository personaRepository;
     // Gate de Teletrabajo (Ley N° 31572): config remunerativa del empleado.
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    // Art. 35 (fraccionamiento): histórico de goce por período + calendario de feriados.
+    private final VacacionRepository vacacionRepository;
+    private final FeriadoRepository feriadoRepository;
     //private static final String TIPO_VACACIONES = "VAC";
     
 
@@ -376,6 +384,10 @@ public class SolicitudRrhhService {
 
             entity.setActivo(1);
 
+            // La columna CREATED_AT es NOT NULL sin default en BD → setear en código
+            // (evita ORA-01400 al insertar el detalle de teletrabajo).
+            entity.setCreatedAt(LocalDateTime.now());
+
             solicitudTeletrabajoDetRepository
                     .save(entity);
 
@@ -425,7 +437,8 @@ public class SolicitudRrhhService {
     }
     
     private void validarDetalleVacacion(
-            SolicitudRrhhDto dto) {
+            SolicitudRrhhDto dto,
+            Long empleadoId) {
 
         if(dto.getTipoVacacionId() == null
                 || dto.getDetallesVacacion() == null) {
@@ -443,11 +456,16 @@ public class SolicitudRrhhService {
         String codigo =
                 tipoVacacion.getCodigo();
 
+        // Seguridad end-to-end (Art. 34): el servidor NO confía en los días del cliente —
+        // recalcula la fórmula del viernes y el tope de 30, para todo tipo de vacación.
+        validarDiasArt34(dto.getDetallesVacacion());
+
         switch(codigo) {
 
             case "001":
                 validarProgramacion(
-                        dto.getDetallesVacacion());
+                        dto.getDetallesVacacion(),
+                        empleadoId);
                 break;
 
             case "002":
@@ -461,9 +479,75 @@ public class SolicitudRrhhService {
                 break;
 
             case "004":
-                validarFraccionamiento(
-                        dto.getDetallesVacacion());
+                validarFraccionamientoArt35(
+                        dto.getDetallesVacacion(),
+                        empleadoId);
                 break;
+        }
+    }
+
+    // ==========================================
+    // Art. 34 D.S. 013-2019-PCM — cómputo del descanso vacacional
+    // ==========================================
+
+    private static final int DIAS_ART34_FIN_SEMANA = 2;
+    private static final int MAX_DIAS_LEGAL = 30;
+
+    /**
+     * Días calendario del período (Art. 34): base = (Hasta − Desde) + 1; si INICIA o CONCLUYE
+     * en viernes ⇒ +2 (sábado y domingo inmediatos se computan). El OR evita la duplicidad del
+     * +4 cuando ambos extremos caen en viernes (incluido el mismo viernes de 1 día).
+     */
+    private int calcularDiasArt34(LocalDate desde, LocalDate hasta) {
+        long base = ChronoUnit.DAYS.between(desde, hasta) + 1;
+        boolean aplicaViernes = desde.getDayOfWeek() == DayOfWeek.FRIDAY
+                || hasta.getDayOfWeek() == DayOfWeek.FRIDAY;
+        return (int) base + (aplicaViernes ? DIAS_ART34_FIN_SEMANA : 0);
+    }
+
+    /**
+     * Blindaje del cálculo del cliente: recalcula el Art. 34 con las fechas recibidas y rechaza
+     * si los días enviados no coinciden, o si el período supera el máximo legal de 30 días.
+     * Los detalles "_ACTUAL" (período histórico ya aprobado, elegido del dropdown) se omiten.
+     */
+    void validarDiasArt34(List<SolicitudVacacionDetDto> detalles) {
+        if (detalles == null) {
+            return;
+        }
+        for (SolicitudVacacionDetDto det : detalles) {
+            String tipo = det.getTipo();
+            // El Art. 34 (días calendario + fin de semana) aplica a los períodos completos
+            // (Programación/Adelanto/Reprogramación nueva). Se OMITEN:
+            //   · los "_ACTUAL" (período histórico ya consolidado);
+            //   · las fracciones FRACC_* (se rigen por el Art. 35 en días HÁBILES, con media jornada).
+            if (tipo == null
+                    || "REPROG_ACTUAL".equals(tipo)
+                    || "FRACC_ACTUAL".equals(tipo)
+                    || tipo.startsWith("FRACC_")) {
+                continue;
+            }
+            if (det.getFechaInicio() == null || det.getFechaFin() == null) {
+                continue;
+            }
+            if (det.getFechaFin().isBefore(det.getFechaInicio())) {
+                throw new NegocioException(
+                        "La fecha fin no puede ser menor que la fecha inicio.");
+            }
+
+            int esperado = calcularDiasArt34(det.getFechaInicio(), det.getFechaFin());
+
+            if (esperado > MAX_DIAS_LEGAL) {
+                throw new NegocioException(
+                        "El periodo vacacional no puede superar los 30 días calendarios según el Art. 34");
+            }
+
+            int recibido = det.getTotalDias() != null ? det.getTotalDias().intValue() : -1;
+            if (recibido != esperado) {
+                throw new NegocioException(String.format(
+                        "Los días del periodo '%s' no coinciden con el cálculo del Art. 34 "
+                                + "(esperado %d, recibido %d).",
+                        tipo, esperado, recibido));
+            }
         }
     }
     
@@ -539,86 +623,188 @@ public class SolicitudRrhhService {
         
     }
     
-    private void validarFraccionamiento(
-            List<SolicitudVacacionDetDto> detalles) {
+    // ==========================================
+    // Art. 35 D.S. 013-2019-PCM — Fraccionamiento del descanso vacacional
+    // ==========================================
 
-        long actual =
-                detalles.stream()
-                        .filter(d ->
-                                "FRACC_ACTUAL"
-                                        .equals(
-                                                d.getTipo()))
-                        .count();
+    /** Art. 35.b — bolsa de días HÁBILES fraccionables por período vacacional. */
+    private static final double POOL_DIAS_HABILES_FRACC = 7d;
+    /** Art. 35.c — tope de días hábiles fraccionados en una misma semana. */
+    private static final double MAX_DIAS_HABILES_SEMANA = 4d;
+    /** Media jornada (Art. 35.b, mínimo de fraccionamiento). */
+    private static final double MEDIA_JORNADA = 0.5d;
 
-        if(actual != 1) {
-
-            throw new NegocioException(
-                    "Debe existir un detalle FRACC_ACTUAL");
+    /**
+     * Blindaje del fraccionamiento (Art. 35), en días HÁBILES y por PERÍODO vacacional. El
+     * servidor recalcula (no confía en el cliente) y aplica estrictamente:
+     * <ul>
+     *   <li><b>b)</b> el total de días hábiles fraccionados (solicitud + histórico del período)
+     *       no puede superar 7; el mínimo por fracción es media jornada (0.5);</li>
+     *   <li><b>c)</b> no más de 4 días hábiles fraccionados en una misma semana (ISO).</li>
+     * </ul>
+     * La regla a) (mínimo de 7 días calendario por bloque) es orientativa y se guía en la UI;
+     * las fracciones son justamente la excepción que consume esta bolsa.
+     */
+    void validarFraccionamientoArt35(List<SolicitudVacacionDetDto> detalles, Long empleadoId) {
+        if (detalles == null) {
+            return;
         }
 
-        long fracciones =
-                detalles.stream()
-                        .filter(d ->
-                                d.getTipo() != null
-                                        &&
-                                        d.getTipo()
-                                                .startsWith(
-                                                        "FRACC_")
-                                        &&
-                                        !"FRACC_ACTUAL"
-                                                .equals(
-                                                        d.getTipo()))
-                        .count();
+        // El fraccionamiento se solicita DIRECTAMENTE sobre el saldo — no requiere un período
+        // previamente aprobado. El "FRACC_ACTUAL" (Reprogramación) es OPCIONAL: si viene, acota
+        // el histórico al período origen; si no, se usa el año de la primera fracción.
+        List<SolicitudVacacionDetDto> fracciones = detalles.stream()
+                .filter(d -> d.getTipo() != null
+                        && d.getTipo().startsWith("FRACC_")
+                        && !"FRACC_ACTUAL".equals(d.getTipo()))
+                .toList();
 
-        if(fracciones < 1) {
-
-            throw new NegocioException(
-                    "Debe existir al menos una fracción");
+        if (fracciones.isEmpty()) {
+            throw new NegocioException("Debe existir al menos una fracción");
+        }
+        if (fracciones.size() > 4) {
+            throw new NegocioException("Solo se permiten 4 fracciones");
         }
 
-        if(fracciones > 4) {
+        // Período vacacional (para acotar el histórico): del período origen elegido, o el año
+        // de la primera fracción como respaldo.
+        Integer anioPeriodo = resolverAnioPeriodoFraccionamiento(detalles, fracciones);
 
-            throw new NegocioException(
-                    "Solo se permiten 4 fracciones");
+        // Feriados de los años involucrados (para el cómputo de días hábiles).
+        Set<Integer> anios = new HashSet<>();
+        for (SolicitudVacacionDetDto f : fracciones) {
+            if (f.getFechaInicio() != null) anios.add(f.getFechaInicio().getYear());
+            if (f.getFechaFin() != null) anios.add(f.getFechaFin().getYear());
         }
-        
-        double diasActual =
-                detalles.stream()
-                        .filter(d ->
-                                "FRACC_ACTUAL"
-                                        .equals(
-                                                d.getTipo()))
-                        .mapToDouble(
-                                d -> d.getTotalDias() == null
-                                        ? 0
-                                        : d.getTotalDias())
-                        .sum();
+        Set<LocalDate> feriados = anios.isEmpty()
+                ? Set.of()
+                : feriadoRepository.findByAnioInAndActivo(anios, 1).stream()
+                        .map(Feriado::getFecha).collect(Collectors.toSet());
 
-        double diasFraccionados =
-                detalles.stream()
-                        .filter(d ->
-                                d.getTipo() != null
-                                        &&
-                                        d.getTipo()
-                                                .startsWith(
-                                                        "FRACC_")
-                                        &&
-                                        !"FRACC_ACTUAL"
-                                                .equals(
-                                                        d.getTipo()))
-                        .mapToDouble(
-                                d -> d.getTotalDias() == null
-                                        ? 0
-                                        : d.getTotalDias())
-                        .sum();
+        double habilesSolicitados = 0d;
+        Map<String, Double> habilesPorSemana = new HashMap<>();
 
-        if(Double.compare(
-                diasActual,
-                diasFraccionados) != 0) {
+        for (SolicitudVacacionDetDto f : fracciones) {
+            if (f.getFechaInicio() == null || f.getFechaFin() == null) {
+                throw new NegocioException("La fracción debe tener fecha de inicio y fin.");
+            }
+            if (f.getFechaFin().isBefore(f.getFechaInicio())) {
+                throw new NegocioException("La fecha fin no puede ser menor que la fecha inicio.");
+            }
+            double recibido = f.getTotalDias() != null ? f.getTotalDias() : -1d;
 
-            throw new NegocioException(
-                    "La suma de las fracciones debe ser igual a los días de la programación actual");
+            double habiles;
+            if (Double.compare(recibido, MEDIA_JORNADA) == 0) {
+                // Media jornada: solo válida sobre un ÚNICO día hábil.
+                if (!f.getFechaInicio().equals(f.getFechaFin()) || !esHabil(f.getFechaInicio(), feriados)) {
+                    throw new NegocioException(
+                            "La media jornada (0.5) solo aplica a un único día hábil.");
+                }
+                habiles = MEDIA_JORNADA;
+                habilesPorSemana.merge(claveSemana(f.getFechaInicio()), MEDIA_JORNADA, Double::sum);
+            } else {
+                double calc = acumularHabiles(f.getFechaInicio(), f.getFechaFin(), feriados, habilesPorSemana);
+                if (calc <= 0d) {
+                    throw new NegocioException("La fracción no contiene días hábiles.");
+                }
+                if (Double.compare(recibido, calc) != 0) {
+                    throw new NegocioException(String.format(
+                            "Los días hábiles de la fracción no coinciden con el cálculo (esperado %s, recibido %s).",
+                            fmt(calc), fmt(recibido)));
+                }
+                habiles = calc;
+            }
+            habilesSolicitados += habiles;
         }
+
+        // Histórico del PERÍODO: fracciones ya gozadas (bloques < 7 días) del mismo año-período.
+        double habilesHistoricos = 0d;
+        if (anioPeriodo != null) {
+            List<Vacacion> historicas = vacacionRepository.findByEmpleadoIdAndActivo(empleadoId, 1).stream()
+                    .filter(v -> anioPeriodo.equals(v.getAnioPeriodo())
+                            && v.getDias() != null && v.getDias() < 7d
+                            && "GOZADO".equals(v.getEstado()))
+                    .toList();
+            for (Vacacion v : historicas) {
+                habilesHistoricos += v.getDias();
+                // Regla c) también considera el histórico dentro de su semana.
+                if (v.getPeriodoDesde() != null && v.getPeriodoHasta() != null) {
+                    if (v.getDias() == MEDIA_JORNADA) {
+                        habilesPorSemana.merge(claveSemana(v.getPeriodoDesde()), MEDIA_JORNADA, Double::sum);
+                    } else {
+                        acumularHabiles(v.getPeriodoDesde(), v.getPeriodoHasta(), feriados, habilesPorSemana);
+                    }
+                }
+            }
+        }
+
+        // Regla b) — bolsa de 7 días hábiles por período.
+        if (habilesSolicitados + habilesHistoricos > POOL_DIAS_HABILES_FRACC) {
+            throw new NegocioException(String.format(
+                    "Ha superado el límite legal de 7 días hábiles fraccionables por período vacacional "
+                            + "(Art. 35.b). Solicitados %s + ya gozados %s > 7.",
+                    fmt(habilesSolicitados), fmt(habilesHistoricos)));
+        }
+
+        // Regla c) — máximo 4 días hábiles fraccionados por semana.
+        for (Map.Entry<String, Double> e : habilesPorSemana.entrySet()) {
+            if (e.getValue() > MAX_DIAS_HABILES_SEMANA) {
+                throw new NegocioException(
+                        "No puede tomar más de 4 días hábiles fraccionados en una misma semana (Art. 35.c).");
+            }
+        }
+    }
+
+    /** Año del período vacacional: del período origen (FRACC_ACTUAL) o de la 1.ª fracción. */
+    private Integer resolverAnioPeriodoFraccionamiento(
+            List<SolicitudVacacionDetDto> detalles, List<SolicitudVacacionDetDto> fracciones) {
+        Long origenId = detalles.stream()
+                .filter(d -> "FRACC_ACTUAL".equals(d.getTipo()))
+                .map(SolicitudVacacionDetDto::getVacacionOrigenId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst().orElse(null);
+        if (origenId != null) {
+            Integer anio = vacacionRepository.findById(origenId)
+                    .map(Vacacion::getAnioPeriodo).orElse(null);
+            if (anio != null) {
+                return anio;
+            }
+        }
+        return fracciones.get(0).getFechaInicio() != null
+                ? fracciones.get(0).getFechaInicio().getYear()
+                : null;
+    }
+
+    /** ¿Es día hábil? (no sábado/domingo ni feriado) — equivalente a CalendarioLaboralService. */
+    private boolean esHabil(LocalDate fecha, Set<LocalDate> feriados) {
+        DayOfWeek dow = fecha.getDayOfWeek();
+        boolean finde = dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
+        return !finde && !feriados.contains(fecha);
+    }
+
+    /** Cuenta los días hábiles de [desde, hasta] y los acumula por semana ISO en el mapa. */
+    private double acumularHabiles(LocalDate desde, LocalDate hasta,
+            Set<LocalDate> feriados, Map<String, Double> habilesPorSemana) {
+        double total = 0d;
+        for (LocalDate d = desde; !d.isAfter(hasta); d = d.plusDays(1)) {
+            if (esHabil(d, feriados)) {
+                total += 1d;
+                habilesPorSemana.merge(claveSemana(d), 1d, Double::sum);
+            }
+        }
+        return total;
+    }
+
+    /** Clave de semana ISO (año-basado + número de semana) para agrupar la regla c). */
+    private String claveSemana(LocalDate fecha) {
+        return fecha.get(IsoFields.WEEK_BASED_YEAR) + "-" + fecha.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+    }
+
+    /** Formatea días sin ".0" innecesario ("3", "0.5"). */
+    private String fmt(double dias) {
+        return dias == Math.floor(dias)
+                ? String.valueOf((int) dias)
+                : java.math.BigDecimal.valueOf(dias).stripTrailingZeros().toPlainString();
     }
     private void completarFechasVacacion(
             SolicitudRrhhDto dto,
@@ -788,7 +974,8 @@ public class SolicitudRrhhService {
                 tipo);
         
         validarDetalleVacacion(
-                dto); 
+                dto,
+                empleadoId);
         
         completarFechasVacacion(
                 dto,
@@ -804,8 +991,9 @@ public class SolicitudRrhhService {
         }
 
         validarDetalleVacacion(
-                dto);
-        
+                dto,
+                empleadoId);
+
 
         validarSustento(
                 tipo,
@@ -855,10 +1043,14 @@ public class SolicitudRrhhService {
             return;
         }
 
-        if(!esTeletrabajador(empleadoId)) {
+        // El reporte de teletrabajo está SIEMPRE disponible: se removió el gate por
+        // resolución (Ley 31572). Se conservan las validaciones de contenido (al menos una
+        // actividad), de fecha (no futura) y de modalidad (PARCIAL/COMPLETA).
+        String modalidad = dto.getModalidadTeletrabajo();
+        if (modalidad == null
+                || !("PARCIAL".equals(modalidad) || "COMPLETA".equals(modalidad))) {
             throw new NegocioException(
-                    "No cuenta con resolución de teletrabajo activa en su legajo. "
-                    + "Solicite a Recursos Humanos la habilitación de la modalidad.");
+                    "La modalidad de teletrabajo es obligatoria (PARCIAL o COMPLETA).");
         }
 
         List<SolicitudTeletrabajoDetDto> detalles =
@@ -967,8 +1159,9 @@ public class SolicitudRrhhService {
             }
         }
     }
-    private void validarProgramacion(
-            List<SolicitudVacacionDetDto> detalles) {
+    void validarProgramacion(
+            List<SolicitudVacacionDetDto> detalles,
+            Long empleadoId) {
 
         long total =
                 detalles.stream()
@@ -982,6 +1175,27 @@ public class SolicitudRrhhService {
 
             throw new NegocioException(
                     "Debe existir un detalle PROGRAMACION");
+        }
+
+        // Opción 1 — bloqueo TEMPRANO por saldo (fail-early). La Programación solo puede
+        // disponer de días YA ganados; un empleado sin récord/saldo debe usar la papeleta de
+        // Adelanto (Art. 10 D.S. 013-2019-PCM), no ésta. Se usa la misma fuente (INDECI_
+        // VACACION_SALDO) que el Padrón y el candado de aprobación, para consistencia.
+        double diasSolicitados =
+                detalles.stream()
+                        .filter(d -> "PROGRAMACION".equals(d.getTipo()))
+                        .mapToDouble(d -> d.getTotalDias() != null ? d.getTotalDias() : 0d)
+                        .sum();
+
+        java.math.BigDecimal saldoDisponible =
+                vacacionService.obtenerSaldoVacacional(empleadoId).getSaldo();
+
+        if (java.math.BigDecimal.valueOf(diasSolicitados).compareTo(saldoDisponible) > 0) {
+            throw new NegocioException(String.format(
+                    "No cuenta con saldo vacacional suficiente para programar %.0f día(s) "
+                            + "(disponible: %s día(s)). Si aún no cumple su año de servicio, use la "
+                            + "papeleta de Adelanto de Vacaciones.",
+                    diasSolicitados, saldoDisponible.stripTrailingZeros().toPlainString()));
         }
     }
     
@@ -1167,13 +1381,10 @@ public class SolicitudRrhhService {
         	
         	if(Integer.valueOf(1)
         	        .equals(tipo.getRequiereSustento())) {
-
-            if(sustento == null
-                    || sustento.isEmpty()) {
-
-                throw new NegocioException(
-                        "Debe adjuntar sustento");
-            }
+            // Validación retirada: el sustento ahora es opcional
+            // if(sustento == null || sustento.isEmpty()) {
+            //    throw new NegocioException("Debe adjuntar sustento");
+            // }
         }
     }
     
@@ -1309,12 +1520,42 @@ public class SolicitudRrhhService {
                     "Debe seleccionar el tipo de licencia");
         }
 
+        // SPEC_VACACIONES F9.2 — tope de días por motivo (MAX_DIAS en BD, defensa servidor).
+        validarTopeDiasLicencia(dto);
+
        /* if(dto.getTotalFolios() == null
                 || dto.getTotalFolios() <= 0) {
 
             throw new NegocioException(
                     "Debe indicar la cantidad de folios");
         }*/
+    }
+
+    /**
+     * SPEC_VACACIONES F9.2 — valida que la licencia no exceda el tope de días del
+     * motivo (INDECI_TIPO_LICENCIA.MAX_DIAS). Si MAX_DIAS es NULL, no hay tope.
+     * El front espeja esta regla, pero la fuente de verdad es el servidor.
+     */
+    private void validarTopeDiasLicencia(SolicitudRrhhDto dto) {
+        if (dto.getFechaInicio() == null || dto.getFechaFin() == null) {
+            return;
+        }
+
+        Integer maxDias = tipoLicenciaRepository.findById(dto.getTipoLicenciaId())
+                .map(TipoLicencia::getMaxDias)
+                .orElse(null);
+
+        if (maxDias == null) {
+            return;
+        }
+
+        long dias = ChronoUnit.DAYS.between(dto.getFechaInicio(), dto.getFechaFin()) + 1;
+
+        if (dias > maxDias) {
+            throw new NegocioException(
+                    "La licencia excede el máximo permitido para este motivo ("
+                            + maxDias + " día(s)).");
+        }
     }
     
     private SolicitudRrhh construirSolicitud(
@@ -1400,6 +1641,9 @@ public class SolicitudRrhhService {
                 dto.getTotalFolios());
         entity.setTipoVacacionId(
                 dto.getTipoVacacionId());
+
+        entity.setModalidadTeletrabajo(
+                dto.getModalidadTeletrabajo());
 
         calcularCantidades(
                 entity,
@@ -1662,13 +1906,10 @@ public class SolicitudRrhhService {
         
         
         if(tipo.getRequiereSustento() == 1) {
-
-            if(sustento == null
-                    || sustento.isEmpty()) {
-
-                throw new NegocioException(
-                        "Debe adjuntar sustento");
-            }
+            // Validación retirada: el sustento ahora es opcional
+            // if(sustento == null || sustento.isEmpty()) {
+            //    throw new NegocioException("Debe adjuntar sustento");
+            // }
         }
 
         // ==========================================
@@ -3249,7 +3490,54 @@ public class SolicitudRrhhService {
                 "ANULAR",
                 "Solicitud anulada");
     }
-    
+
+    /**
+     * Elimina (soft-delete: ACTIVO=0) una papeleta propia que aún está en BORRADOR.
+     * Regla de negocio: solo el dueño puede eliminar, y solo mientras NO haya sido
+     * enviada al jefe. Una papeleta ya enviada/aprobada es parte del flujo y no se
+     * elimina — para esos casos existe {@link #anular(Long)}.
+     */
+    @Auditable(
+            accion = "ELIMINAR_BORRADOR_SOLICITUD_RRHH")
+    public void eliminarBorrador(Long solicitudId) {
+
+        Long empleadoId =
+                obtenerEmpleadoActual();
+
+        SolicitudRrhh solicitud =
+                repository
+                        .findById(solicitudId)
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Solicitud no encontrada"));
+
+        if (!solicitud.getEmpleadoId()
+                .equals(empleadoId)) {
+
+            throw new NegocioException(
+                    "No puede eliminar papeletas de otro empleado");
+        }
+
+        EstadoSolicitud estado =
+                estadoSolicitudRepository
+                        .findById(
+                                solicitud.getEstadoSolicitudId())
+                        .orElseThrow(() ->
+                                new NegocioException(
+                                        "Estado no encontrado"));
+
+        if (!"BORRADOR".equals(
+                estado.getCodigo())) {
+
+            throw new NegocioException(
+                    "Solo se puede eliminar una papeleta en borrador (aún no enviada al jefe).");
+        }
+
+        solicitud.setActivo(0);
+        repository.save(solicitud);
+    }
+
+
     private void registrarHistorial(
             Long solicitudId,
             Long estadoOrigenId,

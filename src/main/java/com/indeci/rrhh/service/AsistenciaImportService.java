@@ -43,6 +43,7 @@ import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
 import com.indeci.rrhh.service.asistencia.MarcadorCsvRow;
+import com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver;
 import com.indeci.rrhh.service.asistencia.TardanzaCalculator;
 import com.indeci.rrhh.service.asistencia.TardanzaDescuentoCalculator;
 import com.indeci.security.auth.SisrhPermission;
@@ -103,56 +104,92 @@ public class AsistenciaImportService {
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final AsistenciaDetalleRepository detalleRepository;
     private final CalendarioLaboralService calendarioService;
+    private final PapeletaJustificacionResolver papeletaJustificacionResolver;
     private final ObjectMapper objectMapper;
 
     @Transactional
     public AsistenciaImportPreviewDto preview(String periodo, MultipartFile archivo) {
-        validarPeriodo(periodo);
-        descartarBorradoresPrevios(periodo);
-        byte[] bytes = leerBytes(archivo);
-        String hash = sha256(bytes);
-        // Detecta el formato (Reloj 1 diario vs Reloj 2 / COEN) y elige el lector.
-        AsistenciaLectorRouter.ResultadoLectura lectura = lectorRouter.leer(bytes);
-        FormatoMarcador formato = lectura.formato();
-        AsistenciaCsvParser.ParseResult parseResult = lectura.parseResult();
-        String usuario = usuarioActual();
+        // === INSTRUMENTACIÓN TEMPORAL DE DIAGNÓSTICO (VALIDAR) ===
+        // Log por fase + stack trace exacto ante cualquier fallo, para depurar la carga
+        // de ambos relojes. Buscar "[CARGA-DEBUG]" en la consola del backend.
+        String nombreArchivo = archivo != null ? archivo.getOriginalFilename() : "(sin nombre)";
+        log.info("[CARGA-DEBUG] ===== INICIO VALIDAR: periodo={} archivo={} =====", periodo, nombreArchivo);
+        try {
+            validarPeriodo(periodo);
+            descartarBorradoresPrevios(periodo);
+            byte[] bytes = leerBytes(archivo);
+            log.info("[CARGA-DEBUG] Fase 1 — archivo leído: {} bytes", bytes.length);
+            String hash = sha256(bytes);
 
-        AsistenciaImportacion importacion = new AsistenciaImportacion();
-        importacion.setPeriodo(periodo);
-        importacion.setNombreArchivo(archivo.getOriginalFilename());
-        importacion.setHashSha256(hash);
-        importacion.setEncoding(parseResult.getEncoding());
-        importacion.setUsuario(usuario);
-        importacion.setFechaImportacion(LocalDateTime.now());
-        importacion.setEstado(ESTADO_PREVIEW);
-        inicializarContadoresPreview(importacion, parseResult.getFilas().size());
-        importacion = importacionRepository.save(importacion);
+            // Detecta el formato (Reloj 1 diario vs Reloj 2 / COEN) y elige el lector.
+            AsistenciaLectorRouter.ResultadoLectura lectura = lectorRouter.leer(bytes);
+            FormatoMarcador formato = lectura.formato();
+            AsistenciaCsvParser.ParseResult parseResult = lectura.parseResult();
+            log.info("[CARGA-DEBUG] Fase 2 — formato detectado={} encoding={} filasLeidas={}",
+                    formato, parseResult.getEncoding(), parseResult.getFilas().size());
+            String usuario = usuarioActual();
 
-        String ruta = guardarArchivo(bytes, importacion.getId(), archivo.getOriginalFilename());
-        importacion.setRutaArchivo(ruta);
-        importacionRepository.save(importacion);
+            AsistenciaImportacion importacion = new AsistenciaImportacion();
+            importacion.setPeriodo(periodo);
+            importacion.setNombreArchivo(archivo.getOriginalFilename());
+            importacion.setHashSha256(hash);
+            importacion.setEncoding(parseResult.getEncoding());
+            importacion.setUsuario(usuario);
+            importacion.setFechaImportacion(LocalDateTime.now());
+            importacion.setEstado(ESTADO_PREVIEW);
+            inicializarContadoresPreview(importacion, parseResult.getFilas().size());
+            importacion = importacionRepository.save(importacion);
+            log.info("[CARGA-DEBUG] Fase 3 — importación creada id={}", importacion.getId());
 
-        PeriodoPlanilla periodoPlanilla = obtenerPeriodo(periodo);
-        List<MarcadorCsvRow> filasValidadas = new ArrayList<>(parseResult.getFilas());
-        csvValidator.validarFilas(filasValidadas, periodoPlanilla, formato);
-        aplicarJornada(filasValidadas);
+            String ruta = guardarArchivo(bytes, importacion.getId(), archivo.getOriginalFilename());
+            importacion.setRutaArchivo(ruta);
+            importacionRepository.save(importacion);
 
-        persistirFilas(importacion.getId(), filasValidadas, hash, usuario);
+            PeriodoPlanilla periodoPlanilla = obtenerPeriodo(periodo);
+            List<MarcadorCsvRow> filasValidadas = new ArrayList<>(parseResult.getFilas());
+            log.info("[CARGA-DEBUG] Fase 4 — validando {} filas (formato {})...",
+                    filasValidadas.size(), formato);
+            csvValidator.validarFilas(filasValidadas, periodoPlanilla, formato);
+            // Resumen por estado + muestra de las filas con ERROR (motivo exacto).
+            Map<String, Long> porEstado = filasValidadas.stream().collect(Collectors.groupingBy(
+                    f -> f.getEstadoFila() == null ? "?" : f.getEstadoFila(), Collectors.counting()));
+            log.info("[CARGA-DEBUG] Fase 4b — estados tras validar: {}", porEstado);
+            filasValidadas.stream()
+                    .filter(f -> "ERROR".equals(f.getEstadoFila()))
+                    .limit(15)
+                    .forEach(f -> log.info(
+                            "[CARGA-DEBUG]   ERROR fila#{} fecha={} dni='{}' nombre='{}' -> {}",
+                            f.getNumeroFila(), f.getFecha(), f.getDni(), f.getNombre(),
+                            String.join(" | ", f.getErrores())));
+            log.info("[CARGA-DEBUG] Fase 5 — validación OK, aplicando jornada...");
+            aplicarJornada(filasValidadas);
 
-        AsistenciaImportPreviewDto preview = construirPreview(importacion, filasValidadas);
-        importacion.setFilasValidas(preview.getFilasValidas());
-        importacion.setFilasError(preview.getFilasError());
-        importacion.setFilasObservadas(preview.getFilasObservadas());
-        importacion.setEmpleadosProcesados(preview.getEmpleadosDetectados());
-        importacion.setEmpleadosDetectados(preview.getEmpleadosDetectados());
-        importacion.setTamanoBytes((long) bytes.length);
-        aplicarPeriodoDetectado(importacion, filasValidadas);
-        importacion.setResultadoJson(serializePreview(preview));
-        importacionRepository.save(importacion);
+            log.info("[CARGA-DEBUG] Fase 6 — persistiendo {} filas...", filasValidadas.size());
+            persistirFilas(importacion.getId(), filasValidadas, hash, usuario);
 
-        preview.setImportacionId(importacion.getId());
-        preview.setMensaje("El archivo fue leído correctamente. Revise las observaciones antes de confirmar.");
-        return preview;
+            log.info("[CARGA-DEBUG] Fase 7 — construyendo preview/resumen (calendario/faltas)...");
+            AsistenciaImportPreviewDto preview = construirPreview(importacion, filasValidadas);
+            importacion.setFilasValidas(preview.getFilasValidas());
+            importacion.setFilasError(preview.getFilasError());
+            importacion.setFilasObservadas(preview.getFilasObservadas());
+            importacion.setEmpleadosProcesados(preview.getEmpleadosDetectados());
+            importacion.setEmpleadosDetectados(preview.getEmpleadosDetectados());
+            importacion.setTamanoBytes((long) bytes.length);
+            aplicarPeriodoDetectado(importacion, filasValidadas);
+            importacion.setResultadoJson(serializePreview(preview));
+            importacionRepository.save(importacion);
+
+            preview.setImportacionId(importacion.getId());
+            preview.setMensaje("El archivo fue leído correctamente. Revise las observaciones antes de confirmar.");
+            log.info("[CARGA-DEBUG] ===== VALIDAR OK: id={} validas={} error={} obs={} empleados={} =====",
+                    importacion.getId(), preview.getFilasValidas(), preview.getFilasError(),
+                    preview.getFilasObservadas(), preview.getEmpleadosDetectados());
+            return preview;
+        } catch (RuntimeException e) {
+            log.error("[CARGA-DEBUG] *** ERROR EN VALIDAR (periodo={} archivo={}): {} — {} ***",
+                    periodo, nombreArchivo, e.getClass().getSimpleName(), e.getMessage(), e);
+            throw e;
+        }
     }
 
     /**
@@ -873,9 +910,15 @@ public class AsistenciaImportService {
         if (faltas.isEmpty()) {
             return dias;
         }
+        // Conciliación: un día laborable sin marca (o una observada dejada pasar) que
+        // esté cubierto por una papeleta APROBADA que justifica asistencia (con goce /
+        // teletrabajo) NO se marca FALTA → no descuenta. Papeletas cargadas una sola vez.
+        List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
+                papeletaJustificacionResolver.cargarJustificantes(empleadoId, fin);
         List<AsistenciaDiaDto> resultado = new ArrayList<>(dias);
         for (LocalDate fecha : faltas) {
-            resultado.add(diaFalta(fecha));
+            resultado.add(papeletaJustificacionResolver.justificar(fecha, justificantes)
+                    .orElseGet(() -> diaFalta(fecha)));
         }
         return resultado;
     }

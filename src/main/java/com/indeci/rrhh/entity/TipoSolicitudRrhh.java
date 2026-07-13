@@ -50,5 +50,13 @@ public class TipoSolicitudRrhh {
     
     @Column(name = "MOSTRAR_COMPENSACION")
     private Integer mostrarCompensacion;
-    
+
+    /**
+     * 1 = una papeleta APROBADA de este tipo que cubre la fecha justifica el dia
+     * (no descuenta) al cargar asistencia; 0 = no justifica (permiso sin goce).
+     * Parametrizable en BD (V012_36) — RR. HH. clasifica con goce / sin goce.
+     */
+    @Column(name = "JUSTIFICA_ASISTENCIA")
+    private Integer justificaAsistencia;
+
 }

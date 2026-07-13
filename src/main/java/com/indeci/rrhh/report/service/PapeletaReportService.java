@@ -1,6 +1,7 @@
 package com.indeci.rrhh.report.service;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.entity.Cargo;
 import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
@@ -17,6 +18,9 @@ import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.entity.TipoVacacion;
 import com.indeci.rrhh.report.dto.CompensacionReporteDto;
 import com.indeci.rrhh.report.dto.PapeletaReportDto;
+import com.indeci.rrhh.report.dto.TeletrabajoActividadReporteDto;
+import com.indeci.rrhh.report.dto.VacacionDetReporteDto;
+import com.indeci.rrhh.repository.CargoRepository;
 import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
@@ -45,6 +49,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -123,6 +128,10 @@ solicitudVacacionDetRepository;
 private final RegimenLaboralRepository regimenLaboralRepository;
 private final SolicitudCompensacionDetRepository
 solicitudCompensacionDetRepository;
+
+private final CargoRepository cargoRepository;
+
+private final com.indeci.rrhh.repository.SolicitudTeletrabajoDetRepository solicitudTeletrabajoDetRepository;
 
 
 private void cargarParametrosVacacion(
@@ -311,6 +320,152 @@ private void cargarParametrosVacacion(
     params.put(
             "P_FECHA_EMISION",
             obtenerFechaActual());
+}
+
+/**
+ * Formato institucional de la Papeleta de Vacaciones (plantilla papeleta_vacaciones.jrxml).
+ * Marca el checkbox de la modalidad y construye una fila de "DETALLE DE LA SOLICITUD" por
+ * cada período solicitado (Programación/Adelanto = 1; Fraccionamiento/Reprogramación = N).
+ * Los detalles "_ACTUAL" solo marcan la modalidad — son el período histórico, no una fila.
+ */
+private List<VacacionDetReporteDto> prepararPapeletaVacaciones(
+        Map<String, Object> params,
+        SolicitudRrhh solicitud,
+        EmpleadoPuesto puesto) {
+
+    String cargoNombre = "";
+    if (puesto.getCargoId() != null) {
+        cargoNombre = cargoRepository.findById(puesto.getCargoId())
+                .map(Cargo::getNombre)
+                .orElse("");
+    }
+    params.put("P_CARGO", cargoNombre);
+
+    List<SolicitudVacacionDet> detalles =
+            solicitudVacacionDetRepository.findBySolicitudIdAndActivo(solicitud.getId(), 1);
+
+    boolean programacion = false;
+    boolean adelanto = false;
+    boolean fraccionamiento = false;
+    boolean reprogramacion = false;
+
+    List<VacacionDetReporteDto> filas = new ArrayList<>();
+
+    for (SolicitudVacacionDet det : detalles) {
+        String tipo = det.getTipo();
+        if (tipo == null) {
+            continue;
+        }
+        switch (tipo) {
+            case VAC_PROGRAMACION:
+                programacion = true;
+                filas.add(filaDetalle(det));
+                break;
+            case VAC_ADELANTO:
+                adelanto = true;
+                filas.add(filaDetalle(det));
+                break;
+            case VAC_REPROG_ACTUAL:
+                reprogramacion = true; // modalidad; período histórico (no fila)
+                break;
+            case VAC_REPROG_NUEVO:
+                reprogramacion = true;
+                filas.add(filaDetalle(det));
+                break;
+            case VAC_FRACC_ACTUAL:
+                fraccionamiento = true; // modalidad; período histórico (no fila)
+                break;
+            case VAC_FRACC_1:
+            case VAC_FRACC_2:
+            case VAC_FRACC_3:
+            case VAC_FRACC_4:
+                fraccionamiento = true;
+                filas.add(filaDetalle(det));
+                break;
+            default:
+                break;
+        }
+    }
+
+    params.put("P_CHK_PROGRAMACION", programacion);
+    params.put("P_CHK_ADELANTO", adelanto);
+    params.put("P_CHK_FRACCIONAMIENTO", fraccionamiento);
+    params.put("P_CHK_REPROGRAMACION", reprogramacion);
+    params.put("P_FECHA_EMISION", obtenerFechaActual());
+
+    // Respaldo: si no hubo detalles con fila, se usa el período principal de la solicitud.
+    if (filas.isEmpty()) {
+        String dias = solicitud.getCantidadDias() != null
+                ? String.valueOf(solicitud.getCantidadDias().intValue())
+                : "";
+        filas.add(new VacacionDetReporteDto(
+                formatearFecha(solicitud.getFechaInicio()),
+                formatearFecha(solicitud.getFechaFin()),
+                dias));
+    }
+
+    return filas;
+}
+
+/**
+ * Papeleta de Teletrabajo (plantilla papeleta_teletrabajo.jrxml): datos del servidor +
+ * actividades del día (una fila numerada por actividad) + medio de verificación. La
+ * modalidad de teletrabajo no se captura hoy en el flujo → valor por defecto "PARCIAL".
+ */
+private List<TeletrabajoActividadReporteDto> prepararPapeletaTeletrabajo(
+        Map<String, Object> params,
+        SolicitudRrhh solicitud,
+        EmpleadoPuesto puesto,
+        Persona persona) {
+
+    params.put("P_DNI", valor(persona.getDni()));
+
+    String cargoNombre = "";
+    if (puesto.getCargoId() != null) {
+        cargoNombre = cargoRepository.findById(puesto.getCargoId())
+                .map(Cargo::getNombre)
+                .orElse("");
+    }
+    params.put("P_CARGO", cargoNombre);
+    params.put("P_MODALIDAD",
+            solicitud.getModalidadTeletrabajo() != null ? solicitud.getModalidadTeletrabajo() : "PARCIAL");
+    params.put("P_FECHA_REPORTE", formatearFecha(solicitud.getFechaInicio()));
+
+    List<com.indeci.rrhh.entity.SolicitudTeletrabajoDet> detalles =
+            solicitudTeletrabajoDetRepository.findBySolicitudIdAndActivoOrderByNroOrden(solicitud.getId(), 1);
+
+    List<TeletrabajoActividadReporteDto> actividades = new ArrayList<>();
+    java.util.LinkedHashSet<String> medios = new java.util.LinkedHashSet<>();
+    int n = 1;
+    for (com.indeci.rrhh.entity.SolicitudTeletrabajoDet d : detalles) {
+        if (d.getActividad() != null && !d.getActividad().isBlank()) {
+            actividades.add(new TeletrabajoActividadReporteDto(String.valueOf(n++), d.getActividad()));
+        }
+        if (d.getMedioVerificacion() != null && !d.getMedioVerificacion().isBlank()) {
+            medios.add(d.getMedioVerificacion().trim());
+        }
+    }
+
+    params.put("P_MEDIO_VERIFICACION", medios.isEmpty() ? "—" : String.join(", ", medios));
+    return actividades;
+}
+
+private VacacionDetReporteDto filaDetalle(SolicitudVacacionDet det) {
+    return new VacacionDetReporteDto(
+            formatearFecha(det.getFechaInicio()),
+            formatearFecha(det.getFechaFin()),
+            formatearDias(det.getTotalDias()));
+}
+
+/** Muestra "23" para días enteros y "0.5" para media jornada (Art. 35) — sin truncar. */
+private String formatearDias(Double dias) {
+    if (dias == null) {
+        return "";
+    }
+    if (dias == Math.floor(dias)) {
+        return String.valueOf(dias.intValue());
+    }
+    return java.math.BigDecimal.valueOf(dias).stripTrailingZeros().toPlainString();
 }
 
 private void cargarParametrosCompensacion(
@@ -515,19 +670,36 @@ public String generarPdf(
 
         System.out.println("ANTES DE CARGAR JASPER");
         
-        // SPEC_VACACIONES F9.1-bis — licencia sin goce usa una plantilla propia (firma digital).
-        boolean esLicenciaSinGoce =
-                solicitud.getTipoLicenciaId() != null
-                && tipoLicenciaRepository.findById(solicitud.getTipoLicenciaId())
-                        .map(t -> Integer.valueOf(1).equals(t.getEsSinGoce()))
-                        .orElse(false);
+        // Papeleta de Licencia Unificada (Con Goce / Sin Goce): TODA licencia (código "011")
+        // usa la plantilla institucional papeleta_licencia_sin_goce.jrxml. La modalidad
+        // (con/sin goce) se distingue dentro de la plantilla vía P_MODALIDAD_LICENCIA,
+        // que cargarParametrosLicencia arma según t.getEsSinGoce().
+        boolean esLicencia = "011".equals(tipo.getCodigo());
+
+        // Papeleta de Vacaciones (formato institucional) — plantilla propia compilada en runtime.
+        boolean esVacaciones = "012".equals(tipo.getCodigo());
+        boolean esTeletrabajo = "TELETRABAJO".equals(tipo.getCodigo());
 
         JasperReport jasperReport;
-        if (esLicenciaSinGoce) {
+        if (esLicencia) {
             InputStream jrxml = getClass().getResourceAsStream(
                     "/reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
             if (jrxml == null) {
                 throw new RuntimeException("No existe /reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
+            }
+            jasperReport = JasperCompileManager.compileReport(jrxml);
+        } else if (esVacaciones) {
+            InputStream jrxml = getClass().getResourceAsStream(
+                    "/reportes/rrhh/papeleta_vacaciones.jrxml");
+            if (jrxml == null) {
+                throw new RuntimeException("No existe /reportes/rrhh/papeleta_vacaciones.jrxml");
+            }
+            jasperReport = JasperCompileManager.compileReport(jrxml);
+        } else if (esTeletrabajo) {
+            InputStream jrxml = getClass().getResourceAsStream(
+                    "/reportes/rrhh/papeleta_teletrabajo.jrxml");
+            if (jrxml == null) {
+                throw new RuntimeException("No existe /reportes/rrhh/papeleta_teletrabajo.jrxml");
             }
             jasperReport = JasperCompileManager.compileReport(jrxml);
         } else {
@@ -544,11 +716,22 @@ public String generarPdf(
         Map<String, Object> params =
                 new HashMap<>();
 
-        // SPEC_VACACIONES F9.1-bis — insumos de la plantilla de licencia sin goce.
-        if (esLicenciaSinGoce) {
+        // Papeleta de Vacaciones — filas del bloque DETALLE (una por período solicitado).
+        List<VacacionDetReporteDto> detalleVacacionRows = null;
+        // Papeleta de Teletrabajo — filas de ACTIVIDADES DEL DÍA (una por actividad).
+        List<TeletrabajoActividadReporteDto> actividadTeletrabajoRows = null;
+
+        // Insumos de la plantilla de licencia unificada (con/sin goce).
+        if (esLicencia) {
             params.put("P_HEADER",
                     getClass().getResourceAsStream("/reportes/img/header_formato.jpg"));
             params.put("P_CODIGO_FIRMA", "SOL-" + solicitud.getId());
+        }
+
+        // Papeletas de Vacaciones/Teletrabajo — mismo header institucional (Perú/MinDef/INDECI).
+        if (esVacaciones || esTeletrabajo) {
+            params.put("P_HEADER",
+                    getClass().getResourceAsStream("/reportes/img/header_formato.jpg"));
         }
 
         params.put(
@@ -615,14 +798,18 @@ public String generarPdf(
 
             cargarParametrosLicencia(
                     params,
-                    solicitud);
+                    solicitud,
+                    puesto);
         }
         
         
-        if("012".equals(tipo.getCodigo())) {
-            cargarParametrosVacacion(
-                    params,
-                    solicitud);
+        if(esVacaciones) {
+            detalleVacacionRows =
+                    prepararPapeletaVacaciones(params, solicitud, puesto);
+        }
+        if(esTeletrabajo) {
+            actividadTeletrabajoRows =
+                    prepararPapeletaTeletrabajo(params, solicitud, puesto, persona);
         }
         if("013".equals(tipo.getCodigo())) {
             cargarParametrosCompensacion(
@@ -807,11 +994,20 @@ public String generarPdf(
         // GENERAR REPORTE
         // ==========================================
 
+        JRDataSource dataSource;
+        if (esVacaciones && detalleVacacionRows != null) {
+            dataSource = new JRBeanCollectionDataSource(detalleVacacionRows);
+        } else if (esTeletrabajo && actividadTeletrabajoRows != null) {
+            dataSource = new JRBeanCollectionDataSource(actividadTeletrabajoRows);
+        } else {
+            dataSource = new JREmptyDataSource();
+        }
+
         JasperPrint jasperPrint =
                 JasperFillManager.fillReport(
                         jasperReport,
                         params,
-                        new JREmptyDataSource());
+                        dataSource);
 
         // ==========================================
         // CREAR CARPETA
@@ -997,25 +1193,42 @@ private Double calcularDias(
     }
     private void cargarParametrosLicencia(
             Map<String, Object> params,
-            SolicitudRrhh solicitud) {
+            SolicitudRrhh solicitud,
+            EmpleadoPuesto puesto) {
+
+        // 1. Mapear P_CARGO
+        String cargoNombre = "";
+        if (puesto.getCargoId() != null) {
+            cargoNombre = cargoRepository.findById(puesto.getCargoId())
+                    .map(Cargo::getNombre)
+                    .orElse("");
+        }
+        params.put("P_CARGO", cargoNombre);
 
         TipoLicencia licencia =
                 tipoLicenciaRepository
-                        .findById(
-                                solicitud.getTipoLicenciaId())
+                        .findById(solicitud.getTipoLicenciaId())
                         .orElseThrow(() ->
-                                new NegocioException(
-                                        "Tipo licencia no encontrado"));
+                                new NegocioException("Tipo licencia no encontrado"));
 
-        // SPEC_VACACIONES F9.1-bis — mostrar el NOMBRE legible (no el código LIC_SIN_PAR).
-        params.put(
-                "P_TIPO_LICENCIA",
-                licencia.getNombre());
+        // 2. Mapear P_MODALIDAD_LICENCIA
+        String modalidad = Integer.valueOf(1).equals(licencia.getEsSinGoce())
+                ? "LICENCIA SIN GOCE DE REMUNERACIONES"
+                : "LICENCIA CON GOCE DE REMUNERACIONES";
+        params.put("P_MODALIDAD_LICENCIA", modalidad);
 
-        params.put(
-                "P_MOTIVO",
-                valor(
-                        solicitud.getMotivo()));
+        // 3. Mapear P_MOTIVO_LICENCIA
+        params.put("P_MOTIVO_LICENCIA", licencia.getNombre());
+
+        // 4. Lógica Condicional para P_OTROS_MOTIVOS
+        String textoLibre = valor(solicitud.getMotivo());
+        boolean esOtros = licencia.getNombre() != null && licencia.getNombre().toUpperCase().contains("OTROS");
+        
+        if (esOtros && textoLibre != null && !textoLibre.isEmpty()) {
+            params.put("P_OTROS_MOTIVOS", textoLibre);
+        } else {
+            params.put("P_OTROS_MOTIVOS", null);
+        }
 
         params.put(
                 "P_FECHA_INICIO",

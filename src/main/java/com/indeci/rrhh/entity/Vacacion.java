@@ -62,8 +62,9 @@ public class Vacacion {
 	@Column(name = "TIPO_GOCE")
 	private String tipoGoce;
 
+	/** Art. 35 — admite media jornada (0.5). Migrado a NUMBER(4,1) en V012_33. */
 	@Column(name = "DIAS")
-	private Integer dias;
+	private Double dias;
 
 	@Column(name = "ESTADO")
 	private String estado;

@@ -18,4 +18,11 @@ public interface VacacionSaldoRepository extends JpaRepository<VacacionSaldo, Lo
 
     List<VacacionSaldo> findByEmpleadoIdAndActivoOrderByAnioAsc(
             Long empleadoId, Integer activo);
+
+    /**
+     * Historial COMPLETO (activos + anulados) — Trazabilidad Visual de "Provisionar Auto".
+     * A diferencia de todos los demás métodos de este repositorio, NO filtra por activo:
+     * es exclusivamente para el modal de auditoría, nunca para cálculos de saldo.
+     */
+    List<VacacionSaldo> findByEmpleadoIdOrderByAnioDescCreatedAtDesc(Long empleadoId);
 }

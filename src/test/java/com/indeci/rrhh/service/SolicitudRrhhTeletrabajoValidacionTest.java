@@ -65,29 +65,40 @@ class SolicitudRrhhTeletrabajoValidacionTest {
     }
 
     @Test
-    @DisplayName("Caso feliz: habilitado + 1 actividad + fecha de hoy → no lanza")
+    @DisplayName("Caso feliz: 1 actividad + fecha de hoy → no lanza (sin gate de resolución)")
     void casoFeliz() {
-        habilitarTeletrabajador(1);
-
         SolicitudRrhhDto dto = new SolicitudRrhhDto();
         dto.setFechaInicio(LocalDate.now());
+        dto.setModalidadTeletrabajo("PARCIAL");
         dto.setDetallesTeletrabajo(List.of(actividad("Elaboración de informe diario")));
 
         assertDoesNotThrow(() -> service.validarTeletrabajo(dto, tipoTeletrabajo(), EMPLEADO_ID));
     }
 
     @Test
-    @DisplayName("Gate: empleado sin resolución de teletrabajo → NegocioException")
-    void errorSinResolucion() {
-        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(eq(EMPLEADO_ID), any()))
-                .thenReturn(Optional.empty());
-
+    @DisplayName("Modalidad ausente o inválida → NegocioException")
+    void modalidadInvalida() {
         SolicitudRrhhDto dto = new SolicitudRrhhDto();
         dto.setFechaInicio(LocalDate.now());
         dto.setDetallesTeletrabajo(List.of(actividad("Actividad")));
-
+        // sin modalidad
         assertThrows(NegocioException.class,
                 () -> service.validarTeletrabajo(dto, tipoTeletrabajo(), EMPLEADO_ID));
+
+        dto.setModalidadTeletrabajo("OTRA");
+        assertThrows(NegocioException.class,
+                () -> service.validarTeletrabajo(dto, tipoTeletrabajo(), EMPLEADO_ID));
+    }
+
+    @Test
+    @DisplayName("Sin resolución de teletrabajo: YA NO bloquea (gate removido) → no lanza")
+    void sinResolucion_yaNoBloquea() {
+        SolicitudRrhhDto dto = new SolicitudRrhhDto();
+        dto.setFechaInicio(LocalDate.now());
+        dto.setModalidadTeletrabajo("COMPLETA");
+        dto.setDetallesTeletrabajo(List.of(actividad("Actividad")));
+
+        assertDoesNotThrow(() -> service.validarTeletrabajo(dto, tipoTeletrabajo(), EMPLEADO_ID));
     }
 
     @Test
@@ -97,6 +108,7 @@ class SolicitudRrhhTeletrabajoValidacionTest {
 
         SolicitudRrhhDto dto = new SolicitudRrhhDto();
         dto.setFechaInicio(LocalDate.now());
+        dto.setModalidadTeletrabajo("PARCIAL");
         dto.setDetallesTeletrabajo(List.of());
 
         assertThrows(NegocioException.class,
@@ -110,6 +122,7 @@ class SolicitudRrhhTeletrabajoValidacionTest {
 
         SolicitudRrhhDto dto = new SolicitudRrhhDto();
         dto.setFechaInicio(LocalDate.now());
+        dto.setModalidadTeletrabajo("PARCIAL");
         dto.setDetallesTeletrabajo(List.of(actividad("   ")));
 
         assertThrows(NegocioException.class,
@@ -123,6 +136,7 @@ class SolicitudRrhhTeletrabajoValidacionTest {
 
         SolicitudRrhhDto dto = new SolicitudRrhhDto();
         dto.setFechaInicio(LocalDate.now().plusDays(1));
+        dto.setModalidadTeletrabajo("PARCIAL");
         dto.setDetallesTeletrabajo(List.of(actividad("Reunión de coordinación")));
 
         assertThrows(NegocioException.class,

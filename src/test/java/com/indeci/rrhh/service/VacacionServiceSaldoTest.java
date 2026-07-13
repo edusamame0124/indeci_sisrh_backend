@@ -83,7 +83,7 @@ class VacacionServiceSaldoTest {
         v.setEmpleadoId(empleadoId);
         v.setPeriodoDesde(LocalDate.of(2026, 6, 1));
         v.setPeriodoHasta(LocalDate.of(2026, 6, 20));
-        v.setDias(20);
+        v.setDias(20d);
         v.setEstado("GOZADO");
         v.setActivo(1);
         return v;
@@ -266,7 +266,7 @@ class VacacionServiceSaldoTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).id()).isEqualTo(950L);
-        assertThat(result.get(0).dias()).isEqualTo(20);
+        assertThat(result.get(0).dias()).isEqualTo(20d);
     }
 
     @Test

@@ -106,7 +106,11 @@ public class SolicitudRrhh {
     
     @Column(name = "TIPO_VACACION_ID")
     private Long tipoVacacionId;
-    
+
+    /** Papeleta de Teletrabajo — modalidad elegida (PARCIAL/COMPLETA). V012_34. */
+    @Column(name = "MODALIDAD_TELETRABAJO")
+    private String modalidadTeletrabajo;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "TIPO_VACACION_ID",
