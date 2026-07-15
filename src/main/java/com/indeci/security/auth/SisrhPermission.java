@@ -12,6 +12,13 @@ public final class SisrhPermission {
     public static final String ADM_AUDIT = "ADM_AUDIT";
     public static final String ADM_META = "ADM_META";
 
+    /**
+     * Integración GDR (Rendimiento): lectura del directorio de usuarios
+     * GDR_USUARIO por parte de la cuenta de servicio svc-gdr. Menor privilegio:
+     * solo habilita GET /api/sistemas/rendimiento/usuarios.
+     */
+    public static final String GDR_DIRECTORY_READ = "GDR_DIRECTORY_READ";
+
     public static final String CAT_READ = "CAT_READ";
     public static final String CAT_WRITE = "CAT_WRITE";
 
