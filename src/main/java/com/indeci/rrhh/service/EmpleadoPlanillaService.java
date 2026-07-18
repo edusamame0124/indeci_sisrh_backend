@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -45,6 +46,17 @@ public class EmpleadoPlanillaService {
     private static final BigDecimal TOLERANCIA_SUELDO = new BigDecimal("0.01");
     private static final DateTimeFormatter FMT_FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+    /**
+     * Motivo del cierre automático por solapamiento (transición Determinado→Indeterminado, etc.).
+     * Es un cierre "suave": marca el fin del contrato anterior SIN documento de sustento, por lo
+     * que NO habilita LBS ({@code VinculoEstadoResolver.habilitaLbs} exige documento). El módulo
+     * de Liquidaciones distingue así una transición de un cese real. LEY-A (decisión RR.HH.).
+     */
+    public static final String MOTIVO_CESE_TRANSICION = "TRANSICIÓN DE CONTRATO";
+
+    /** Código de tipo de contrato a plazo determinado (único que lleva fecha de término). */
+    private static final String TIPO_CONTRATO_PLAZO_DETERMINADO = "PLAZO_DETERMINADO";
+
     private final EmpleadoPlanillaRepository repository;
     private final AuditoriaContext auditoriaContext;
     private final RegimenLaboralRepository regimenLaboralRepository;
@@ -59,32 +71,44 @@ public class EmpleadoPlanillaService {
     // CREAR
     // ============================
     @Auditable(accion = "CREAR_PLANILLA")
+    @Transactional
     public void guardar(EmpleadoPlanillaDto dto) {
 
-        // Vínculos secuenciales (rotación CAS): se permite un contrato nuevo solo si
-        // el/los anteriores están CESADOS (activo=1 + fechaCese). Un vínculo cesado
-        // conserva activo=1 y queda en la historia; activo=0 significa ANULADO.
+        // Un empleado solo puede tener UN vínculo vigente a la vez (SERVIR/MEF). Vínculos
+        // secuenciales (rotación CAS): al registrar un contrato nuevo, se CIERRA
+        // automáticamente el/los anterior(es) vigente(s) poniéndoles fecha de cese = día
+        // previo al inicio del nuevo. Es un cierre "suave": se registra motivo pero NO
+        // documento, así el cese no habilita LBS por sí solo (VinculoEstadoResolver.habilitaLbs
+        // exige ambos). El estado del vínculo se DERIVA de las fechas — no hay campo 'estado'
+        // editable. Un vínculo cesado conserva activo=1 y queda en la historia; activo=0 = ANULADO.
         List<EmpleadoPlanilla> activos =
                 repository.findByEmpleadoIdAndActivo(dto.getEmpleadoId(), 1);
 
-        boolean hayVigenteSinCese = activos.stream()
-                .anyMatch(v -> v.getFechaCese() == null);
-        if (hayVigenteSinCese) {
-            throw new NegocioException(
-                    "Ya existe un contrato vigente. Ciérrelo con su cese antes de registrar uno nuevo.");
-        }
+        final LocalDate inicioNuevo = dto.getFechaInicioContrato();
+        final LocalDate fechaCierre = inicioNuevo != null ? inicioNuevo.minusDays(1) : LocalDate.now();
+        activos.stream()
+                .filter(v -> v.getFechaCese() == null)
+                .forEach(v -> {
+                    v.setFechaCese(fechaCierre);
+                    // Sello anti-liquidación: motivo explícito + SIN documento → no dispara LBS.
+                    v.setMotivoCese(MOTIVO_CESE_TRANSICION);
+                    v.setDocumentoCese(null);
+                    v.setUpdatedAt(LocalDateTime.now());
+                    repository.save(v);
+                });
 
+        // El nuevo contrato debe iniciar después de cualquier cese (incluye los que se acaban
+        // de aplicar arriba: su cese = inicioNuevo - 1, así que esta guarda pasa; solo bloquea
+        // si hubiera un cese histórico posterior al inicio del nuevo).
         Optional<LocalDate> ultimoCese = activos.stream()
                 .map(EmpleadoPlanilla::getFechaCese)
                 .filter(Objects::nonNull)
                 .max(LocalDate::compareTo);
-        if (ultimoCese.isPresent()) {
-            LocalDate inicioNuevo = dto.getFechaInicioContrato();
-            if (inicioNuevo == null || !inicioNuevo.isAfter(ultimoCese.get())) {
-                throw new NegocioException(
-                        "El nuevo contrato debe iniciar después del cese del contrato anterior ("
-                                + ultimoCese.get().format(FMT_FECHA) + ").");
-            }
+        if (ultimoCese.isPresent()
+                && (inicioNuevo == null || !inicioNuevo.isAfter(ultimoCese.get()))) {
+            throw new NegocioException(
+                    "El nuevo contrato debe iniciar después del cese del contrato anterior ("
+                            + ultimoCese.get().format(FMT_FECHA) + ").");
         }
 
         RemuneracionCalculada remuneracion = calcularRemuneracionDesdeDto(dto);
@@ -284,15 +308,47 @@ public class EmpleadoPlanillaService {
      * si se registra una fecha de cese, el motivo y el documento de sustento son
      * obligatorios (el estado CESADO se deriva a partir de estos hechos).
      */
-    private void aplicarFechasYCese(EmpleadoPlanilla entity, EmpleadoPlanillaDto dto) {
-        entity.setFechaFin(dto.getFechaFin());
-        if (dto.getFechaCese() != null
-                && (dto.getMotivoCese() == null || dto.getMotivoCese().isBlank()
-                    || dto.getDocumentoCese() == null || dto.getDocumentoCese().isBlank())) {
-            throw new NegocioException(
-                    "Para registrar el cese se requieren fecha de cese, motivo y documento de sustento");
+    /** {@code true} si el tipo de contrato es a plazo determinado (único que lleva término). */
+    private boolean esPlazoDeterminado(Long tipoContratoId) {
+        if (tipoContratoId == null) {
+            return false;
         }
-        entity.setFechaCese(dto.getFechaCese());
+        return tipoContratoRepository.findById(tipoContratoId)
+                .map(t -> TIPO_CONTRATO_PLAZO_DETERMINADO.equalsIgnoreCase(t.getCodigo()))
+                .orElse(false);
+    }
+
+    private void aplicarFechasYCese(EmpleadoPlanilla entity, EmpleadoPlanillaDto dto) {
+        final boolean plazoDeterminado = esPlazoDeterminado(dto.getTipoContratoId());
+
+        // Regla 1: la fecha de término (fechaFin) SOLO aplica a Plazo Determinado. En
+        // Indeterminado (o cualquier otro tipo) se fuerza a null, aunque el DTO traiga valor.
+        final LocalDate fechaFin = plazoDeterminado ? dto.getFechaFin() : null;
+        entity.setFechaFin(fechaFin);
+
+        final LocalDate fechaCese = dto.getFechaCese();
+        if (fechaCese != null) {
+            // Cese formal (fáctico): exige motivo + documento — es lo que detona la LBS.
+            if (dto.getMotivoCese() == null || dto.getMotivoCese().isBlank()
+                    || dto.getDocumentoCese() == null || dto.getDocumentoCese().isBlank()) {
+                throw new NegocioException(
+                        "Para registrar el cese se requieren fecha de cese, motivo y documento de sustento");
+            }
+            // Regla 2.2: el cese no puede ser anterior al inicio del contrato.
+            final LocalDate inicio = dto.getFechaInicioContrato();
+            if (inicio != null && fechaCese.isBefore(inicio)) {
+                throw new NegocioException(
+                        "La fecha de cese no puede ser anterior al inicio del contrato ("
+                                + inicio.format(FMT_FECHA) + ").");
+            }
+            // Regla 2.2: en plazo determinado, el cese no puede superar el término del contrato.
+            if (plazoDeterminado && fechaFin != null && fechaCese.isAfter(fechaFin)) {
+                throw new NegocioException(
+                        "En un contrato a plazo determinado, la fecha de cese no puede ser posterior "
+                                + "a la fecha de término (" + fechaFin.format(FMT_FECHA) + ").");
+            }
+        }
+        entity.setFechaCese(fechaCese);
         entity.setMotivoCese(dto.getMotivoCese());
         entity.setDocumentoCese(dto.getDocumentoCese());
         // Sustento de origen del vínculo (V012_08).

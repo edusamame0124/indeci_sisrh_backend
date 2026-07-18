@@ -87,6 +87,21 @@ public class EmpleadoPlanilla {
     @Column(name = "NUMERO_CONTRATO")
     private String numeroContrato;
 
+    /**
+     * V012_37 — N.° del proceso de selección (CAS). Texto libre: RR.HH. registra desde
+     * '073-2012' hasta 'R J N° 000193-2024-INDECI/JEF' o 'REPOSICION JUDICIAL'.
+     */
+    @Column(name = "NRO_CONVOCATORIA")
+    private String nroConvocatoria;
+
+    /**
+     * V012_37 — base legal que sustenta el vínculo ('DECRETO URGENCIA Nº 034-2021',
+     * 'LEY Nº 31131 - INDETERMINADO'). NO confundir con CONDICION_LABORAL_ID, que es el
+     * catálogo NOMBRADO/CONTRATADO y solo aplica al régimen 276.
+     */
+    @Column(name = "BASE_LEGAL_VINCULO")
+    private String baseLegalVinculo;
+
     @Column(name = "FECHA_INGRESO")
     private LocalDate fechaIngreso;
 

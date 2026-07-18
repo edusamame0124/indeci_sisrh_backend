@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -172,7 +173,10 @@ class EmpleadoPlanillaServiceTest {
     }
 
     @Test
-    void guardar_rechaza_nuevo_vinculo_si_existe_uno_vigente_sin_cese() {
+    void guardar_cierra_automaticamente_el_vinculo_vigente_anterior() {
+        // Un solo vigente a la vez (SERVIR/MEF): registrar un nuevo contrato CIERRA el anterior
+        // vigente (fechaCese = inicio del nuevo - 1) en vez de rechazar el registro.
+        stubCalculo("4864.19");
         EmpleadoPlanilla vigente = new EmpleadoPlanilla();
         vigente.setActivo(1);
         vigente.setFechaCese(null);
@@ -180,12 +184,18 @@ class EmpleadoPlanillaServiceTest {
 
         EmpleadoPlanillaDto dto = dtoBase();
         dto.setSueldoBasico(4864.19);
+        dto.setFechaInicioContrato(LocalDate.of(2026, 7, 1));
 
-        assertThatThrownBy(() -> service.guardar(dto))
-                .isInstanceOf(NegocioException.class)
-                .hasMessageContaining("contrato vigente");
+        service.guardar(dto);
 
-        verify(repository, never()).save(any());
+        // El anterior quedó cesado el día previo al inicio del nuevo, con motivo de transición.
+        assertThat(vigente.getFechaCese()).isEqualTo(LocalDate.of(2026, 6, 30));
+        assertThat(vigente.getMotivoCese())
+                .isEqualTo(EmpleadoPlanillaService.MOTIVO_CESE_TRANSICION);
+        // Sello anti-liquidación: SIN documento → no habilita LBS.
+        assertThat(vigente.getDocumentoCese()).isNull();
+        // Se persisten ambos: el cese del anterior y el vínculo nuevo.
+        verify(repository, times(2)).save(any(EmpleadoPlanilla.class));
     }
 
     @Test
@@ -204,6 +214,66 @@ class EmpleadoPlanillaServiceTest {
                 .hasMessageContaining("después del cese");
 
         verify(repository, never()).save(any());
+    }
+
+    // ── Reglas fechaTérmino (fechaFin) vs fechaCese ────────────────────────
+
+    @Test
+    void guardar_fuerza_fecha_fin_null_en_contrato_indeterminado() {
+        stubCalculo("4864.19");
+        stubTipoContrato(30L, "PLAZO_INDETERMINADO");
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+        dto.setTipoContratoId(30L);
+        dto.setFechaFin(LocalDate.of(2026, 12, 31)); // no debería persistir en indeterminado
+
+        service.guardar(dto);
+
+        ArgumentCaptor<EmpleadoPlanilla> captor = ArgumentCaptor.forClass(EmpleadoPlanilla.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getFechaFin()).isNull();
+    }
+
+    @Test
+    void guardar_rechaza_cese_anterior_al_inicio_del_contrato() {
+        stubCalculo("4864.19");
+        stubTipoContrato(30L, "PLAZO_INDETERMINADO");
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+        dto.setTipoContratoId(30L);
+        dto.setFechaInicioContrato(LocalDate.of(2026, 7, 1));
+        dto.setFechaCese(LocalDate.of(2026, 6, 1)); // antes del inicio
+        dto.setMotivoCese("Renuncia");
+        dto.setDocumentoCese("Carta 001");
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("anterior al inicio");
+    }
+
+    @Test
+    void guardar_rechaza_cese_posterior_al_termino_en_plazo_determinado() {
+        stubCalculo("4864.19");
+        stubTipoContrato(40L, "PLAZO_DETERMINADO");
+        EmpleadoPlanillaDto dto = dtoBase();
+        dto.setSueldoBasico(4864.19);
+        dto.setTipoContratoId(40L);
+        dto.setFechaInicioContrato(LocalDate.of(2026, 1, 1));
+        dto.setFechaFin(LocalDate.of(2026, 6, 30));   // término del contrato
+        dto.setFechaCese(LocalDate.of(2026, 7, 15));  // cese posterior al término
+        dto.setMotivoCese("No renovación");
+        dto.setDocumentoCese("Memo 002");
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("posterior a la fecha de término");
+    }
+
+    private void stubTipoContrato(Long id, String codigo) {
+        var tc = new com.indeci.rrhh.entity.TipoContrato();
+        tc.setId(id);
+        tc.setCodigo(codigo);
+        when(tipoContratoRepository.findById(id)).thenReturn(Optional.of(tc));
     }
 
     private void stubCalculo(String remuneracionMensual) {

@@ -110,7 +110,18 @@ private final TtConformidadRepository ttConformidadRepository;
         Bank b = new Bank();
         b.setName(nombre);
         b.setActivo(VIGENTE);
+        // BANKS exige CODE, STATUS y CREATED_AT (NOT NULL). Sin esto el alta por la UI
+        // fallaba con ORA-01400. El CODE se deriva del nombre y se acota a 20 chars.
+        b.setCode(codigoBancoDesde(nombre));
+        b.setStatus(Bank.STATUS_ACTIVE);
+        b.setCreatedAt(java.time.LocalDateTime.now());
         return bankRepository.save(b);
+    }
+
+    /** CODE corto y único a partir del nombre: primeras palabras en mayúsculas, máx. 20. */
+    private String codigoBancoDesde(String nombre) {
+        String base = nombre.toUpperCase().replaceAll("[^A-Z0-9 ]", "").trim();
+        return base.length() > 20 ? base.substring(0, 20).trim() : base;
     }
 
     @Transactional

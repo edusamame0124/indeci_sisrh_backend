@@ -8,7 +8,11 @@ import lombok.Data;
 @Data
 public class EstadoCivil {
 
+    // La columna INDECI_ESTADO_CIVIL.ID se autogenera en BD (V012_37 insertó los
+    // canónicos sin ID y funcionó). Sin esta estrategia, un alta por JPA falla con
+    // "Identifier must be manually assigned".
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "CODIGO")

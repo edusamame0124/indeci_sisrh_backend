@@ -35,6 +35,14 @@ public class Empleado {
     @Column(name = "CODIGO_SISPER")
     private String codigoSisper;
 
+    /**
+     * V012_37 — clase de personal: CIVIL | MILITAR | MARINA | PNP (columna 'PERSONA' del
+     * Excel de RR.HH.). Dimensión propia: NO confundir con TIPO_PERSONA_MEF (categoría
+     * MEF/AIRHSP) ni con GRUPO_SERVIDOR_CIVIL (grupos de la Ley 30057).
+     */
+    @Column(name = "CLASE_PERSONAL")
+    private String clasePersonal;
+
     // ============================================================
     // Spec 010 / V010_07 — campos permanentes del trabajador
     // ============================================================
