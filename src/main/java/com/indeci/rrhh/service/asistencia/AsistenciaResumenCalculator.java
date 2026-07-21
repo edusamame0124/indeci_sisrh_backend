@@ -14,8 +14,12 @@ import java.util.Set;
 public final class AsistenciaResumenCalculator {
 
     // TELETRABAJO = trabajo efectivo remoto (Ley 31572): cuenta como laborado, no descuenta.
+    // ASISTENCIA_JUSTIFICADA = omisión de marcación cubierta por papeleta 004: tiempo completo.
     // PERMISO (con goce aprobado) NO está aquí: justificado, no descuenta y no cuenta laborado.
-    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA", "TELETRABAJO");
+    // OMISION_MARCACION NO está aquí: pendiente de papeleta 004 — no cuenta laborado ni descuenta
+    //   (neutro) hasta el cierre, donde el motor la penaliza como FALTA si no se justificó.
+    private static final Set<String> TIPOS_LABORADOS =
+            Set.of("LABORAL", "TARDANZA", "TELETRABAJO", "ASISTENCIA_JUSTIFICADA");
 
     private AsistenciaResumenCalculator() {}
 

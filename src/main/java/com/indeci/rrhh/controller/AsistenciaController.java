@@ -42,17 +42,30 @@ public class AsistenciaController {
     private final AsistenciaPdfService pdfService;
     private final AsistenciaImportService importService;
 
-    /** Consulta diaria paginada por fecha y filtros opcionales (DNI, nombre). */
+    /** Consulta de asistencia por rango [fechaInicio, fechaFin] y filtros opcionales (DNI, nombre). */
     @GetMapping("/diaria")
     public ApiResponse<Page<AsistenciaDiariaRowDto>> listarDiaria(
-            @RequestParam LocalDate fecha,
+            @RequestParam LocalDate fechaInicio,
+            @RequestParam(required = false) LocalDate fechaFin,
             @RequestParam(required = false) String dni,
             @RequestParam(required = false) String q,
             @PageableDefault(size = 10) Pageable pageable) {
-        return new ApiResponse<>("OK", "Asistencia del día",
-                service.listarDiaria(fecha, dni, q, pageable));
+        return new ApiResponse<>("OK", "Asistencia del rango",
+                service.listarDiaria(fechaInicio, fechaFin, dni, q, pageable));
     }
     
+    /** Detalle diario de una importación (lote) — módulo de detalle del historial (solo lectura). */
+    @GetMapping("/importacion/{importacionId}/diaria")
+    public ApiResponse<Page<AsistenciaDiariaRowDto>> listarPorImportacion(
+            @PathVariable Long importacionId,
+            @RequestParam(required = false) String dni,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String tipoDia,
+            @PageableDefault(size = 25) Pageable pageable) {
+        return new ApiResponse<>("OK", "Asistencia importada del lote",
+                service.listarPorImportacion(importacionId, dni, q, tipoDia, pageable));
+    }
+
     @GetMapping("/mis-asistencias")
     public ApiResponse<Page<AsistenciaDiariaRowDto>> misAsistencias(
             @RequestParam LocalDate fechaInicio,

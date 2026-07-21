@@ -263,10 +263,21 @@ public class AsistenciaCsvValidator {
     private void validarObservacionMarcador(MarcadorCsvRow fila) {
         String obs = fila.getObservacion() != null ? fila.getObservacion() : "";
         boolean marcaIncompleta = obs.toLowerCase().contains("marca incompleta");
-        boolean sinMarcas = obs.isBlank()
-                && !AsistenciaTiempoUtil.tieneMarca(fila.getMarca1())
-                && !AsistenciaTiempoUtil.tieneMarca(fila.getMarca2());
-        if ((marcaIncompleta || sinMarcas) && "VALIDA".equals(fila.getEstadoFila())) {
+        boolean entrada = AsistenciaTiempoUtil.tieneMarca(fila.getMarca1());
+        boolean salida = AsistenciaTiempoUtil.tieneMarca(fila.getMarca2());
+        // Omision de marcacion: una sola marca (entrada XOR salida) o rotulada "marca incompleta".
+        boolean omision = marcaIncompleta || (entrada ^ salida);
+        boolean sinMarcas = obs.isBlank() && !entrada && !salida;
+        if (!"VALIDA".equals(fila.getEstadoFila())) {
+            return;
+        }
+        if (omision) {
+            // Se importa (WARN): NO exige aceptacion ni bloquea. El dia queda OMISION_MARCACION,
+            // no descuenta hasta el cierre si no se presenta la papeleta 004.
+            fila.setEstadoFila("WARN");
+            fila.getAdvertencias().add(
+                    "Omision de marcacion: falta una marca (entrada o salida). Requiere papeleta 004.");
+        } else if (sinMarcas) {
             fila.setEstadoFila("OBSERVADA");
         }
     }

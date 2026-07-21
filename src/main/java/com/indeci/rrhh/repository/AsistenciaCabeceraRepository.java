@@ -46,4 +46,11 @@ public interface AsistenciaCabeceraRepository
     long countByImportacionIdAndActivoAndEstadoNot(Long importacionId, Integer activo, String estado);
 
     long countByImportacionIdAndActivo(Long importacionId, Integer activo);
+
+    /** Historial (badge tri-estado) — cabeceras activas de la importación en un estado dado. */
+    long countByImportacionIdAndActivoAndEstado(Long importacionId, Integer activo, String estado);
+
+    /** Historial (badge tri-estado) — cabeceras activas de la importación en cualquiera de los estados. */
+    long countByImportacionIdAndActivoAndEstadoIn(
+            Long importacionId, Integer activo, java.util.Collection<String> estados);
 }

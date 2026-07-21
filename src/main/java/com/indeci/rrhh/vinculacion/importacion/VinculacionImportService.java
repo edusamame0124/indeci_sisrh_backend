@@ -1,7 +1,11 @@
 package com.indeci.rrhh.vinculacion.importacion;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
@@ -63,6 +67,10 @@ public class VinculacionImportService {
         int creados = 0;
         int actualizados = 0;
         final List<FilaPreviewDto> omitidas = new ArrayList<>();
+        // DNI → N.° de contrato declarados en el Excel (fuente de verdad para la sincronización).
+        // Se registran las filas VÁLIDAS aunque luego fallen al persistir: un fallo transitorio no
+        // debe hacer que un contrato declarado por RR.HH. se considere huérfano y se anule.
+        final Map<String, Set<String>> contratosPorDni = new LinkedHashMap<>();
 
         for (VinculacionRowRaw fila : filas) {
             final VinculacionRowValidator.Resultado validacion = validator.validar(fila);
@@ -70,6 +78,7 @@ public class VinculacionImportService {
                 omitidas.add(aPreview(fila, validacion));
                 continue;
             }
+            registrarContratoDeclarado(fila, contratosPorDni);
             try {
                 if (upsertService.importar(fila, sesion).creado()) {
                     creados++;
@@ -83,11 +92,43 @@ public class VinculacionImportService {
             }
         }
 
-        auditoriaContext.setDetalle(String.format(
-                "Import vinculación: %d filas; %d creados; %d actualizados; %d omitidos por error.",
-                filas.size(), creados, actualizados, omitidas.size()));
+        final int anulados = sincronizarAutoritativo(contratosPorDni);
 
-        return new CommitDto(filas.size(), creados, actualizados, omitidas.size(), omitidas);
+        auditoriaContext.setDetalle(String.format(
+                "Import vinculación: %d filas; %d creados; %d actualizados; %d anulados (huérfanos); "
+                        + "%d omitidos por error.",
+                filas.size(), creados, actualizados, anulados, omitidas.size()));
+
+        return new CommitDto(filas.size(), creados, actualizados, anulados, omitidas.size(), omitidas);
+    }
+
+    /** Registra el N.° de contrato declarado para el DNI de la fila (normalizado a 8 dígitos). */
+    private void registrarContratoDeclarado(
+            VinculacionRowRaw fila, Map<String, Set<String>> contratosPorDni) {
+        final String dni = TextoNormalizador.padCeros(fila.digitos(VinculacionColumna.DNI), 8);
+        final String contrato = fila.texto(VinculacionColumna.NUMERO_CONTRATO);
+        if (dni != null && contrato != null) {
+            contratosPorDni.computeIfAbsent(dni, k -> new HashSet<>()).add(contrato);
+        }
+    }
+
+    /**
+     * Cierra el import haciendo que el sistema sea espejo del Excel: por cada DNI importado, anula
+     * los vínculos activos que el Excel ya no declara y reconcilia el vigente único. Cada empleado
+     * se sincroniza en su propia transacción; un fallo aislado no tumba al resto.
+     *
+     * @return total de vínculos anulados por no figurar en el Excel
+     */
+    private int sincronizarAutoritativo(Map<String, Set<String>> contratosPorDni) {
+        int anulados = 0;
+        for (Map.Entry<String, Set<String>> e : contratosPorDni.entrySet()) {
+            try {
+                anulados += upsertService.sincronizar(e.getKey(), e.getValue()).anulados();
+            } catch (RuntimeException ex) {
+                // La sincronización de un empleado no puede tumbar la de los demás.
+            }
+        }
+        return anulados;
     }
 
     /** Fila que pasó validación pero falló al persistir (p. ej. una restricción de BD). */

@@ -53,6 +53,7 @@ class AsistenciaImportServicePreviewTest {
     @Mock private AsistenciaService asistenciaService;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private AsistenciaImportErroresCsvWriter erroresCsvWriter;
+    @Mock private com.indeci.rrhh.service.asistencia.AsistenciaImportFilaJdbcWriter filaJdbcWriter;
     @Mock private ObjectMapper objectMapper;
 
     @InjectMocks private AsistenciaImportService service;

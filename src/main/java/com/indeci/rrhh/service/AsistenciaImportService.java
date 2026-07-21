@@ -37,6 +37,7 @@ import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresCsvWriter;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresXlsxWriter;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportEstrategia;
 import com.indeci.rrhh.service.asistencia.AsistenciaMarcadorMapper;
+import com.indeci.rrhh.service.asistencia.AsistenciaImportJob;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
 import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
 import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
@@ -105,19 +106,47 @@ public class AsistenciaImportService {
     private final AsistenciaDetalleRepository detalleRepository;
     private final CalendarioLaboralService calendarioService;
     private final PapeletaJustificacionResolver papeletaJustificacionResolver;
+    private final com.indeci.rrhh.service.asistencia.AsistenciaImportFilaJdbcWriter filaJdbcWriter;
     private final ObjectMapper objectMapper;
 
+    /** Validación SÍNCRONA (compatibilidad / archivos chicos). Delega en el núcleo compartido. */
     @Transactional
     public AsistenciaImportPreviewDto preview(String periodo, MultipartFile archivo) {
-        // === INSTRUMENTACIÓN TEMPORAL DE DIAGNÓSTICO (VALIDAR) ===
-        // Log por fase + stack trace exacto ante cualquier fallo, para depurar la carga
-        // de ambos relojes. Buscar "[CARGA-DEBUG]" en la consola del backend.
         String nombreArchivo = archivo != null ? archivo.getOriginalFilename() : "(sin nombre)";
+        byte[] bytes = leerBytes(archivo);
+        return procesarPreview(periodo, bytes, nombreArchivo, usuarioActual(), null);
+    }
+
+    /**
+     * Validación ASÍNCRONA con progreso (Opción B). La invoca el {@code AsistenciaImportAsyncRunner}
+     * en el hilo del pool; el {@code usuario} viene del hilo de la request (el hilo async no tiene
+     * SecurityContext). Reporta el avance en {@code job}. {@code @Transactional}: un fallo en el
+     * volcado por lotes revierte toda la carga (cabecera incluida).
+     */
+    @Transactional
+    public AsistenciaImportPreviewDto previewConProgreso(
+            AsistenciaImportJob job, String periodo, byte[] bytes, String nombreArchivo, String usuario) {
+        return procesarPreview(periodo, bytes, nombreArchivo, usuario, job);
+    }
+
+    /** Actualiza el progreso del job si existe (no-op en el camino síncrono). */
+    private void avanzar(AsistenciaImportJob job, int porcentaje, String fase) {
+        if (job != null) {
+            job.avanzar(porcentaje, fase);
+        }
+    }
+
+    /**
+     * Núcleo compartido de la validación (síncrono y asíncrono). Con {@code job != null} reporta
+     * progreso real por fase; el tramo pesado (volcado de filas) avanza 50→90 por lote de 500.
+     */
+    private AsistenciaImportPreviewDto procesarPreview(
+            String periodo, byte[] bytes, String nombreArchivo, String usuario, AsistenciaImportJob job) {
         log.info("[CARGA-DEBUG] ===== INICIO VALIDAR: periodo={} archivo={} =====", periodo, nombreArchivo);
         try {
+            avanzar(job, 3, "Leyendo archivo");
             validarPeriodo(periodo);
             descartarBorradoresPrevios(periodo);
-            byte[] bytes = leerBytes(archivo);
             log.info("[CARGA-DEBUG] Fase 1 — archivo leído: {} bytes", bytes.length);
             String hash = sha256(bytes);
 
@@ -127,11 +156,11 @@ public class AsistenciaImportService {
             AsistenciaCsvParser.ParseResult parseResult = lectura.parseResult();
             log.info("[CARGA-DEBUG] Fase 2 — formato detectado={} encoding={} filasLeidas={}",
                     formato, parseResult.getEncoding(), parseResult.getFilas().size());
-            String usuario = usuarioActual();
+            avanzar(job, 10, "Validando filas");
 
             AsistenciaImportacion importacion = new AsistenciaImportacion();
             importacion.setPeriodo(periodo);
-            importacion.setNombreArchivo(archivo.getOriginalFilename());
+            importacion.setNombreArchivo(nombreArchivo);
             importacion.setHashSha256(hash);
             importacion.setEncoding(parseResult.getEncoding());
             importacion.setUsuario(usuario);
@@ -141,7 +170,7 @@ public class AsistenciaImportService {
             importacion = importacionRepository.save(importacion);
             log.info("[CARGA-DEBUG] Fase 3 — importación creada id={}", importacion.getId());
 
-            String ruta = guardarArchivo(bytes, importacion.getId(), archivo.getOriginalFilename());
+            String ruta = guardarArchivo(bytes, importacion.getId(), nombreArchivo);
             importacion.setRutaArchivo(ruta);
             importacionRepository.save(importacion);
 
@@ -163,11 +192,15 @@ public class AsistenciaImportService {
                             String.join(" | ", f.getErrores())));
             log.info("[CARGA-DEBUG] Fase 5 — validación OK, aplicando jornada...");
             aplicarJornada(filasValidadas);
+            avanzar(job, 50, "Guardando");
 
             log.info("[CARGA-DEBUG] Fase 6 — persistiendo {} filas...", filasValidadas.size());
-            persistirFilas(importacion.getId(), filasValidadas, hash, usuario);
+            persistirFilas(importacion.getId(), filasValidadas, hash, usuario,
+                    job == null ? null
+                            : (done, tot) -> job.avanzar(50 + (int) (40.0 * done / Math.max(tot, 1)), "Guardando"));
 
             log.info("[CARGA-DEBUG] Fase 7 — construyendo preview/resumen (calendario/faltas)...");
+            avanzar(job, 90, "Generando resumen");
             AsistenciaImportPreviewDto preview = construirPreview(importacion, filasValidadas);
             importacion.setFilasValidas(preview.getFilasValidas());
             importacion.setFilasError(preview.getFilasError());
@@ -181,6 +214,7 @@ public class AsistenciaImportService {
 
             preview.setImportacionId(importacion.getId());
             preview.setMensaje("El archivo fue leído correctamente. Revise las observaciones antes de confirmar.");
+            avanzar(job, 99, "Finalizando");
             log.info("[CARGA-DEBUG] ===== VALIDAR OK: id={} validas={} error={} obs={} empleados={} =====",
                     importacion.getId(), preview.getFilasValidas(), preview.getFilasError(),
                     preview.getFilasObservadas(), preview.getEmpleadosDetectados());
@@ -230,9 +264,32 @@ public class AsistenciaImportService {
         importacion.setEmpleadosProcesados(0);
     }
 
+    /** Confirmación SÍNCRONA (fallback / legacy). Audita vía @Auditable. */
     @Auditable(accion = "CONFIRMAR_IMPORT_ASISTENCIA")
     @Transactional
     public AsistenciaImportPreviewDto confirmar(Long importacionId, AsistenciaImportConfirmRequest request) {
+        return procesarConfirmar(importacionId, request, null);
+    }
+
+    /**
+     * Confirmación ASÍNCRONA con progreso (Opción B). La invoca el runner en el pool con el
+     * SecurityContext propagado (DelegatingSecurityContextAsyncTaskExecutor), de modo que la
+     * autorización por rol y el usuario funcionan igual que en la vía síncrona. {@code @Transactional}:
+     * un fallo en el volcado por lotes revierte toda la confirmación.
+     */
+    @Transactional
+    public AsistenciaImportPreviewDto confirmarConProgreso(
+            AsistenciaImportJob job, Long importacionId, AsistenciaImportConfirmRequest request) {
+        return procesarConfirmar(importacionId, request, job);
+    }
+
+    /**
+     * Núcleo compartido de la confirmación (síncrono y asíncrono). Con {@code job != null} reporta
+     * progreso real: 3% preparando → 10→90% procesando empleados (por empleado) → 90→100% finalizando.
+     */
+    private AsistenciaImportPreviewDto procesarConfirmar(
+            Long importacionId, AsistenciaImportConfirmRequest request, AsistenciaImportJob job) {
+        avanzar(job, 3, "Preparando");
         AsistenciaImportacion importacion = importacionRepository.findById(importacionId)
                 .orElseThrow(() -> new NegocioException("Importación no encontrada."));
         if (!ESTADO_PREVIEW.equals(importacion.getEstado())) {
@@ -250,12 +307,14 @@ public class AsistenciaImportService {
         AsistenciaImportEstrategia estrategia = AsistenciaImportEstrategia.desde(
                 request != null ? request.getEstrategiaConflicto() : null);
 
-        // R1/R2 — solo migran VALIDA/WARN y OBSERVADAS aceptadas expresamente; ERROR nunca.
+        // R1/R2 — migran VALIDA/WARN y OBSERVADAS aceptadas. Las ERROR ya NO bloquean el lote:
+        // si tienen empleado resuelto (p. ej. vínculo no vigente) se migran como día OBSERVADO
+        // (no descarta el día → no se vuelve FALTA fantasma); si no tienen empleado, se omiten.
         List<AsistenciaImportacionFila> filas =
                 filaRepository.findByImportacionIdOrderByNumeroFila(importacionId);
         Map<Long, List<AsistenciaImportacionFila>> porEmpleado = filas.stream()
                 .filter(f -> f.getEmpleadoId() != null)
-                .filter(this::esMigrable)
+                .filter(f -> esMigrable(f) || esErrorConEmpleado(f))
                 .collect(Collectors.groupingBy(AsistenciaImportacionFila::getEmpleadoId));
 
         if (estrategia.cancelaConConflicto() && hayConflictos(periodo, porEmpleado.keySet())) {
@@ -267,6 +326,9 @@ public class AsistenciaImportService {
         // F3 — calendario del período: genera las FALTAS de días laborables sin marca.
         PeriodoPlanilla periodoPlan = obtenerPeriodo(periodo);
         CalendarioLaboralService.Calendario calendario = calendarioDe(periodoPlan);
+        avanzar(job, 10, "Procesando empleados");
+        final int totalEmpleados = porEmpleado.size();
+        int iterados = 0;
         int procesados = 0;
         int omitidos = 0;
         int bloqueados = 0;
@@ -297,8 +359,12 @@ public class AsistenciaImportService {
                         entry.getValue(), null, null, null);
                 procesados++;
             }
+            iterados++;
+            // Progreso real por empleado (10→90%).
+            avanzar(job, 10 + (int) (80.0 * iterados / Math.max(totalEmpleados, 1)), "Procesando empleados");
         }
 
+        avanzar(job, 90, "Finalizando");
         boolean parcial = (omitidos + bloqueados) > 0;
         importacion.setEstado(parcial ? ESTADO_PARCIAL : ESTADO_CONFIRMADA);
         importacion.setEstrategiaConflicto(estrategia.name());
@@ -307,12 +373,16 @@ public class AsistenciaImportService {
         importacion.setFechaConfirmacion(LocalDateTime.now());
         importacionRepository.save(importacion);
 
-        auditoriaContext.setDetalle(
-                "Importación asistencia " + importacionId
-                        + " período " + periodo
-                        + " empleados=" + procesados
-                        + " omitidos=" + omitidos
-                        + " bloqueados=" + bloqueados);
+        // La auditoría se hace solo en la vía SÍNCRONA (@Auditable). En el hilo async el aspecto no
+        // corre (lee el HttpServletRequest request-scoped) → no se escribe el detalle allí.
+        if (job == null) {
+            auditoriaContext.setDetalle(
+                    "Importación asistencia " + importacionId
+                            + " período " + periodo
+                            + " empleados=" + procesados
+                            + " omitidos=" + omitidos
+                            + " bloqueados=" + bloqueados);
+        }
 
         AsistenciaImportPreviewDto resultado = new AsistenciaImportPreviewDto();
         resultado.setImportacionId(importacionId);
@@ -320,6 +390,7 @@ public class AsistenciaImportService {
         resultado.setEmpleadosDetectados(procesados);
         resultado.setEstadoImportacion(importacion.getEstado());
         resultado.setMensaje(mensajeConfirmacion(estrategia, procesados, omitidos, bloqueados));
+        avanzar(job, 99, "Finalizando");
         return resultado;
     }
 
@@ -352,6 +423,17 @@ public class AsistenciaImportService {
             return fila.getAceptadaObservada() != null && fila.getAceptadaObservada() == 1;
         }
         return true; // VALIDA, WARN
+    }
+
+    /**
+     * Opción 1 (no bloquear por errores) — una fila con ERROR pero con empleado ya resuelto
+     * (p. ej. "vínculo no vigente en la fecha") se migra como día OBSERVADO en vez de descartarse.
+     * Así el día NO desaparece (que lo volvería FALTA fantasma vía calendario) y la cabecera queda
+     * OBSERVADA (el motor M05 no la consume) hasta que RR.HH. corrija y re-suba. Las ERROR sin
+     * empleado (DNI/fecha inválidos, sin mapeo) siguen omitiéndose: no hay a quién atribuirlas.
+     */
+    private boolean esErrorConEmpleado(AsistenciaImportacionFila fila) {
+        return "ERROR".equals(fila.getEstadoFila()) && fila.getEmpleadoId() != null;
     }
 
     /** R3 (ajuste #3) — autorización por rol del usuario autenticado, no por flag del frontend. */
@@ -632,9 +714,28 @@ public class AsistenciaImportService {
         return erroresXlsxWriter.generar(importacion, filas);
     }
 
+    /** "Ejecutar cálculo" SÍNCRONO (fallback / legacy). Audita vía @Auditable. */
     @Auditable(accion = "VALIDAR_IMPORT_ASISTENCIA_BATCH")
     @Transactional
     public AsistenciaValidacionBatchDto validarCabeceras(Long importacionId) {
+        return procesarValidarCabeceras(importacionId, null);
+    }
+
+    /**
+     * "Ejecutar cálculo" ASÍNCRONO con progreso (Opción B). SecurityContext propagado → usuarioActual()
+     * funciona. {@code @Transactional}: un fallo revierte el batch.
+     */
+    @Transactional
+    public AsistenciaValidacionBatchDto validarCabecerasConProgreso(AsistenciaImportJob job, Long importacionId) {
+        return procesarValidarCabeceras(importacionId, job);
+    }
+
+    /**
+     * Núcleo compartido de "Ejecutar cálculo". Con {@code job != null} reporta progreso real:
+     * 5% preparando → 5→95% por cabecera procesada → 95→100% finalizando.
+     */
+    private AsistenciaValidacionBatchDto procesarValidarCabeceras(Long importacionId, AsistenciaImportJob job) {
+        avanzar(job, 3, "Preparando");
         AsistenciaImportacion importacion = importacionRepository.findById(importacionId)
                 .orElseThrow(() -> new NegocioException("Importación no encontrada."));
         List<AsistenciaCabecera> cabeceras =
@@ -644,21 +745,20 @@ public class AsistenciaImportService {
         int observadas = 0;
         int yaValidadas = 0;
         int omitidas = 0;
+        final int totalCabeceras = cabeceras.size();
+        int iteradas = 0;
+        avanzar(job, 5, "Procesando cabeceras");
 
         for (AsistenciaCabecera cabecera : cabeceras) {
             String estado = cabecera.getEstado();
             if ("OBSERVADA".equals(estado)) {
                 observadas++;
-                continue;
-            }
-            if ("VALIDADA".equals(estado)) {
+            } else if ("VALIDADA".equals(estado)) {
                 // Re-validar: recalcula con la jornada vigente (idempotente).
                 recalcularTardanzaDesdeMarcas(cabecera);
                 refrescarDescuentos(cabecera);
                 yaValidadas++;
-                continue;
-            }
-            if ("PREVALIDADA".equals(estado) || "LISTA_PARA_VALIDAR".equals(estado)) {
+            } else if ("PREVALIDADA".equals(estado) || "LISTA_PARA_VALIDAR".equals(estado)) {
                 cabecera.setEstado("VALIDADA");
                 // Punto autoritativo: recalcula la tardanza de cada día desde las marcas
                 // reales y la jornada vigente del régimen, y refresca el descuento con la
@@ -666,11 +766,15 @@ public class AsistenciaImportService {
                 recalcularTardanzaDesdeMarcas(cabecera);
                 refrescarDescuentos(cabecera);
                 validadas++;
-                continue;
+            } else {
+                omitidas++;
             }
-            omitidas++;
+            iteradas++;
+            // Progreso real por cabecera (5→95%).
+            avanzar(job, 5 + (int) (90.0 * iteradas / Math.max(totalCabeceras, 1)), "Procesando cabeceras");
         }
 
+        avanzar(job, 95, "Finalizando");
         if (validadas > 0 || yaValidadas > 0) {
             cabeceraRepository.saveAll(cabeceras);
         }
@@ -679,10 +783,13 @@ public class AsistenciaImportService {
         importacion.setFechaValidacion(LocalDateTime.now());
         importacionRepository.save(importacion);
 
-        auditoriaContext.setDetalle(
-                "Validación batch asistencia importación " + importacionId
-                        + " período " + importacion.getPeriodo()
-                        + " validadas=" + validadas);
+        // Auditoría solo en la vía síncrona (@Auditable); el aspecto no corre en el hilo async.
+        if (job == null) {
+            auditoriaContext.setDetalle(
+                    "Validación batch asistencia importación " + importacionId
+                            + " período " + importacion.getPeriodo()
+                            + " validadas=" + validadas);
+        }
 
         AsistenciaValidacionBatchDto dto = new AsistenciaValidacionBatchDto();
         dto.setImportacionId(importacionId);
@@ -692,6 +799,7 @@ public class AsistenciaImportService {
         dto.setOmitidas(omitidas);
         dto.setObservadas(observadas);
         dto.setYaValidadas(yaValidadas);
+        avanzar(job, 99, "Finalizando");
         return dto;
     }
 
@@ -827,8 +935,12 @@ public class AsistenciaImportService {
 
         List<AsistenciaDiaDto> diasMarcados = filasEmpleado.stream()
                 .sorted(Comparator.comparing(AsistenciaImportacionFila::getFecha))
-                .map(this::toDiaDto)
+                .map(this::toDiaImportado)
                 .toList();
+        // Regla omisión: una OMISION_MARCACION cubierta por papeleta 004 aprobada pasa a
+        // ASISTENCIA_JUSTIFICADA (tiempo completo, no descuenta). Sin papeleta, sigue OMISION.
+        diasMarcados = justificarOmisiones(empleadoId, diasMarcados,
+                periodoPlan != null ? periodoPlan.getFechaFin() : null);
         // F3 — completa con las FALTAS de días laborables sin marca (persiste como detalle).
         List<AsistenciaDiaDto> dias = conFaltasCalendario(
                 empleadoId, calendario,
@@ -942,6 +1054,49 @@ public class AsistenciaImportService {
         return true;
     }
 
+    /**
+     * Día a persistir en la asistencia. Si la fila venía con ERROR (pero con empleado resuelto),
+     * el día se marca OBSERVADO con el motivo del error: no descuenta y mantiene la cabecera fuera
+     * de VALIDADA hasta que se corrija y re-suba. Las demás filas conservan su tipo calculado.
+     */
+    private AsistenciaDiaDto toDiaImportado(AsistenciaImportacionFila fila) {
+        AsistenciaDiaDto dia = toDiaDto(fila);
+        if ("ERROR".equals(fila.getEstadoFila())) {
+            dia.setTipoDia("OBSERVADO");
+            String motivo = fila.getMensajeValidacion();
+            if (motivo == null || motivo.isBlank()) {
+                motivo = dia.getObservacion() != null ? dia.getObservacion()
+                        : "Fila con error en la carga; corregir y volver a subir.";
+            }
+            dia.setObservacion(motivo);
+        }
+        return dia;
+    }
+
+    /**
+     * Convierte los días {@code OMISION_MARCACION} cubiertos por una papeleta 004 APROBADA en
+     * {@code ASISTENCIA_JUSTIFICADA}. Reutiliza el cargador de justificantes (que ya filtra solo
+     * papeletas aprobadas). Si no hay omisiones o no hay papeletas, devuelve la lista sin cambios.
+     */
+    private List<AsistenciaDiaDto> justificarOmisiones(
+            Long empleadoId, List<AsistenciaDiaDto> dias, java.time.LocalDate finPeriodo) {
+        boolean hayOmision = dias.stream().anyMatch(d -> "OMISION_MARCACION".equals(d.getTipoDia()));
+        if (!hayOmision || finPeriodo == null) {
+            return dias;
+        }
+        List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
+                papeletaJustificacionResolver.cargarJustificantes(empleadoId, finPeriodo);
+        if (justificantes.isEmpty()) {
+            return dias;
+        }
+        return dias.stream()
+                .map(d -> "OMISION_MARCACION".equals(d.getTipoDia())
+                        ? papeletaJustificacionResolver.justificarOmision(d.getDia(), justificantes)
+                                .orElse(d)
+                        : d)
+                .toList();
+    }
+
     private AsistenciaDiaDto toDiaDto(AsistenciaImportacionFila fila) {
         Map<String, Object> metadatos = leerMetadatosFila(fila.getErroresJson());
         int minTard = fila.getTardanzaMin() != null
@@ -1028,6 +1183,21 @@ public class AsistenciaImportService {
             List<MarcadorCsvRow> filas,
             String hash,
             String usuario) {
+        persistirFilas(importacionId, filas, hash, usuario, null);
+    }
+
+    /**
+     * Persiste las filas crudas del CSV con volcado masivo (JdbcTemplate batch de 500), en vez de
+     * {@code saveAll}. Corre dentro de la transacción del llamador: un fallo de lote revierte todo.
+     *
+     * @param onBatch callback opcional (insertadasAcumuladas, total) para reportar progreso real.
+     */
+    private void persistirFilas(
+            Long importacionId,
+            List<MarcadorCsvRow> filas,
+            String hash,
+            String usuario,
+            java.util.function.BiConsumer<Integer, Integer> onBatch) {
         List<AsistenciaImportacionFila> entities = new ArrayList<>();
         for (MarcadorCsvRow row : filas) {
             AsistenciaImportacionFila fila = new AsistenciaImportacionFila();
@@ -1073,7 +1243,8 @@ public class AsistenciaImportService {
             fila.setErroresJson(serializeErrores(row));
             entities.add(fila);
         }
-        filaRepository.saveAll(entities);
+        // Volcado masivo con JdbcTemplate batch (500) en vez de saveAll. Reporta progreso por lote.
+        filaJdbcWriter.insertarLote(entities, onBatch);
     }
 
     private AsistenciaImportPreviewDto construirPreview(
@@ -1390,27 +1561,50 @@ public class AsistenciaImportService {
         dto.setFilasValidas(valor(importacion.getFilasValidas()));
         dto.setFilasError(valor(importacion.getFilasError()));
         dto.setEmpleadosProcesados(valor(importacion.getEmpleadosProcesados()));
-        dto.setEstadoValidacion(estadoValidacion(importacion));
+        aplicarEstadoValidacion(dto, importacion);
         return dto;
     }
 
     /**
-     * Estado de validación de una importación confirmada (solo lectura en el Historial):
-     * REQUIERE_CALCULO si tiene cabeceras activas sin VALIDAR; VALIDADO si todas validadas;
-     * null si no aplica (borrador o anulada).
+     * Desglose de validación para el badge tri-estado del Historial (solo lectura):
+     * <ul>
+     *   <li>{@code REQUIERE_CALCULO} → hay cabeceras PREVALIDADA/LISTA_PARA_VALIDAR (falta ejecutar
+     *       el cálculo).</li>
+     *   <li>{@code PARCIAL} → ya no quedan pendientes de cálculo, pero hay OBSERVADA por corregir
+     *       (se ejecutó y validó lo validable; las observadas necesitan corrección + re-carga).</li>
+     *   <li>{@code VALIDADO} → todas las cabeceras están VALIDADA.</li>
+     *   <li>{@code null} → no aplica (borrador/anulada o sin cabeceras).</li>
+     * </ul>
+     * Además puebla el conteo (total/validadas/observadas/pendientes) para mostrar el avance.
      */
-    private String estadoValidacion(AsistenciaImportacion importacion) {
+    private void aplicarEstadoValidacion(
+            AsistenciaImportHistorialDto dto, AsistenciaImportacion importacion) {
         String estado = importacion.getEstado();
         if (!ESTADO_CONFIRMADA.equals(estado) && !ESTADO_PARCIAL.equals(estado)) {
-            return null;
+            return; // estadoValidacion queda null
         }
-        long total = cabeceraRepository.countByImportacionIdAndActivo(importacion.getId(), 1);
+        Long id = importacion.getId();
+        long total = cabeceraRepository.countByImportacionIdAndActivo(id, 1);
         if (total == 0) {
-            return null;
+            return;
         }
-        long pendientes = cabeceraRepository
-                .countByImportacionIdAndActivoAndEstadoNot(importacion.getId(), 1, "VALIDADA");
-        return pendientes > 0 ? "REQUIERE_CALCULO" : "VALIDADO";
+        long validadas = cabeceraRepository.countByImportacionIdAndActivoAndEstado(id, 1, "VALIDADA");
+        long observadas = cabeceraRepository.countByImportacionIdAndActivoAndEstado(id, 1, "OBSERVADA");
+        long pendientes = cabeceraRepository.countByImportacionIdAndActivoAndEstadoIn(
+                id, 1, java.util.List.of("PREVALIDADA", "LISTA_PARA_VALIDAR"));
+
+        dto.setCabecerasTotal(total);
+        dto.setCabecerasValidadas(validadas);
+        dto.setCabecerasObservadas(observadas);
+        dto.setCabecerasPendientes(pendientes);
+
+        if (pendientes > 0) {
+            dto.setEstadoValidacion("REQUIERE_CALCULO");
+        } else if (observadas > 0) {
+            dto.setEstadoValidacion("PARCIAL");
+        } else {
+            dto.setEstadoValidacion("VALIDADO");
+        }
     }
 
     private static int valor(Integer n) {

@@ -32,11 +32,14 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PapeletaJustificacionResolver {
 
-    /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
+    /** ESTADO_SOLICITUD_ID = 9 → APROBADA (verificado en INDECI_ESTADO_SOLICITUD: 9=Aprobado por RRHH). */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
     private static final String CODIGO_TELETRABAJO = "TELETRABAJO";
+    /** Código del tipo "Permiso de Justificación de Omisión de Registro de Asistencia". */
+    private static final String CODIGO_JUSTIF_OMISION = "004";
     static final String TIPO_DIA_TELETRABAJO = "TELETRABAJO";
     static final String TIPO_DIA_PERMISO = "PERMISO";
+    static final String TIPO_DIA_ASISTENCIA_JUSTIFICADA = "ASISTENCIA_JUSTIFICADA";
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final SolicitudRrhhRepository solicitudRrhhRepository;
@@ -67,6 +70,42 @@ public class PapeletaJustificacionResolver {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * ¿La fecha (una omisión de marcación) está cubierta por una papeleta 004 APROBADA
+     * ("Justificación de Omisión de Registro de Asistencia")? Se usa para convertir un día
+     * {@code OMISION_MARCACION} en {@code ASISTENCIA_JUSTIFICADA} (tiempo completo, no descuenta).
+     */
+    public boolean omisionJustificada(LocalDate fecha, List<SolicitudRrhh> justificantes) {
+        if (fecha == null || justificantes == null) {
+            return false;
+        }
+        for (SolicitudRrhh s : justificantes) {
+            TipoSolicitudRrhh tipo = s.getTipoSolicitud();
+            if (tipo != null && CODIGO_JUSTIF_OMISION.equals(tipo.getCodigo()) && cubreFecha(s, fecha)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Si una papeleta 004 aprobada cubre la fecha, devuelve el día como
+     * {@code ASISTENCIA_JUSTIFICADA} (reemplaza a la omisión); si no, vacío.
+     */
+    public Optional<AsistenciaDiaDto> justificarOmision(
+            LocalDate fecha, List<SolicitudRrhh> justificantes) {
+        if (!omisionJustificada(fecha, justificantes)) {
+            return Optional.empty();
+        }
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setDia(fecha);
+        dia.setTipoDia(TIPO_DIA_ASISTENCIA_JUSTIFICADA);
+        dia.setMinutosTardanza(0);
+        dia.setObservacion("Omisión de marcación justificada por papeleta 004 aprobada.");
+        dia.setOrigen("PAPELETA");
+        return Optional.of(dia);
     }
 
     /** El día cae dentro del rango [fechaInicio, fechaFin] del permiso (o el único día). */

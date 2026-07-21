@@ -13,6 +13,8 @@ public class AsistenciaDiariaRowDto {
 
     private Long detalleId;
     private Long cabeceraId;
+    /** Lote que originó la cabecera activa (INDECI_ASISTENCIA_CABECERA.IMPORTACION_ID). Null si es carga manual. */
+    private Long importacionId;
     private Long empleadoId;
     private String dni;
     private String nombreCompleto;

@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -58,7 +59,10 @@ import lombok.RequiredArgsConstructor;
 public class VinculacionUpsertService {
 
     private static final String ORIGEN = "IMPORT_VINCULACION";
+    /** Sello en OBSERVACION de un vínculo anulado por no existir en el Excel autoritativo. */
+    private static final String ORIGEN_ANULADO = "IMPORT_VINCULACION_ANULADO";
     private static final int ACTIVO = 1;
+    private static final int ANULADO = 0;
 
     private final PersonaRepository personaRepository;
     private final EmpleadoRepository empleadoRepository;
@@ -220,6 +224,8 @@ public class VinculacionUpsertService {
         });
         aplicarSiPresente(fila.texto(VinculacionColumna.CONDICION_LABORAL),
                 vinculo::setBaseLegalVinculo);
+        // Aviso normativo del vínculo (p. ej. "DURACION DE 5 AÑOS MAXIMO"); se muestra en la UI.
+        vinculo.setPlazoMaximo(fila.texto(VinculacionColumna.PLAZO_MAXIMO));
         aplicarSiPresente(fila.texto(VinculacionColumna.META), vinculo::setMeta);
         aplicarSiPresente(fila.texto(VinculacionColumna.FUENTE_FINANCIAMIENTO),
                 vinculo::setFuenteFinanciamiento);
@@ -246,12 +252,70 @@ public class VinculacionUpsertService {
             vinculo.setTieneAsignacionFamiliar(Boolean.TRUE.equals(asigFamiliar) ? 1 : 0);
         }
 
+        // El vínculo está en el Excel → está vigente en la fuente de verdad. Si en una corrida
+        // anterior quedó anulado (huérfano) y ahora reaparece, se reactiva. La reconciliación de
+        // "un solo vigente" NO corre aquí: lo hace el post-proceso de sincronización, después de
+        // anular los huérfanos, para no cerrar por error un contrato real contra uno pre-existente.
+        vinculo.setActivo(ACTIVO);
         vinculo.setObservacion(ORIGEN);
         vinculo.setUpdatedAt(LocalDateTime.now());
         empleadoPlanillaRepository.save(vinculo);
 
-        reconciliarVigenciaUnica(empleado.getId());
         return existente.isEmpty();
+    }
+
+    /** Resultado de la sincronización autoritativa de un empleado. */
+    public record ResultadoSync(int anulados) {}
+
+    /**
+     * Sincronización autoritativa (<b>Excel = fuente de verdad</b>) de un empleado, al cierre del
+     * import. Se ejecuta después de haber upserteado todas las filas del Excel:
+     *
+     * <ol>
+     *   <li><b>Anula</b> ({@code activo = 0}) todo vínculo activo cuyo N.° de contrato NO figure en
+     *       el Excel para ese DNI — datos viejos que ya no son la verdad. No los borra: quedan con
+     *       sello {@code IMPORT_VINCULACION_ANULADO} para trazabilidad y posible reversión.</li>
+     *   <li><b>Reconcilia</b> los vínculos del Excel que quedan: deja VIGENTE el de inicio más
+     *       reciente y cierra los demás con el sello de transición.</li>
+     * </ol>
+     *
+     * <p>Transacción propia ({@link Propagation#REQUIRES_NEW}): si un empleado falla, no tumba la
+     * sincronización de los demás. Idempotente: re-importar el mismo Excel deja el mismo estado.
+     *
+     * @param dni            DNI del empleado (se normaliza a 8 dígitos)
+     * @param contratosExcel N.° de contrato declarados en el Excel para ese DNI
+     * @return cuántos vínculos se anularon por no estar en el Excel
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ResultadoSync sincronizar(String dni, Set<String> contratosExcel) {
+        final String dniNorm = TextoNormalizador.padCeros(dni, 8);
+        final Optional<Long> empleadoId = personaRepository.findByDni(dniNorm)
+                .flatMap(p -> empleadoRepository.findByPersonaId(p.getId()))
+                .map(Empleado::getId);
+        if (empleadoId.isEmpty()) {
+            return new ResultadoSync(0);
+        }
+
+        int anulados = 0;
+        for (EmpleadoPlanilla v : empleadoPlanillaRepository
+                .findByEmpleadoIdAndActivo(empleadoId.get(), ACTIVO)) {
+            if (estaEnExcel(v.getNumeroContrato(), contratosExcel)) {
+                continue;
+            }
+            v.setActivo(ANULADO);
+            v.setObservacion(ORIGEN_ANULADO);
+            v.setUpdatedAt(LocalDateTime.now());
+            empleadoPlanillaRepository.save(v);
+            anulados++;
+        }
+
+        reconciliarVigenciaUnica(empleadoId.get());
+        return new ResultadoSync(anulados);
+    }
+
+    private boolean estaEnExcel(String numeroContrato, Set<String> contratosExcel) {
+        return numeroContrato != null
+                && contratosExcel.stream().anyMatch(numeroContrato::equalsIgnoreCase);
     }
 
     /**

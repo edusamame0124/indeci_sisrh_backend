@@ -26,10 +26,17 @@ class AsistenciaMarcadorMapperTest {
                 0, 0, "Jueves Santo");
         assertThat(feriado.getTipoDia()).isEqualTo("FERIADO");
 
-        AsistenciaDiaDto observado = AsistenciaMarcadorMapper.toDia(
+        // Regla SERVIR/INDECI: "Marca Incompleta" = omisión de marcación (no observado/falta).
+        AsistenciaDiaDto omision = AsistenciaMarcadorMapper.toDia(
                 "Vie", LocalDate.of(2026, 5, 8), "", "", null, null, "08:00",
                 0, 0, "Marca Incompleta");
-        assertThat(observado.getTipoDia()).isEqualTo("OBSERVADO");
+        assertThat(omision.getTipoDia()).isEqualTo("OMISION_MARCACION");
+
+        // Una sola marca (entrada sin salida) también es omisión de marcación.
+        AsistenciaDiaDto omisionUnaMarca = AsistenciaMarcadorMapper.toDia(
+                "Lun", LocalDate.of(2026, 5, 11), "08:00", "", null, null, "08:00",
+                0, 0, "");
+        assertThat(omisionUnaMarca.getTipoDia()).isEqualTo("OMISION_MARCACION");
 
         AsistenciaDiaDto tardanza = AsistenciaMarcadorMapper.toDia(
                 "Lun", LocalDate.of(2026, 5, 5), "08:10", "17:00", null, null, "08:00",

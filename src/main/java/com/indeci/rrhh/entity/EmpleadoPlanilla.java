@@ -149,6 +149,10 @@ public class EmpleadoPlanilla {
     @Column(name = "OBSERVACION")
     private String observacion;
 
+    /** Aviso normativo del vínculo (Excel import "PLAZO MAXIMO"); se muestra en Config. Remunerativa. */
+    @Column(name = "PLAZO_MAXIMO")
+    private String plazoMaximo;
+
     @Column(name = "UPDATED_AT")
     private LocalDateTime updatedAt;
     

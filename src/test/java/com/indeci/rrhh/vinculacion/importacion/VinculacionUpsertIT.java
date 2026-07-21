@@ -289,7 +289,7 @@ class VinculacionUpsertIT {
     }
 
     @Test
-    @DisplayName("Un solo vigente: al importar 2 contratos del mismo DNI, el más antiguo se cierra")
+    @DisplayName("Un solo vigente: con 2 contratos del Excel del mismo DNI, el más antiguo se cierra")
     void reconciliaUnSoloVigente() {
         final CatalogoTextResolver.Sesion sesion = catalogoResolver.nuevaSesion();
 
@@ -300,6 +300,10 @@ class VinculacionUpsertIT {
         final VinculacionRowRaw nuevo = filaCas("24485494", "137-2025");
         nuevo.put(VinculacionColumna.FECHA_INICIO_CONTRATO, LocalDateTime.of(2025, 5, 12, 0, 0));
         upsertService.importar(nuevo, sesion);
+
+        // La reconciliación vive en el post-proceso de sincronización (ambos contratos están en
+        // el Excel, así que ninguno se anula; solo se elige el vigente único).
+        upsertService.sincronizar("24485494", java.util.Set.of("052-2008", "137-2025"));
 
         final var empleado = empleadoRepository.findAll().get(0);
         final var vinculos = empleadoPlanillaRepository.findByEmpleadoId(empleado.getId());
@@ -316,6 +320,60 @@ class VinculacionUpsertIT {
         assertThat(cesado.getFechaCese()).isEqualTo(LocalDate.of(2025, 5, 11));
         assertThat(cesado.getMotivoCese()).isEqualTo("TRANSICIÓN DE CONTRATO");
         assertThat(cesado.getDocumentoCese()).isNull();
+    }
+
+    @Test
+    @DisplayName("Sincronización autoritativa: anula el vínculo activo que el Excel ya no declara")
+    void sincronizaAnulaHuerfano() {
+        // 'A' está en el Excel; 'B' es un vínculo activo pre-existente que el Excel ya no trae.
+        upsertService.importar(filaCas("24485494", "A-2020"), catalogoResolver.nuevaSesion());
+        upsertService.importar(filaCas("24485494", "B-2024"), catalogoResolver.nuevaSesion());
+
+        final var resultado = upsertService.sincronizar("24485494", java.util.Set.of("A-2020"));
+
+        assertThat(resultado.anulados()).isEqualTo(1);
+
+        final var empleado = empleadoRepository.findAll().get(0);
+        final var vinculos = empleadoPlanillaRepository.findByEmpleadoId(empleado.getId());
+        // 'B' quedó ANULADO (activo=0, no borrado); 'A' sigue activo.
+        assertThat(vinculos).filteredOn(v -> "B-2024".equals(v.getNumeroContrato()))
+                .singleElement().satisfies(v -> {
+                    assertThat(v.getActivo()).isEqualTo(0);
+                    assertThat(v.getObservacion()).isEqualTo("IMPORT_VINCULACION_ANULADO");
+                });
+        assertThat(vinculos).filteredOn(v -> "A-2020".equals(v.getNumeroContrato()))
+                .singleElement().satisfies(v -> assertThat(v.getActivo()).isEqualTo(1));
+    }
+
+    @Test
+    @DisplayName("BALTAZAR (DNI 46112220): un huérfano más reciente NO cesa el contrato del Excel")
+    void huerfanoRecienteNoCesaElContratoDelExcel() {
+        // Contrato REAL del Excel: 2020, sin fecha de cese → debe quedar VIGENTE.
+        final VinculacionRowRaw excel = filaCas("46112220", "042-2020");
+        excel.put(VinculacionColumna.FECHA_INICIO_CONTRATO, LocalDateTime.of(2020, 10, 19, 0, 0));
+        upsertService.importar(excel, catalogoResolver.nuevaSesion());
+
+        // Vínculo huérfano pre-existente, MÁS RECIENTE (2024), que el Excel ya no declara.
+        final VinculacionRowRaw huerfano = filaCas("46112220", "099-2024");
+        huerfano.put(VinculacionColumna.FECHA_INICIO_CONTRATO, LocalDateTime.of(2024, 1, 1, 0, 0));
+        upsertService.importar(huerfano, catalogoResolver.nuevaSesion());
+
+        // Excel autoritativo: solo declara el 042-2020.
+        upsertService.sincronizar("46112220", java.util.Set.of("042-2020"));
+
+        final var empleado = empleadoRepository.findAll().get(0);
+        final var vinculos = empleadoPlanillaRepository.findByEmpleadoId(empleado.getId());
+
+        // El huérfano 2024 queda anulado (activo=0); NO cesa al contrato real por ser más reciente.
+        assertThat(vinculos).filteredOn(v -> "099-2024".equals(v.getNumeroContrato()))
+                .singleElement().satisfies(v -> assertThat(v.getActivo()).isEqualTo(0));
+
+        // El contrato del Excel (2020) queda VIGENTE: activo y sin fecha de cese. Espejo del Excel.
+        assertThat(vinculos).filteredOn(v -> "042-2020".equals(v.getNumeroContrato()))
+                .singleElement().satisfies(v -> {
+                    assertThat(v.getActivo()).isEqualTo(1);
+                    assertThat(v.getFechaCese()).isNull();
+                });
     }
 
     @Test

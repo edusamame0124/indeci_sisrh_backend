@@ -18,6 +18,16 @@ public class AsistenciaImportHistorialDto {
     private int filasError;
     private int empleadosProcesados;
 
-    /** REQUIERE_CALCULO | VALIDADO | null (no aplica: borrador/anulada). Solo lectura. */
+    /** REQUIERE_CALCULO | PARCIAL | VALIDADO | null (no aplica: borrador/anulada). Solo lectura. */
     private String estadoValidacion;
+
+    // --- Desglose de validación (badge tri-estado del Historial) ---
+    /** Cabeceras activas totales de la importación. */
+    private long cabecerasTotal;
+    /** Cabeceras ya VALIDADA (consumibles por el motor). */
+    private long cabecerasValidadas;
+    /** Cabeceras OBSERVADA (con error/observación por corregir; no se auto-validan). */
+    private long cabecerasObservadas;
+    /** Cabeceras PREVALIDADA/LISTA_PARA_VALIDAR (aún sin ejecutar el cálculo). */
+    private long cabecerasPendientes;
 }

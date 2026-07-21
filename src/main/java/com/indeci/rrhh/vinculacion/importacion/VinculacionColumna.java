@@ -111,7 +111,10 @@ public enum VinculacionColumna {
 
     // ---- Bloque K — Cobertura de salud (→ INDECI_EMPLEADO_SALUD_EPS)
     // El tipo de cobertura se deriva de "¿Afiliado a EPS?": N→ESSALUD, S→ESSALUD_EPS.
-    ESSALUD_FECHA_INICIO(68, "Fecha inicio vigencia EsSalud");
+    ESSALUD_FECHA_INICIO(68, "Fecha inicio vigencia EsSalud"),
+
+    // ---- Aviso normativo del vínculo (texto libre; se muestra en Config. Remunerativa)
+    PLAZO_MAXIMO(69, "PLAZO MAXIMO");
 
     /** Nombre de la hoja de datos. */
     public static final String HOJA = "VINCULACION";

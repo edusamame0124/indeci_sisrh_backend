@@ -56,6 +56,8 @@ class GeneradorPlanillaServiceTest {
     @Mock private PeriodoPlanillaRepository periodoRepository;
     @Mock private EmpleadoConceptoRepository empleadoConceptoRepository;
     @Mock private AsistenciaCabeceraRepository asistenciaCabeceraRepository;
+    @Mock private com.indeci.rrhh.repository.AsistenciaDetalleRepository asistenciaDetalleRepository;
+    @Mock private com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver papeletaJustificacionResolver;
     @Mock private EmpleadoPensionRepository empleadoPensionRepository;
     @Mock private EmpleadoRepository empleadoRepository;
     @Mock private RegimenPensionarioRepository regimenPensionarioRepository;
@@ -107,6 +109,8 @@ class GeneradorPlanillaServiceTest {
                 periodoRepository,
                 empleadoConceptoRepository,
                 asistenciaCabeceraRepository,
+                asistenciaDetalleRepository,
+                papeletaJustificacionResolver,
                 empleadoPensionRepository,
                 empleadoRepository,
                 regimenPensionarioRepository,

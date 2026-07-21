@@ -61,9 +61,11 @@ public final class VinculacionImportDtos {
      * @param total        filas leídas
      * @param creados      vínculos nuevos
      * @param actualizados vínculos que ya existían (llave DNI + N.° de contrato)
+     * @param anulados     vínculos activos que el Excel ya no declara y se anularon (huérfanos)
      * @param omitidos     filas con error que no se importaron
      * @param errores      detalle de lo omitido
      */
     public record CommitDto(
-            int total, int creados, int actualizados, int omitidos, List<FilaPreviewDto> errores) {}
+            int total, int creados, int actualizados, int anulados, int omitidos,
+            List<FilaPreviewDto> errores) {}
 }

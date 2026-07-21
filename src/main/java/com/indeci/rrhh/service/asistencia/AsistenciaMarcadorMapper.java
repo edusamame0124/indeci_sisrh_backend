@@ -53,8 +53,15 @@ public final class AsistenciaMarcadorMapper {
             int minutosSalidaAnticipada) {
 
         if (obs.isBlank()) {
-            if (AsistenciaTiempoUtil.tieneMarca(marca1) || AsistenciaTiempoUtil.tieneMarca(marca2)) {
+            boolean entrada = AsistenciaTiempoUtil.tieneMarca(marca1);
+            boolean salida = AsistenciaTiempoUtil.tieneMarca(marca2);
+            if (entrada && salida) {
                 return minutosTardanza > 0 ? "TARDANZA" : "LABORAL";
+            }
+            // Regla SERVIR/INDECI: una sola marca (entrada XOR salida) = OMISION_MARCACION,
+            // NO falta. Tiene gracia para presentar la papeleta 004; recién al cierre penaliza.
+            if (entrada || salida) {
+                return "OMISION_MARCACION";
             }
             return "OBSERVADO";
         }
@@ -73,7 +80,8 @@ public final class AsistenciaMarcadorMapper {
             return "FERIADO";
         }
         if (normalizada.contains("marca incompleta")) {
-            return "OBSERVADO";
+            // El marcador rotulo "marca incompleta" = omision de marcacion (no falta).
+            return "OMISION_MARCACION";
         }
         if (minutosTardanza > 0) {
             return "TARDANZA";

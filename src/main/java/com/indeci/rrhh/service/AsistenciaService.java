@@ -63,6 +63,7 @@ public class AsistenciaService {
 
     private final AsistenciaCabeceraRepository cabeceraRepository;
     private final AsistenciaDetalleRepository detalleRepository;
+    private final com.indeci.rrhh.service.asistencia.AsistenciaDetalleJdbcWriter detalleJdbcWriter;
     private final EmpleadoRepository empleadoRepository;
     private final PeriodoPlanillaRepository periodoPlanillaRepository;
     private final AuditoriaContext auditoriaContext;
@@ -84,7 +85,8 @@ public class AsistenciaService {
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(
             "LABORAL", "FALTA", "TARDANZA", "LICENCIA", "VACACIONES", "DESCANSO",
-            "FERIADO", "OBSERVADO", "SANCION_PAD", "TELETRABAJO", "PERMISO");
+            "FERIADO", "OBSERVADO", "SANCION_PAD", "TELETRABAJO", "PERMISO",
+            "OMISION_MARCACION", "ASISTENCIA_JUSTIFICADA");
 
     /** Tipo de día que exige observación obligatoria (motivo/expediente PAD). */
     private static final String TIPO_DIA_SANCION_PAD = "SANCION_PAD";
@@ -93,7 +95,8 @@ public class AsistenciaService {
             "BORRADOR", "PREVALIDADA", "LISTA_PARA_VALIDAR", "OBSERVADA", "VALIDADA");
 
     /** Tipos que cuentan como día efectivamente laborado (TELETRABAJO = remoto, Ley 31572). */
-    private static final Set<String> TIPOS_LABORADOS = Set.of("LABORAL", "TARDANZA", "TELETRABAJO");
+    private static final Set<String> TIPOS_LABORADOS =
+            Set.of("LABORAL", "TARDANZA", "TELETRABAJO", "ASISTENCIA_JUSTIFICADA");
 
     // ==========================================
     // CONSULTAR (empleado + período)
@@ -136,23 +139,60 @@ public class AsistenciaService {
     // CONSULTA DIARIA (fecha + DNI opcional)
     // ==========================================
 
+    /** Máximo rango consultable de una vez (evita consultas/tablas gigantes). */
+    private static final long MAX_DIAS_RANGO = 92;
+
     @Transactional(readOnly = true)
     public Page<AsistenciaDiariaRowDto> listarDiaria(
-            LocalDate fecha,
+            LocalDate fechaInicio,
+            LocalDate fechaFin,
             String dni,
             String q,
             Pageable pageable) {
-        if (fecha == null) {
-            throw new NegocioException("La fecha es obligatoria.");
+        if (fechaInicio == null) {
+            throw new NegocioException("La fecha de inicio es obligatoria.");
+        }
+        // fechaFin opcional: si no viene, se consulta un solo día (compatibilidad).
+        LocalDate fin = fechaFin != null ? fechaFin : fechaInicio;
+        if (fin.isBefore(fechaInicio)) {
+            throw new NegocioException("La fecha fin debe ser posterior o igual a la de inicio.");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(fechaInicio, fin) > MAX_DIAS_RANGO) {
+            throw new NegocioException("El rango no puede exceder " + MAX_DIAS_RANGO + " días. Redúzcalo.");
         }
         String dniFiltro = limpiarFiltro(dni);
         String qFiltro = limpiarFiltro(q);
         Page<AsistenciaDiariaRowDto> page = detalleRepository
-                .buscarDiaria(fecha, dniFiltro, qFiltro, pageable)
+                .buscarDiariaRango(fechaInicio, fin, dniFiltro, qFiltro, pageable)
                 .map(this::mapearDiariaRow);
-        enriquecerPapeletas(page.getContent(), fecha);
-        enriquecerTeletrabajo(page.getContent(), fecha);
+        // Enriquecimiento por RANGO: cada fila se cruza con las papeletas/teletrabajo que
+        // cubren SU propia fecha (Opción A), no una fecha global.
+        enriquecerPapeletas(page.getContent());
+        enriquecerTeletrabajo(page.getContent());
         return page;
+    }
+
+    /**
+     * Detalle diario de una IMPORTACIÓN (lote) — alimenta el módulo de detalle del historial de
+     * importaciones (formato consulta diaria, de solo lectura). A diferencia de {@link
+     * #listarDiaria}, abarca todos los días del período del lote, por lo que NO se hace el
+     * enriquecimiento de papeletas/teletrabajo (es por fecha única); la fila conserva los campos de
+     * papeleta que trae el propio detalle.
+     */
+    @Transactional(readOnly = true)
+    public Page<AsistenciaDiariaRowDto> listarPorImportacion(
+            Long importacionId,
+            String dni,
+            String q,
+            String tipoDia,
+            Pageable pageable) {
+        if (importacionId == null) {
+            throw new NegocioException("La importación es obligatoria.");
+        }
+        return detalleRepository
+                .buscarPorImportacion(importacionId, limpiarFiltro(dni), limpiarFiltro(q),
+                        limpiarFiltro(tipoDia), pageable)
+                .map(this::mapearDiariaRow);
     }
     
     
@@ -198,7 +238,7 @@ public class AsistenciaService {
      * papeleta/permiso APROBADA (ESTADO_SOLICITUD_ID = 9) de un tipo de asistencia que
      * cubre la fecha del día. Expone tipo, motivo y el tiempo del permiso.
      */
-    private void enriquecerPapeletas(List<AsistenciaDiariaRowDto> rows, LocalDate fecha) {
+    private void enriquecerPapeletas(List<AsistenciaDiariaRowDto> rows) {
         if (rows == null || rows.isEmpty()) {
             return;
         }
@@ -218,7 +258,9 @@ public class AsistenciaService {
             return;
         }
 
-        Map<Long, SolicitudRrhh> papeletaPorEmpleado = new HashMap<>();
+        // Papeletas aprobadas de tipo permiso, agrupadas por empleado (el match por fecha es
+        // por fila, ya que la consulta abarca un rango de días).
+        Map<Long, List<SolicitudRrhh>> papeletasPorEmpleado = new HashMap<>();
         for (SolicitudRrhh s : solicitudRrhhRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1)) {
             if (s.getEstadoSolicitudId() == null
                     || s.getEstadoSolicitudId() != ESTADO_SOLICITUD_APROBADA) {
@@ -228,14 +270,18 @@ public class AsistenciaService {
                     || !tiposPermiso.containsKey(s.getTipoSolicitudId())) {
                 continue;
             }
-            if (!cubreFecha(s, fecha)) {
-                continue;
-            }
-            papeletaPorEmpleado.putIfAbsent(s.getEmpleadoId(), s);
+            papeletasPorEmpleado.computeIfAbsent(s.getEmpleadoId(), k -> new ArrayList<>()).add(s);
         }
 
         for (AsistenciaDiariaRowDto row : rows) {
-            SolicitudRrhh s = papeletaPorEmpleado.get(row.getEmpleadoId());
+            List<SolicitudRrhh> lista = papeletasPorEmpleado.get(row.getEmpleadoId());
+            if (lista == null) {
+                continue;
+            }
+            SolicitudRrhh s = lista.stream()
+                    .filter(x -> cubreFecha(x, row.getFecha()))
+                    .findFirst()
+                    .orElse(null);
             if (s == null) {
                 continue;
             }
@@ -262,7 +308,7 @@ public class AsistenciaService {
         return !fecha.isBefore(ini) && !fecha.isAfter(fin);
     }
 
-    private void enriquecerTeletrabajo(List<AsistenciaDiariaRowDto> rows, LocalDate fecha) {
+    private void enriquecerTeletrabajo(List<AsistenciaDiariaRowDto> rows) {
         if (rows == null || rows.isEmpty()) {
             return;
         }
@@ -275,21 +321,29 @@ public class AsistenciaService {
             return;
         }
 
-        Map<Long, Boolean> tieneTeletrabajoPorEmpleado = new HashMap<>();
-        for (com.indeci.rrhh.entity.TeletrabajoReporteDet det : teletrabajoReporteDetRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1)) {
-            LocalDate ini = det.getFechaInicio();
-            LocalDate fin = det.getFechaFin();
-            if (ini != null) {
-                if (fin != null && !fecha.isBefore(ini) && !fecha.isAfter(fin)) {
-                    tieneTeletrabajoPorEmpleado.put(det.getEmpleadoId(), true);
-                } else if (fin == null && fecha.isEqual(ini)) {
-                    tieneTeletrabajoPorEmpleado.put(det.getEmpleadoId(), true);
-                }
+        // Reportes de teletrabajo agrupados por empleado; el match por fecha es por fila (rango).
+        Map<Long, List<com.indeci.rrhh.entity.TeletrabajoReporteDet>> porEmpleado = new HashMap<>();
+        for (com.indeci.rrhh.entity.TeletrabajoReporteDet det
+                : teletrabajoReporteDetRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1)) {
+            if (det.getFechaInicio() != null) {
+                porEmpleado.computeIfAbsent(det.getEmpleadoId(), k -> new ArrayList<>()).add(det);
             }
         }
 
         for (AsistenciaDiariaRowDto row : rows) {
-            if (tieneTeletrabajoPorEmpleado.containsKey(row.getEmpleadoId())) {
+            List<com.indeci.rrhh.entity.TeletrabajoReporteDet> lista = porEmpleado.get(row.getEmpleadoId());
+            if (lista == null) {
+                continue;
+            }
+            LocalDate fecha = row.getFecha();
+            boolean cubre = lista.stream().anyMatch(det -> {
+                LocalDate ini = det.getFechaInicio();
+                LocalDate fin = det.getFechaFin();
+                return fin != null
+                        ? !fecha.isBefore(ini) && !fecha.isAfter(fin)
+                        : fecha.isEqual(ini);
+            });
+            if (cubre) {
                 row.setTieneTeletrabajo(true);
             }
         }
@@ -345,7 +399,8 @@ public class AsistenciaService {
                         + " fecha " + det.getDia());
 
         AsistenciaDiariaRowDto row = construirDiariaRowDto(det, cab);
-        enriquecerPapeletas(List.of(row), det.getDia());
+        // La fila justificable por su propia fecha (nuevo enriquecimiento por rango).
+        enriquecerPapeletas(List.of(row));
         return row;
     }
 
@@ -546,6 +601,7 @@ public class AsistenciaService {
         dto.setHorasExtraTotalMin((Integer) row[21]);
         dto.setPapeletaAutorizada((Integer) row[22]);
         dto.setPapeletaMotivoRechazo((String) row[23]);
+        dto.setImportacionId((Long) row[24]);
         return dto;
     }
 
@@ -559,6 +615,7 @@ public class AsistenciaService {
         AsistenciaDiariaRowDto dto = new AsistenciaDiariaRowDto();
         dto.setDetalleId(det.getId());
         dto.setCabeceraId(cab.getId());
+        dto.setImportacionId(cab.getImportacionId());
         dto.setEmpleadoId(cab.getEmpleadoId());
         dto.setFecha(det.getDia());
         dto.setMarcaEntrada(det.getMarcaEntrada());
@@ -659,7 +716,7 @@ public class AsistenciaService {
         // primero y choca con INDECI_ASIST_DET_UK (CABECERA_ID, DIA) → ORA-00001.
         detalleRepository.flush();
 
-        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias, previoPorDia));
+        detalleJdbcWriter.insertarLote(mapearDetalles(guardada.getId(), dias, previoPorDia));
 
         auditoriaContext.setDetalle(
                 "Asistencia guardada empleado " + dto.getEmpleadoId()
@@ -738,7 +795,7 @@ public class AsistenciaService {
 
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
         // Detalle nuevo sobre la cabecera nueva: no se borra detalle de versiones previas.
-        detalleRepository.saveAll(mapearDetalles(guardada.getId(), dias));
+        detalleJdbcWriter.insertarLote(mapearDetalles(guardada.getId(), dias));
     }
 
     void validarTiposDia(List<AsistenciaDiaDto> dias) {
@@ -779,6 +836,14 @@ public class AsistenciaService {
         return mapearDetalles(cabeceraId, dias, java.util.Map.of());
     }
 
+    /** Recorta un texto a {@code max} caracteres (null-safe) para respetar el ancho de la columna. */
+    private static String truncar(String valor, int max) {
+        if (valor == null) {
+            return null;
+        }
+        return valor.length() <= max ? valor : valor.substring(0, max);
+    }
+
     /**
      * Mapea los días a detalle. Los campos del DTO mandan; los datos del reloj
      * (marcas, hora esperada, horas trabajadas/extra) que NO llegan en el DTO se
@@ -798,7 +863,9 @@ public class AsistenciaService {
             det.setTipoDia(d.getTipoDia());
             det.setMinutosTardanza(
                     d.getMinutosTardanza() != null ? Math.max(0, d.getMinutosTardanza()) : 0);
-            det.setObservacion(d.getObservacion());
+            // OBSERVACION es VARCHAR2(200): se trunca para no reventar con ORA-12899 ante
+            // mensajes largos (motivos de validación, justificaciones, etc.).
+            det.setObservacion(truncar(d.getObservacion(), 200));
             det.setMarcaEntrada(coalesce(d.getMarcaEntrada(), prev != null ? prev.getMarcaEntrada() : null));
             det.setMarcaSalida(coalesce(d.getMarcaSalida(), prev != null ? prev.getMarcaSalida() : null));
             det.setMarca3(coalesce(d.getMarca3(), prev != null ? prev.getMarca3() : null));

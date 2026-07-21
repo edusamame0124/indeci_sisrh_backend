@@ -65,16 +65,18 @@ class AsistenciaServiceDiariaTest {
                 "08:28", "17:22", "TARDANZA",
                 480, 0, "2026-06", "IMPORT_MARCADOR",
                 15, null, null, null, "08:00",
-                0, 0, 0, 0, null, null
+                0, 0, 0, 0, null, null,
+                30L // importacionId (row[24]) — lote origen
         };
         Pageable pageable = PageRequest.of(0, 10);
         List<Object[]> content = Collections.singletonList(row);
-        when(detalleRepository.buscarDiaria(eq(FECHA), eq("43872244"), eq(null), eq(pageable)))
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq("43872244"), eq(null), eq(pageable)))
                 .thenReturn(new PageImpl<>(content, pageable, 1));
         when(tipoSolicitudRrhhRepository.findAll()).thenReturn(List.of());
 
+        // fechaFin = null → consulta de un solo día (compatibilidad).
         Page<AsistenciaDiariaRowDto> page =
-                service.listarDiaria(FECHA, "43872244", null, pageable);
+                service.listarDiaria(FECHA, null, "43872244", null, pageable);
 
         assertThat(page.getTotalElements()).isEqualTo(1);
         AsistenciaDiariaRowDto dto = page.getContent().get(0);
@@ -85,8 +87,8 @@ class AsistenciaServiceDiariaTest {
     }
 
     @Test
-    void listarDiaria_sin_fecha_lanza_negocio() {
-        assertThatThrownBy(() -> service.listarDiaria(null, null, null, PageRequest.of(0, 10)))
+    void listarDiaria_sin_fecha_inicio_lanza_negocio() {
+        assertThatThrownBy(() -> service.listarDiaria(null, null, null, null, PageRequest.of(0, 10)))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("fecha");
     }

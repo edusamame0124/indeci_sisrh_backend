@@ -205,6 +205,10 @@ public class GeneradorPlanillaService {
     private final PeriodoPlanillaRepository periodoRepository;
     private final EmpleadoConceptoRepository empleadoConceptoRepository;
     private final AsistenciaCabeceraRepository asistenciaCabeceraRepository;
+    // Regla de cierre "Omisión de marcación": al generar planilla se penaliza como FALTA toda
+    // OMISION_MARCACION sin papeleta 004 aprobada (re-verifica al cierre, respeta el periodo de gracia).
+    private final com.indeci.rrhh.repository.AsistenciaDetalleRepository asistenciaDetalleRepository;
+    private final com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver papeletaJustificacionResolver;
     private final EmpleadoPensionRepository empleadoPensionRepository;
     private final EmpleadoRepository empleadoRepository;
     private final RegimenPensionarioRepository regimenPensionarioRepository;
@@ -934,7 +938,52 @@ public class GeneradorPlanillaService {
             total = total.add(descFalta);
         }
 
+        // Cierre de la "Omisión de marcación": recién aquí (generación de planilla) toda
+        // OMISION_MARCACION sin papeleta 004 aprobada se penaliza como FALTA (base/30 por día).
+        // Se re-verifica la papeleta al cierre, respetando el periodo de gracia. Aditivo: si no
+        // hay días de omisión (dato preexistente), no cambia nada.
+        BigDecimal descOmision = calcularDescuentoOmisionCierre(asist, empleadoId, periodo);
+        if (descOmision.signum() > 0) {
+            grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_DESC_FALTA), descOmision,
+                    "Falta por omisión de marcación no justificada al cierre (sin papeleta 004)");
+            total = total.add(descOmision);
+        }
+
         return total;
+    }
+
+    /**
+     * Regla de cierre: cuenta los días {@code OMISION_MARCACION} de la asistencia activa que, al
+     * momento de generar la planilla, NO están cubiertos por una papeleta 004 aprobada, y devuelve
+     * su descuento como falta (remuneración/30 por día). Si hay papeleta, el día ya fue convertido
+     * a ASISTENCIA_JUSTIFICADA en la carga y no llega aquí como omisión.
+     */
+    private BigDecimal calcularDescuentoOmisionCierre(
+            AsistenciaCabecera asist, Long empleadoId, String periodo) {
+        if (asist.getId() == null) {
+            return BigDecimal.ZERO;
+        }
+        List<AsistenciaDetalle> omisiones = asistenciaDetalleRepository
+                .findByCabeceraIdOrderByDia(asist.getId()).stream()
+                .filter(d -> "OMISION_MARCACION".equals(d.getTipoDia()))
+                .toList();
+        if (omisiones.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        LocalDate finPeriodo = periodoRepository.findByPeriodoAndActivo(periodo, 1)
+                .map(PeriodoPlanilla::getFechaFin)
+                .orElse(null);
+        List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
+                papeletaJustificacionResolver.cargarJustificantes(empleadoId, finPeriodo);
+        long noJustificadas = omisiones.stream()
+                .filter(d -> !papeletaJustificacionResolver.omisionJustificada(d.getDia(), justificantes))
+                .count();
+        if (noJustificadas == 0) {
+            return BigDecimal.ZERO;
+        }
+        double base = asist.getRemuneracionBase() != null ? asist.getRemuneracionBase() : 0.0;
+        return toBigDecimal(com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator
+                .calcularDescuentoFalta(base, (int) noJustificadas));
     }
 
     /**

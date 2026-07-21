@@ -219,19 +219,19 @@ class EmpleadoPlanillaServiceTest {
     // ── Reglas fechaTérmino (fechaFin) vs fechaCese ────────────────────────
 
     @Test
-    void guardar_fuerza_fecha_fin_null_en_contrato_indeterminado() {
+    void guardar_persiste_fecha_termino_sin_depender_del_tipo_de_contrato() {
         stubCalculo("4864.19");
         stubTipoContrato(30L, "PLAZO_INDETERMINADO");
         EmpleadoPlanillaDto dto = dtoBase();
         dto.setSueldoBasico(4864.19);
         dto.setTipoContratoId(30L);
-        dto.setFechaFin(LocalDate.of(2026, 12, 31)); // no debería persistir en indeterminado
+        dto.setFechaFin(LocalDate.of(2026, 12, 31)); // se persiste igual (campo siempre habilitado)
 
         service.guardar(dto);
 
         ArgumentCaptor<EmpleadoPlanilla> captor = ArgumentCaptor.forClass(EmpleadoPlanilla.class);
         verify(repository).save(captor.capture());
-        assertThat(captor.getValue().getFechaFin()).isNull();
+        assertThat(captor.getValue().getFechaFin()).isEqualTo(LocalDate.of(2026, 12, 31));
     }
 
     @Test

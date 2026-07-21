@@ -54,9 +54,6 @@ public class EmpleadoPlanillaService {
      */
     public static final String MOTIVO_CESE_TRANSICION = "TRANSICIÓN DE CONTRATO";
 
-    /** Código de tipo de contrato a plazo determinado (único que lleva fecha de término). */
-    private static final String TIPO_CONTRATO_PLAZO_DETERMINADO = "PLAZO_DETERMINADO";
-
     private final EmpleadoPlanillaRepository repository;
     private final AuditoriaContext auditoriaContext;
     private final RegimenLaboralRepository regimenLaboralRepository;
@@ -192,6 +189,7 @@ public class EmpleadoPlanillaService {
                     dto.setEstadoVinculo(estado.name());
                     dto.setHabilitaLbs(com.indeci.rrhh.vinculacion.VinculoEstadoResolver.habilitaLbs(
                             estado, e.getFechaCese(), e.getMotivoCese(), e.getDocumentoCese()));
+                    dto.setPlazoMaximo(e.getPlazoMaximo());
 
                     // Etiquetas resueltas para el listado.
                     if (e.getRegimenLaboralId() != null) {
@@ -308,22 +306,10 @@ public class EmpleadoPlanillaService {
      * si se registra una fecha de cese, el motivo y el documento de sustento son
      * obligatorios (el estado CESADO se deriva a partir de estos hechos).
      */
-    /** {@code true} si el tipo de contrato es a plazo determinado (único que lleva término). */
-    private boolean esPlazoDeterminado(Long tipoContratoId) {
-        if (tipoContratoId == null) {
-            return false;
-        }
-        return tipoContratoRepository.findById(tipoContratoId)
-                .map(t -> TIPO_CONTRATO_PLAZO_DETERMINADO.equalsIgnoreCase(t.getCodigo()))
-                .orElse(false);
-    }
-
     private void aplicarFechasYCese(EmpleadoPlanilla entity, EmpleadoPlanillaDto dto) {
-        final boolean plazoDeterminado = esPlazoDeterminado(dto.getTipoContratoId());
-
-        // Regla 1: la fecha de término (fechaFin) SOLO aplica a Plazo Determinado. En
-        // Indeterminado (o cualquier otro tipo) se fuerza a null, aunque el DTO traiga valor.
-        final LocalDate fechaFin = plazoDeterminado ? dto.getFechaFin() : null;
+        // La fecha de término (fechaFin) se persiste tal como venga, sin depender del tipo de
+        // contrato (decisión RR.HH.): el campo está siempre habilitado en el formulario.
+        final LocalDate fechaFin = dto.getFechaFin();
         entity.setFechaFin(fechaFin);
 
         final LocalDate fechaCese = dto.getFechaCese();
@@ -341,11 +327,11 @@ public class EmpleadoPlanillaService {
                         "La fecha de cese no puede ser anterior al inicio del contrato ("
                                 + inicio.format(FMT_FECHA) + ").");
             }
-            // Regla 2.2: en plazo determinado, el cese no puede superar el término del contrato.
-            if (plazoDeterminado && fechaFin != null && fechaCese.isAfter(fechaFin)) {
+            // Regla 2.2: si el contrato tiene término, el cese no puede superarlo.
+            if (fechaFin != null && fechaCese.isAfter(fechaFin)) {
                 throw new NegocioException(
-                        "En un contrato a plazo determinado, la fecha de cese no puede ser posterior "
-                                + "a la fecha de término (" + fechaFin.format(FMT_FECHA) + ").");
+                        "La fecha de cese no puede ser posterior a la fecha de término del contrato ("
+                                + fechaFin.format(FMT_FECHA) + ").");
             }
         }
         entity.setFechaCese(fechaCese);

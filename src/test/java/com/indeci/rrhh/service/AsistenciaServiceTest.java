@@ -49,6 +49,7 @@ class AsistenciaServiceTest {
 
     @Mock private AsistenciaCabeceraRepository cabeceraRepository;
     @Mock private AsistenciaDetalleRepository detalleRepository;
+    @Mock private com.indeci.rrhh.service.asistencia.AsistenciaDetalleJdbcWriter detalleJdbcWriter;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private BaseAsistenciaResolver baseResolver;
     @Mock private JornadaRegimenRepository jornadaRegimenRepository;
@@ -109,7 +110,7 @@ class AsistenciaServiceTest {
         assertThat(cab.getEstado()).isEqualTo("BORRADOR");
 
         verify(detalleRepository).deleteByCabeceraId(10L);
-        verify(detalleRepository).saveAll(any());
+        verify(detalleJdbcWriter).insertarLote(any());
     }
 
     @Test
@@ -137,12 +138,13 @@ class AsistenciaServiceTest {
 
         service.guardar(dto);
 
-        // Fix 1 — el DELETE se vacía (flush) ANTES de los INSERT (evita ORA-00001).
-        InOrder orden = inOrder(detalleRepository);
+        // Fix 1 — el DELETE se vacía (flush) ANTES de los INSERT del JdbcWriter (evita ORA-00001).
+        // Con JdbcTemplate el flush es aún más crítico: el JDBC crudo no ve el persistence context.
+        InOrder orden = inOrder(detalleRepository, detalleJdbcWriter);
         orden.verify(detalleRepository).deleteByCabeceraId(10L);
         orden.verify(detalleRepository).flush();
         ArgumentCaptor<List<AsistenciaDetalle>> capt = ArgumentCaptor.forClass(List.class);
-        orden.verify(detalleRepository).saveAll(capt.capture());
+        orden.verify(detalleJdbcWriter).insertarLote(capt.capture());
 
         // Fix 2 — las marcas se conservan del detalle previo.
         AsistenciaDetalle guardado = capt.getValue().get(0);
@@ -170,7 +172,7 @@ class AsistenciaServiceTest {
         assertThat(nueva.getVersion()).isEqualTo(1);
         assertThat(nueva.getActivo()).isEqualTo(1);
         assertThat(nueva.getMotivoRectificacion()).isNull();
-        verify(detalleRepository).saveAll(any());
+        verify(detalleJdbcWriter).insertarLote(any());
         // NO se borra detalle histórico (req 5)
         verify(detalleRepository, never()).deleteByCabeceraId(anyLong());
     }

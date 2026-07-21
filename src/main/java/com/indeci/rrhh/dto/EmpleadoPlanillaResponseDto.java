@@ -111,4 +111,7 @@ public class EmpleadoPlanillaResponseDto {
 
     /** true si el cese es formal y completo (habilita generar LBS). */
     private Boolean habilitaLbs;
+
+    /** Aviso normativo del vínculo (Excel import "PLAZO MAXIMO"); se muestra en Config. Remunerativa. */
+    private String plazoMaximo;
 }
