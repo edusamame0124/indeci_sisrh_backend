@@ -21,12 +21,18 @@ public interface AsistenciaDetalleRepository
      * SPEC_VACACIONES F9.1 — cuenta faltas (TIPO_DIA IN ('FALTA','SANCION_PAD')) del
      * empleado en [desde, hasta]. Base de las inasistencias no computables al récord
      * vacacional. SANCION_PAD (sanción por PAD) se equipara a FALTA para este cómputo.
+     *
+     * <p>{@code cab.activo = 1} — cuenta SOLO la versión VIGENTE de cada (empleado, periodo).
+     * Sin este filtro, una re-importación del mismo mes (que deja la versión anterior en
+     * activo=0 vía single-active) haría contar las faltas por duplicado (bug real detectado:
+     * julio v1 activo=0 + v2 activo=1 sumaban 13+13). Mismo filtro que usa el resto del repo.</p>
      */
     @Query("""
             SELECT COUNT(det)
               FROM AsistenciaDetalle det, AsistenciaCabecera cab
              WHERE det.cabeceraId = cab.id
                AND cab.empleadoId = :empleadoId
+               AND cab.activo     = 1
                AND det.tipoDia    IN ('FALTA', 'SANCION_PAD')
                AND det.dia BETWEEN :desde AND :hasta
             """)

@@ -122,15 +122,13 @@ public class TiempoServicioService {
         }
 
         // 4) Desglosar en años/meses/días (base 30/360).
-        final int anios = total / 360;
-        final int meses = (total - anios * 360) / 30;
-        final int dias = total - anios * 360 - meses * 30;
+        final Dias360.AniosMesesDias amd = Dias360.desglosar(total);
 
         final LocalDate fechaIngreso = fusionados.get(0)[0];
 
         return Optional.of(new TiempoServicioDto(
                 empleadoId, fechaIngreso, corte,
-                anios, meses, dias, total,
+                amd.anios(), amd.meses(), amd.dias(), total,
                 vinculos.size(), tieneTraslape));
     }
 

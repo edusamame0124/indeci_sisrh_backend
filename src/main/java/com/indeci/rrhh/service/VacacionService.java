@@ -152,9 +152,13 @@ public class VacacionService {
 	}
 
 	/**
-	 * Tiempo de servicio + días NO computables (LSG/faltas) + aniversario efectivo estimado,
-	 * para la sección de Configuración Remunerativa (informativo). El aniversario efectivo se
-	 * estima corriendo el próximo aniversario nominal por el total de días no computables.
+	 * Tiempo de servicio bruto + días NO computables (LSG/faltas/suspensiones) + tiempo de
+	 * servicio EFECTIVO + aniversario efectivo estimado, para Configuración Remunerativa
+	 * (V012_42 F1). El aniversario efectivo se estima corriendo el próximo aniversario nominal
+	 * por el total de días no computables. El tiempo EFECTIVO se calcula aparte, en este DTO:
+	 * bruto (30/360, sin tocar {@link TiempoServicioDto}) − no computables, re-desglosado con
+	 * la misma fórmula 30/360 ({@link Dias360#desglosar}) — ver javadoc de
+	 * {@link TiempoServicioDetalleDto} sobre por qué NO se modifica el record bruto.
 	 */
 	@Transactional(readOnly = true)
 	public TiempoServicioDetalleDto calcularTiempoServicioDetalle(Long empleadoId) {
@@ -162,14 +166,18 @@ public class VacacionService {
 	    try {
 	        ts = tiempoServicioService.calcular(empleadoId, null);
 	    } catch (VinculoNoEncontradoException e) {
-	        return new TiempoServicioDetalleDto(null, DiasNoComputablesDto.cero(), null);
+	        return TiempoServicioDetalleDto.sinVinculo();
 	    }
 	    final DiasNoComputablesDto noComp = incidenciaLaboralCompuesta
 	            .calcularDesglose(empleadoId, ts.fechaIngreso(), ts.fechaCorte());
 	    final LocalDate aniversarioEfectivo = ts.fechaIngreso()
 	            .plusYears(ts.anios() + 1L)
 	            .plusDays(noComp.total());
-	    return new TiempoServicioDetalleDto(ts, noComp, aniversarioEfectivo);
+	    final int totalDiasEfectivos = Math.max(0, ts.totalDias360() - noComp.total());
+	    final Dias360.AniosMesesDias efectivo = Dias360.desglosar(totalDiasEfectivos);
+	    return new TiempoServicioDetalleDto(
+	            ts, noComp, aniversarioEfectivo,
+	            efectivo.anios(), efectivo.meses(), efectivo.dias(), totalDiasEfectivos);
 	}
 
 	/**

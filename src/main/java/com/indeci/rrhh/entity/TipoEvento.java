@@ -24,6 +24,11 @@ import java.time.LocalDateTime;
  *   <li>{@code permiteSolape} — permite coexistir con otro evento del mismo
  *       empleado en fechas que se traslapan (ej. lactancia parcial sobre
  *       maternidad).</li>
+ *   <li>{@code afectaTiempoServicio} — el evento resta días al tiempo de
+ *       servicio / récord vacacional ({@code EventosIncidenciaProvider}).
+ *       Independiente de {@code afectaDiasLaborados} (planilla): el importador
+ *       histórico (V012_42) sembró tipos con {@code afectaDiasLaborados='N'}
+ *       (no reabre boletas ya emitidas) pero {@code afectaTiempoServicio='S'}.</li>
  * </ul>
  *
  * <p>Schema NO hardcodeado (ver [[claude-md-aspiracional]]).</p>
@@ -60,6 +65,10 @@ public class TipoEvento {
 
     @Column(name = "PERMITE_SOLAPE", nullable = false, length = 1)
     private String permiteSolape;
+
+    /** V012_42 — F1 tiempo de servicio efectivo. Ver javadoc de clase. */
+    @Column(name = "AFECTA_TIEMPO_SERVICIO", nullable = false, length = 1)
+    private String afectaTiempoServicio;
 
     /** Mapeo opcional a Anexo 2 SUNAT para PDT 601 (B3 / F4). */
     @Column(name = "CODIGO_PLAME_SUNAT", length = 6)

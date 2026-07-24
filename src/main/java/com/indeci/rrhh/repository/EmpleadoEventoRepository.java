@@ -43,21 +43,28 @@ public interface EmpleadoEventoRepository
             Long empleadoId, Long tipoEventoId, LocalDate fechaInicio, Integer activo);
 
     /**
-     * SPEC_VACACIONES F9.1 — eventos VALIDADOS que restan días laborados
-     * ({@code afectaDiasLaborados='S'}: LSG, suspensiones no subsidiadas) y solapan el
-     * rango [desde, hasta]. Base del récord vacacional (días no computables por eventos).
+     * SPEC_VACACIONES F9.1 / V012_42 F1 — eventos VALIDADOS que restan tiempo de servicio /
+     * récord vacacional ({@code afectaTiempoServicio='S'}: LSG operativa + histórico migrado
+     * de FALTA_HISTORICA/SUSPENSION_HISTORICA) y solapan el rango [desde, hasta].
+     *
+     * <p>Independiente de {@code afectaDiasLaborados} (planilla) desde V012_42: el catálogo
+     * histórico tiene {@code afectaDiasLaborados='N'} (no reabre boletas) pero
+     * {@code afectaTiempoServicio='S'} (sí descuenta récord/tiempo de servicio).</p>
+     *
+     * <p>{@code JOIN FETCH} evita N+1 al leer {@code e.getTipoEvento().getCodigo()} en el
+     * desglose por tipo ({@link com.indeci.rrhh.service.incidencia.EventosIncidenciaProvider}).</p>
      */
     @Query("""
             SELECT e
               FROM EmpleadoEvento e
-              JOIN e.tipoEvento t
-             WHERE e.empleadoId          = :empleadoId
-               AND e.activo              = 1
-               AND e.estado              = 'VALIDADO'
-               AND t.activo              = 1
-               AND t.afectaDiasLaborados = 'S'
-               AND e.fechaInicio        <= :hasta
-               AND e.fechaFin           >= :desde
+              JOIN FETCH e.tipoEvento t
+             WHERE e.empleadoId            = :empleadoId
+               AND e.activo                = 1
+               AND e.estado                = 'VALIDADO'
+               AND t.activo                = 1
+               AND t.afectaTiempoServicio  = 'S'
+               AND e.fechaInicio          <= :hasta
+               AND e.fechaFin             >= :desde
             """)
     List<EmpleadoEvento> findNoComputablesRecord(
             @Param("empleadoId") Long empleadoId,

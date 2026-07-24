@@ -87,6 +87,21 @@ public class VacacionController {
 	}
 
 	/**
+	 * Detalle de récord vacacional (Opción A): acumulado de la carrera (reconcilia con
+	 * Configuración Remunerativa) + desglose POR PERÍODO (aniversario a aniversario) con
+	 * sus incidencias y si cumple récord. Alimenta el modal "Detalle de récord vacacional".
+	 */
+	@GetMapping("/padron/{empleadoId}/record-detalle")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+	public ApiResponse<com.indeci.rrhh.dto.RecordVacacionalDetalleDto> recordDetalle(
+	        @PathVariable Long empleadoId) {
+	    return new ApiResponse<>(
+	            "OK",
+	            "Detalle de récord vacacional",
+	            padronVacacionalService.detalleRecord(empleadoId));
+	}
+
+	/**
 	 * SPEC_VACACIONES F1 — tiempo de servicio del empleado (base para vacaciones/CTS/LBS).
 	 * @param fechaCorte opcional (ISO yyyy-MM-dd); si se omite, se usa HOY.
 	 */
@@ -296,6 +311,26 @@ public class VacacionController {
 				: resultado.cambios().size() + " período(s) actualizado(s) correctamente";
 
 		return new ApiResponse<>("OK", mensaje, resultado);
+	}
+
+	/**
+	 * Botón "Provisionar para todos" del Padrón: recalcula Corresponden y conserva Gozados para
+	 * TODOS los empleados con baseline importado, en un solo clic. Sustento obligatorio (Poka-Yoke).
+	 */
+	@PostMapping("/padron/provisionar-todos")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+	public ApiResponse<com.indeci.rrhh.dto.ProvisionMasivaResultDto> provisionarTodos(
+			@org.springframework.validation.annotation.Validated @RequestBody
+			com.indeci.rrhh.dto.ProvisionarAutoRequestDto dto) {
+
+		com.indeci.rrhh.dto.ProvisionMasivaResultDto r =
+				vacacionProvisionService.provisionarTodosImportados(dto.getSustento());
+		String mensaje = r.total() == 0
+				? "No hay empleados importados para provisionar"
+				: r.provisionados() + " provisionado(s), " + r.sinCambios() + " sin cambios"
+						+ (r.errores().isEmpty() ? "" : ", " + r.errores().size() + " con error");
+
+		return new ApiResponse<>("OK", mensaje, r);
 	}
 
 	/**

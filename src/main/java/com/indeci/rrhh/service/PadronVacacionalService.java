@@ -2,6 +2,7 @@ package com.indeci.rrhh.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -13,7 +14,11 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.indeci.exception.VinculoNoEncontradoException;
 import com.indeci.rrhh.dto.DiasNoComputablesDto;
+import com.indeci.rrhh.dto.PeriodoRecordDto;
+import com.indeci.rrhh.dto.RecordVacacionalDetalleDto;
+import com.indeci.rrhh.dto.TiempoServicioDetalleDto;
 import com.indeci.rrhh.dto.PadronVacacionalPageDto;
 import com.indeci.rrhh.dto.PadronVacacionalRowDto;
 import com.indeci.rrhh.dto.PersonaResumenDto;
@@ -243,6 +248,83 @@ public class PadronVacacionalService {
      * SPEC_VACACIONES F9.1 — jornada días/semana con patrón herencia/override:
      * {@code empleado.diasSemanaOperativo} ?? {@code jornadaRegimen.diasSemana} ?? 5 (default).
      */
+    /**
+     * Detalle de récord vacacional (Opción A): Nivel 1 = acumulado de la carrera (reconcilia con
+     * Configuración Remunerativa/Vinculación); Nivel 2 = desglose por período (aniversario a
+     * aniversario) con SUS incidencias y si cumple récord. Read-only, no toca el motor.
+     */
+    @Transactional(readOnly = true)
+    public RecordVacacionalDetalleDto detalleRecord(Long empleadoId) {
+        // Nivel 1 — acumulado (mismo criterio que VacacionService.calcularTiempoServicioDetalle).
+        final TiempoServicioDetalleDto acumulado = acumuladoCarrera(empleadoId);
+
+        final List<EmpleadoPlanilla> vinculos =
+                empleadoPlanillaRepository.findByEmpleadoIdInAndActivo(List.of(empleadoId), 1);
+        final LocalDate ingreso = vinculos.stream()
+                .map(EmpleadoPlanilla::getFechaInicioContrato)
+                .filter(Objects::nonNull)
+                .min(LocalDate::compareTo)
+                .orElse(null);
+        if (ingreso == null) {
+            return new RecordVacacionalDetalleDto(true, acumulado, List.of());
+        }
+
+        final Map<Long, Integer> jornadaPorRegimen = jornadaRegimenRepository.findAll().stream()
+                .filter(j -> j.getRegimenLaboralId() != null && j.getDiasSemana() != null)
+                .collect(Collectors.toMap(
+                        com.indeci.rrhh.entity.JornadaRegimen::getRegimenLaboralId,
+                        com.indeci.rrhh.entity.JornadaRegimen::getDiasSemana, (a, b) -> a));
+        final int jornada = resolverJornada(vinculoVigente(vinculos), jornadaPorRegimen);
+
+        // Nivel 2 — un período por cada año de servicio CUMPLIDO (aniversario a aniversario).
+        final long aniosCumplidos = ChronoUnit.YEARS.between(ingreso, LocalDate.now());
+        final List<PeriodoRecordDto> periodos = new ArrayList<>();
+        for (long n = 1; n <= aniosCumplidos; n++) {
+            final LocalDate corte = ingreso.plusYears(n);
+            final LocalDate desde = corte.minusYears(1);
+            final LocalDate hasta = corte.minusDays(1);
+            final int diasIdeal = Dias360.entre(desde, hasta) + 1;
+            final DiasNoComputablesDto noComp =
+                    incidenciaLaboralCompuesta.calcularDesglose(empleadoId, desde, hasta);
+            final int efectivo = Math.max(0, diasIdeal - noComp.total());
+
+            // Récord del período: mismo criterio que VacacionProvisionService (el
+            // VacacionCalculoService descuenta las incidencias reales del período internamente).
+            boolean ok = false;
+            final Optional<com.indeci.rrhh.dto.TiempoServicioDto> tsOpt =
+                    tiempoServicioService.calcularDesde(vinculos, empleadoId, corte);
+            if (tsOpt.isPresent()) {
+                final var ts = tsOpt.get();
+                final VacacionCalculoDto calc = vacacionCalculoService.calcular(new VacacionCalculoInput(
+                        empleadoId, desde, hasta, ts.anios(), ts.meses(), ts.dias(), diasIdeal,
+                        0, 0, BigDecimal.ZERO, jornada, 0));
+                ok = VacacionCalculoDto.RECORD_OK.equals(calc.estadoRecord());
+            }
+            periodos.add(new PeriodoRecordDto((int) n, desde, hasta,
+                    noComp.lsg(), noComp.faltas(), noComp.suspensiones(), efectivo, ok, ok ? 30 : 0));
+        }
+        return new RecordVacacionalDetalleDto(false, acumulado, periodos);
+    }
+
+    /** Nivel 1 — réplica de VacacionService.calcularTiempoServicioDetalle (mismo origen que
+     *  Configuración Remunerativa, para que el detalle reconcilie con Vinculación). */
+    private TiempoServicioDetalleDto acumuladoCarrera(Long empleadoId) {
+        final com.indeci.rrhh.dto.TiempoServicioDto ts;
+        try {
+            ts = tiempoServicioService.calcular(empleadoId, null);
+        } catch (VinculoNoEncontradoException e) {
+            return TiempoServicioDetalleDto.sinVinculo();
+        }
+        final DiasNoComputablesDto noComp = incidenciaLaboralCompuesta
+                .calcularDesglose(empleadoId, ts.fechaIngreso(), ts.fechaCorte());
+        final LocalDate aniversarioEfectivo = ts.fechaIngreso()
+                .plusYears(ts.anios() + 1L).plusDays(noComp.total());
+        final int totalDiasEfectivos = Math.max(0, ts.totalDias360() - noComp.total());
+        final Dias360.AniosMesesDias efectivo = Dias360.desglosar(totalDiasEfectivos);
+        return new TiempoServicioDetalleDto(ts, noComp, aniversarioEfectivo,
+                efectivo.anios(), efectivo.meses(), efectivo.dias(), totalDiasEfectivos);
+    }
+
     private int resolverJornada(EmpleadoPlanilla vigente, Map<Long, Integer> jornadaPorRegimen) {
         if (vigente == null) {
             return JORNADA_DEFECTO_DIAS;

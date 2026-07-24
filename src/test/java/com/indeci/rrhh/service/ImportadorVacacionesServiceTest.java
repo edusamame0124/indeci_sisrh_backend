@@ -93,7 +93,9 @@ class ImportadorVacacionesServiceTest {
         VacacionSaldo guardado = capt.getValue();
         assertThat(guardado.getEmpleadoId()).isEqualTo(42L);
         assertThat(guardado.getAnio()).isEqualTo(2026);
-        assertThat(guardado.getDiasGanados()).isEqualTo(210d);
+        // Corresponden (col P) NO se importa: lo calcula "Provisionar para todos" (30 × períodos).
+        assertThat(guardado.getDiasGanados()).isEqualTo(0d);
+        // Gozados (col Q) sí se congela como baseline.
         assertThat(guardado.getDiasGozados()).isEqualTo(180d);
         assertThat(guardado.getOrigen()).isEqualTo(ImportadorVacacionesService.ORIGEN_MIGRACION);
         assertThat(guardado.getFechaCorte()).isEqualTo(LocalDate.of(2026, 5, 30));

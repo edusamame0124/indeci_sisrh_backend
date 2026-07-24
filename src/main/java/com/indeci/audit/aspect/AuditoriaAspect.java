@@ -68,7 +68,7 @@ public class AuditoriaAspect {
             String detalle = auditoriaContext.getDetalle();
 
             auditoria.setDetalle(
-                detalle != null ? detalle : "Ejecución correcta"
+                truncarDetalle(detalle != null ? detalle : "Ejecución correcta")
             );
 
             auditoriaRepository.save(auditoria);
@@ -78,11 +78,26 @@ public class AuditoriaAspect {
         } catch (Exception e) {
 
             auditoria.setEstado("ERROR");
-            auditoria.setDetalle(e.getMessage());
+            auditoria.setDetalle(truncarDetalle(e.getMessage()));
 
             auditoriaRepository.save(auditoria);
 
             throw e;
         }
+    }
+
+    /**
+     * AUDITORIA.DETALLE es VARCHAR2(2000): el detalle de acciones con historial largo
+     * (p. ej. Provisionar sobre muchos períodos) puede excederlo → ORA-12899 que tumba la
+     * transacción. Se trunca de forma segura (con elipsis) para que la auditoría nunca rompa
+     * la operación de negocio.
+     */
+    private static final int MAX_DETALLE = 2000;
+
+    private static String truncarDetalle(String valor) {
+        if (valor == null || valor.length() <= MAX_DETALLE) {
+            return valor;
+        }
+        return valor.substring(0, MAX_DETALLE - 3) + "...";
     }
 }

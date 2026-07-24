@@ -31,17 +31,22 @@ public class IncidenciaLaboralCompuesta implements IncidenciaLaboralProvider {
 
     @Override
     public int obtenerDiasNoComputables(Long empleadoId, LocalDate desde, LocalDate hasta) {
-        return eventos.obtenerDiasNoComputables(empleadoId, desde, hasta)
-                + inasistencias.obtenerDiasNoComputables(empleadoId, desde, hasta);
+        return calcularDesglose(empleadoId, desde, hasta).total();
     }
 
     /**
-     * Igual que {@link #obtenerDiasNoComputables}, pero devuelve el desglose LSG vs faltas
-     * para la trazabilidad de RR.HH. (Padrón + Config Remunerativa + detalle vacacional).
+     * Igual que {@link #obtenerDiasNoComputables}, pero devuelve el desglose LSG / faltas /
+     * suspensiones para la trazabilidad de RR.HH. (Padrón + Config Remunerativa + detalle
+     * vacacional). Desde V012_42, "faltas" combina las operativas (Asistencia) con las
+     * históricas migradas ({@code FALTA_HISTORICA}); "suspensiones" es 100% histórico migrado
+     * ({@code SUSPENSION_HISTORICA}, incluye "SANCION PAD" agrupado por decisión RR.HH.).
      */
     public DiasNoComputablesDto calcularDesglose(Long empleadoId, LocalDate desde, LocalDate hasta) {
-        int lsg = eventos.obtenerDiasNoComputables(empleadoId, desde, hasta);
-        int faltas = inasistencias.obtenerDiasNoComputables(empleadoId, desde, hasta);
-        return DiasNoComputablesDto.of(lsg, faltas);
+        EventosIncidenciaProvider.Desglose ev = eventos.obtenerDesglose(empleadoId, desde, hasta);
+        int faltasOperativas = inasistencias.obtenerDiasNoComputables(empleadoId, desde, hasta);
+        return DiasNoComputablesDto.of(
+                ev.lsg(),
+                faltasOperativas + ev.faltasHistoricas(),
+                ev.suspensiones());
     }
 }
