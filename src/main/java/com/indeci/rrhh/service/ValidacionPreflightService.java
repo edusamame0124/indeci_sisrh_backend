@@ -16,6 +16,7 @@ import com.indeci.rrhh.dto.PreflightValidacionDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.dto.ValidacionHallazgoDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
+import com.indeci.rrhh.entity.AsistenciaImportacion;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoConcepto;
@@ -26,6 +27,7 @@ import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.entity.TipoEvento;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
+import com.indeci.rrhh.repository.AsistenciaImportacionRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
 import com.indeci.rrhh.repository.EmpleadoEventoRepository;
@@ -66,6 +68,7 @@ import lombok.RequiredArgsConstructor;
  *  V17 ALERTA   Falta TOPE_ESSALUD_PCT_UIT (CAS sin tope de base)   P1 EsSalud CAS
  *  V18 ALERTA   Subsidio (GENERA_SUBSIDIO='S') que NO resta días    Fase 4 subsidio→neto
  *  V19 ALERTA   Maternidad multi-mes: subsidio al neto diferido P1   P0 maternidad
+ *  V20 ALERTA   Asistencia PARCIAL: carga cubre menos que el mes     Fase 2 rango cubierto
  * </pre>
  *
  * <p>El servicio prioriza no romper si los datos están incompletos
@@ -77,6 +80,7 @@ public class ValidacionPreflightService {
 
     private static final String EMP_ACTIVO = "ACTIVO";
     private static final String ASIST_VALIDADA = "VALIDADA";
+    private static final String IMPORT_CONFIRMADA = "CONFIRMADA";
     private static final String EN_TRANSICION = "EN_TRANSICION";
 
     private final PeriodoPlanillaRepository periodoRepository;
@@ -87,6 +91,7 @@ public class ValidacionPreflightService {
     private final EmpleadoConceptoRepository empleadoConceptoRepository;
     private final ConceptoPlanillaRepository conceptoRepository;
     private final AsistenciaCabeceraRepository asistenciaRepository;
+    private final AsistenciaImportacionRepository importacionRepository;
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final EmpleadoEventoRepository empleadoEventoRepository;
     private final EventoDistribucionMesRepository eventoDistribucionMesRepository;
@@ -224,6 +229,43 @@ public class ValidacionPreflightService {
                     "V3", "Asistencia",
                     "La asistencia del período no está validada. Apruébala antes de generar planilla.",
                     null, null, null));
+        }
+
+        // V20 — ASISTENCIA PARCIAL (Fase 2): la carga cubre MENOS días que el período completo.
+        //   El rango cubierto se lee de la importación (PERIODO_DETECTADO_INI/FIN, declarado por
+        //   RR.HH. al confirmar). Previene planillas con datos incompletos (pagos/descuentos
+        //   erróneos). ALERTA (no BLOQUEO): RR.HH. decide si completa la carga o continúa.
+        if (!asistencias.isEmpty() && per.getFechaInicio() != null && per.getFechaFin() != null) {
+            Map<Long, AsistenciaImportacion> impPorId = new HashMap<>();
+            for (AsistenciaImportacion imp :
+                    importacionRepository.findByPeriodoAndEstado(periodo, IMPORT_CONFIRMADA)) {
+                impPorId.put(imp.getId(), imp);
+            }
+            int parciales = 0;
+            for (AsistenciaCabecera cab : asistencias) {
+                if (!ASIST_VALIDADA.equalsIgnoreCase(cab.getEstado())) {
+                    continue;
+                }
+                AsistenciaImportacion imp = cab.getImportacionId() != null
+                        ? impPorId.get(cab.getImportacionId()) : null;
+                LocalDate cubIni = imp != null ? imp.getPeriodoDetectadoIni() : null;
+                LocalDate cubFin = imp != null ? imp.getPeriodoDetectadoFin() : null;
+                boolean parcial = cubIni == null || cubFin == null
+                        || cubIni.isAfter(per.getFechaInicio())
+                        || cubFin.isBefore(per.getFechaFin());
+                if (parcial) {
+                    parciales++;
+                }
+            }
+            if (parciales > 0) {
+                hallazgos.add(ValidacionHallazgoDto.alerta(
+                        "V20", "Asistencia",
+                        "Asistencia parcial detectada: " + parciales + " empleado(s) con cobertura "
+                                + "incompleta para el período (" + per.getFechaInicio() + " al "
+                                + per.getFechaFin() + "). Faltan días por registrar; la planilla "
+                                + "podría salir con descuentos o pagos incompletos. Verifica la carga.",
+                        null, null, per.getId()));
+            }
         }
 
         // V6 / V7 — EmpleadoConcepto y régimen aplicable

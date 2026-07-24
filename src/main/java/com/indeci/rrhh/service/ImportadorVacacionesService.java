@@ -109,7 +109,7 @@ public class ImportadorVacacionesService {
                 }
 
                 final int anio = (corte != null ? corte : LocalDate.now()).getYear();
-                upsert(empleado.get().getId(), anio, ganados, gozados, corte, nombre);
+                upsert(empleado.get().getId(), anio, gozados, corte, nombre);
                 importados++;
             }
         } catch (NegocioException e) {
@@ -128,7 +128,7 @@ public class ImportadorVacacionesService {
                 ORIGEN_MIGRACION);
     }
 
-    private void upsert(Long empleadoId, int anio, Double ganados, Double gozados,
+    private void upsert(Long empleadoId, int anio, Double gozados,
             LocalDate corte, String nombre) {
         final VacacionSaldo e = vacacionSaldoRepository
                 .findByEmpleadoIdAndAnioAndActivo(empleadoId, anio, 1)
@@ -140,7 +140,10 @@ public class ImportadorVacacionesService {
                     n.setCreatedAt(LocalDateTime.now());
                     return n;
                 });
-        e.setDiasGanados(ganados != null ? ganados : 0d);
+        // Corresponden (col P) y Saldo NO se importan: los calcula "Provisionar para todos"
+        // (Corresponden = 30 × períodos ganados). Aquí solo se congela el baseline de gozados
+        // (col Q); Saldo deriva de Corresponden − Gozados en el read-path.
+        e.setDiasGanados(0d);
         e.setDiasGozados(gozados != null ? gozados : 0d);
         e.setOrigen(ORIGEN_MIGRACION);
         e.setFechaCorte(corte);

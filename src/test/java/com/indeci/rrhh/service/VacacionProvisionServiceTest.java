@@ -51,6 +51,9 @@ class VacacionProvisionServiceTest {
         VacacionCalculoService calculoService =
                 new VacacionCalculoService((empId, desde, hasta) -> DIAS_NO_COMPUTABLES_FIJO);
 
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<VacacionProvisionService> selfProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
         service = new VacacionProvisionService(
                 planillaRepository,
                 calculoService,
@@ -58,7 +61,9 @@ class VacacionProvisionServiceTest {
                 new TiempoServicioService(planillaRepository),
                 jornadaRegimenRepository,
                 new com.indeci.audit.context.AuditoriaContext(),
-                mock(VacacionRepository.class));
+                mock(VacacionRepository.class),
+                selfProvider);
+        when(selfProvider.getObject()).thenReturn(service);
 
         when(saldoRepository.findByEmpleadoIdInAndActivo(List.of(EMPLEADO_ID), 1))
                 .thenReturn(List.of());
@@ -144,10 +149,17 @@ class VacacionProvisionServiceTest {
             JornadaRegimenRepository jornadaRepo, VacacionRepository vacacionRepo, int diasNoComputables) {
         VacacionCalculoService calculoService =
                 new VacacionCalculoService((empId, desde, hasta) -> diasNoComputables);
-        return new VacacionProvisionService(
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<VacacionProvisionService> selfProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        VacacionProvisionService svc = new VacacionProvisionService(
                 planillaRepo, calculoService, saldoRepo,
                 new TiempoServicioService(planillaRepo), jornadaRepo,
-                new com.indeci.audit.context.AuditoriaContext(), vacacionRepo);
+                new com.indeci.audit.context.AuditoriaContext(), vacacionRepo, selfProvider);
+        // Self-proxy: en la provisión masiva devuelve el propio servicio (no afecta a los tests
+        // que llaman directamente a recalcularProvisionManual/provisionar).
+        when(selfProvider.getObject()).thenReturn(svc);
+        return svc;
     }
 
     private EmpleadoPlanilla vinculoDesde(LocalDate ingreso) {
@@ -329,10 +341,14 @@ class VacacionProvisionServiceTest {
         // Incidencia depende del empleado: 300 días (bloquea) para uno, 0 (habilita) para el otro.
         VacacionCalculoService calculoService = new VacacionCalculoService(
                 (empId, desde, hasta) -> empId.equals(empleadoBloqueado) ? 300 : 0);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<VacacionProvisionService> selfProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
         VacacionProvisionService svc = new VacacionProvisionService(
                 planillaRepo, calculoService, saldoRepo,
                 new TiempoServicioService(planillaRepo), jornadaRepo,
-                new com.indeci.audit.context.AuditoriaContext(), mock(VacacionRepository.class));
+                new com.indeci.audit.context.AuditoriaContext(), mock(VacacionRepository.class), selfProvider);
+        when(selfProvider.getObject()).thenReturn(svc);
 
         LocalDate ingreso = LocalDate.now().minusYears(1);
         EmpleadoPlanilla vBloqueado = vinculoDeEmpleado(empleadoBloqueado, ingreso);
@@ -354,9 +370,10 @@ class VacacionProvisionServiceTest {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // recalcularProvisionManual — botón "Provisionar Auto". Récord real por tiempo de
-    // servicio para "Ganados"; "Gozados" = goce REAL de las papeletas (tabla Vacacion,
-    // estado GOZADO) distribuido FIFO — el Excel muere, la papeleta manda.
+    // recalcularProvisionManual — botón "Provisionar (Auto / para todos)". "Ganados"
+    // (Corresponden) = 30 × períodos válidos por récord real. "Gozados" = Σ DIAS_GOZADOS
+    // actual PRESERVADO (baseline Excel + incrementos por aprobación de papeletas), distribuido
+    // FIFO sobre los períodos válidos. El goce importado ya NO se reinicia desde papeletas.
     // ══════════════════════════════════════════════════════════════════════════
 
     private static final String SUSTENTO_TEST = "Corrección de historial importado de Excel";
@@ -385,13 +402,13 @@ class VacacionProvisionServiceTest {
     }
 
     /**
-     * Reproduce EXACTAMENTE el bug reportado: empleado con 5 meses de servicio (ingreso
-     * 11/07/2026) con fila del Excel Ganados=60/Gozados=51 — normativamente imposible.
-     * El récord real del período es 0 (período inválido) → la fila del Excel se anula
-     * (activo=0, marcador con sustento) y NO se inserta reemplazo. El agregado activo → 0/0/0.
+     * Empleado con < 1 año de servicio (ingreso 11/07/2026), fila del Excel Ganados=60/Gozados=51.
+     * No hay período válido aún, pero el gozado importado (51) se PRESERVA como DEUDA/ADELANTO: la
+     * fila del Excel se anula (soft-delete trazable) y se inserta UNA fila del período en curso con
+     * Corresponden=0 y gozados=51 → Saldo negativo (deuda) regularizable al vencer el período.
      */
     @Test
-    void recalcular_anula_fila_invalida_sin_inflar_ni_insertar_reemplazo() {
+    void recalcular_conserva_gozado_como_deuda_si_no_hay_periodo_valido() {
         Long empleadoId = 300L;
         EmpleadoPlanillaRepository planillaRepo = mock(EmpleadoPlanillaRepository.class);
         VacacionSaldoRepository saldoRepo = mock(VacacionSaldoRepository.class);
@@ -415,87 +432,88 @@ class VacacionProvisionServiceTest {
         com.indeci.rrhh.dto.RecalculoManualResultDto resultado =
                 svc.recalcularProvisionManual(empleadoId, SUSTENTO_TEST);
 
-        assertThat(resultado.cambios()).hasSize(1);
-        com.indeci.rrhh.dto.CorreccionSaldoDto cambio = resultado.cambios().get(0);
-        assertThat(cambio.anio()).isEqualTo(2026);
-        assertThat(cambio.ganadosAnterior()).isEqualTo(60d);
-        assertThat(cambio.tipo()).isEqualTo("ANULADO");
-
+        // La fila del Excel se anula (soft-delete, trazable) …
         assertThat(filaExcel.getActivo()).isZero();
         assertThat(filaExcel.getDiasGanados()).isEqualTo(60d); // histórico intacto, jamás DELETE
         assertThat(filaExcel.getObservacion()).contains("ANULADO_POR_RECALCULO").contains(SUSTENTO_TEST);
         org.mockito.Mockito.verify(saldoRepo).saveAndFlush(filaExcel);
-        org.mockito.Mockito.verify(saldoRepo, org.mockito.Mockito.never()).save(any());
+
+        // … y se inserta UNA fila de deuda (Corresponden=0, gozados preservados=51).
+        org.mockito.ArgumentCaptor<com.indeci.rrhh.entity.VacacionSaldo> captor =
+                org.mockito.ArgumentCaptor.forClass(com.indeci.rrhh.entity.VacacionSaldo.class);
+        org.mockito.Mockito.verify(saldoRepo).save(captor.capture());
+        com.indeci.rrhh.entity.VacacionSaldo deuda = captor.getValue();
+        assertThat(deuda.getDiasGanados()).isEqualTo(0d);
+        assertThat(deuda.getDiasGozados()).isEqualTo(51d);
+        assertThat(deuda.getOrigen()).isEqualTo("RECALCULO_SISTEMA");
+
+        assertThat(resultado.cambios()).extracting(com.indeci.rrhh.dto.CorreccionSaldoDto::tipo)
+                .containsExactlyInAnyOrder("ANULADO", "CREADO");
     }
 
     /**
      * CASO REPORTADO (AGUILAR SOTO): 1 año 2 meses de servicio, fila del Excel Ganados=30/
-     * Gozados=30, PERO sin papeletas reales aprobadas → el "30 gozados" del Excel se descarta.
-     * Tras recalcular: la fila 30/30 se anula y se inserta 30/0 (ganados=récord real, gozados
-     * =papeletas=0). Estado activo resultante: Corresponden=30, Gozados=0, Saldo=30.
+     * Gozados=30. Nuevo criterio: los gozados importados se PRESERVAN. El récord real del único
+     * período válido (año+1) es 30 y el gozado preservado (30) se distribuye ahí → la fila 30/30
+     * YA coincide con el estado deseado ⇒ no se anula ni se reinserta (sin cambios).
      */
     @Test
-    void recalcular_descarta_gozados_del_excel_si_no_hay_papeletas() {
+    void recalcular_preserva_gozados_del_excel() {
         Long empleadoId = 1690L;
         EmpleadoPlanillaRepository planillaRepo = mock(EmpleadoPlanillaRepository.class);
         VacacionSaldoRepository saldoRepo = mock(VacacionSaldoRepository.class);
         JornadaRegimenRepository jornadaRepo = mock(JornadaRegimenRepository.class);
-        VacacionRepository vacacionRepo = mock(VacacionRepository.class);
-        VacacionProvisionService svc =
-                servicioConIncidenciaFija(planillaRepo, saldoRepo, jornadaRepo, vacacionRepo, 0);
+        VacacionProvisionService svc = servicioConIncidenciaFija(planillaRepo, saldoRepo, jornadaRepo, 0);
 
-        LocalDate ingreso = LocalDate.now().minusYears(1).minusMonths(2); // 1 año 2 meses → 1 período válido
+        LocalDate ingreso = LocalDate.now().minusYears(1).minusMonths(2); // 1 período válido
         EmpleadoPlanilla vinculo = vinculoDeEmpleado(empleadoId, ingreso);
         when(planillaRepo.findByEmpleadoIdInAndActivo(List.of(empleadoId), 1)).thenReturn(List.of(vinculo));
-        when(vacacionRepo.findByEmpleadoIdAndActivo(empleadoId, 1)).thenReturn(List.of()); // 0 papeletas
 
         com.indeci.rrhh.entity.VacacionSaldo filaExcel = new com.indeci.rrhh.entity.VacacionSaldo();
         filaExcel.setId(7001L);
         filaExcel.setEmpleadoId(empleadoId);
         filaExcel.setAnio(ingreso.getYear() + 1);
         filaExcel.setDiasGanados(30d);
-        filaExcel.setDiasGozados(30d); // del Excel — NO respaldado por papeletas
+        filaExcel.setDiasGozados(30d); // baseline del Excel — se PRESERVA
         filaExcel.setActivo(1);
         when(saldoRepo.findByEmpleadoIdAndActivo(empleadoId, 1)).thenReturn(List.of(filaExcel));
 
-        svc.recalcularProvisionManual(empleadoId, SUSTENTO_TEST);
+        com.indeci.rrhh.dto.RecalculoManualResultDto resultado =
+                svc.recalcularProvisionManual(empleadoId, SUSTENTO_TEST);
 
-        // La fila 30/30 se anula (gozados 30 ≠ 0 deseado).
-        assertThat(filaExcel.getActivo()).isZero();
-        org.mockito.Mockito.verify(saldoRepo).saveAndFlush(filaExcel);
-
-        // Se inserta la fila limpia 30/0.
-        org.mockito.ArgumentCaptor<com.indeci.rrhh.entity.VacacionSaldo> captor =
-                org.mockito.ArgumentCaptor.forClass(com.indeci.rrhh.entity.VacacionSaldo.class);
-        org.mockito.Mockito.verify(saldoRepo).save(captor.capture());
-        com.indeci.rrhh.entity.VacacionSaldo nueva = captor.getValue();
-        assertThat(nueva.getDiasGanados()).isEqualTo(30d);
-        assertThat(nueva.getDiasGozados()).isEqualTo(0d); // gozados del Excel DESCARTADO
-        assertThat(nueva.getOrigen()).isEqualTo("RECALCULO_SISTEMA");
+        assertThat(resultado.sinCambios()).isEqualTo(1);
+        assertThat(resultado.cambios()).isEmpty();
+        // La fila 30/30 coincide con el estado deseado → nunca se toca.
+        org.mockito.Mockito.verify(saldoRepo, org.mockito.Mockito.never()).saveAndFlush(any());
+        org.mockito.Mockito.verify(saldoRepo, org.mockito.Mockito.never()).save(any());
+        assertThat(filaExcel.getActivo()).isEqualTo(1); // intacta
     }
 
     /**
-     * FIFO: goce real de 40 días de papeletas repartido sobre 2 períodos válidos (más antiguo
-     * primero) → año+1 recibe 30 (tope), año+2 recibe 10. Los gozados salen de las papeletas,
-     * NO de las filas del Excel.
+     * FIFO del gozado PRESERVADO: una fila baseline con 40 días gozados (año de ingreso, no es
+     * período válido) se redistribuye sobre 2 períodos válidos (más antiguo primero) → año+1
+     * recibe 30 (tope), año+2 recibe 10. El gozado sale de DIAS_GOZADOS preservado, no de papeletas.
      */
     @Test
-    void recalcular_distribuye_gozado_real_fifo_sobre_periodos_validos() {
+    void recalcular_distribuye_gozado_preservado_fifo_sobre_periodos_validos() {
         Long empleadoId = 306L;
         EmpleadoPlanillaRepository planillaRepo = mock(EmpleadoPlanillaRepository.class);
         VacacionSaldoRepository saldoRepo = mock(VacacionSaldoRepository.class);
         JornadaRegimenRepository jornadaRepo = mock(JornadaRegimenRepository.class);
-        VacacionRepository vacacionRepo = mock(VacacionRepository.class);
-        VacacionProvisionService svc =
-                servicioConIncidenciaFija(planillaRepo, saldoRepo, jornadaRepo, vacacionRepo, 0);
+        VacacionProvisionService svc = servicioConIncidenciaFija(planillaRepo, saldoRepo, jornadaRepo, 0);
 
         LocalDate ingreso = LocalDate.now().minusYears(2);
         EmpleadoPlanilla vinculo = vinculoDeEmpleado(empleadoId, ingreso);
         when(planillaRepo.findByEmpleadoIdInAndActivo(List.of(empleadoId), 1)).thenReturn(List.of(vinculo));
-        when(saldoRepo.findByEmpleadoIdAndActivo(empleadoId, 1)).thenReturn(List.of()); // sin filas previas
-        // 40 días de goce real (p. ej. dos papeletas de 25 y 15).
-        when(vacacionRepo.findByEmpleadoIdAndActivo(empleadoId, 1))
-                .thenReturn(List.of(papeletaGozada(25), papeletaGozada(15)));
+        // Baseline importado: 40 días gozados en una fila del año de ingreso (no es período válido).
+        com.indeci.rrhh.entity.VacacionSaldo baseline = new com.indeci.rrhh.entity.VacacionSaldo();
+        baseline.setId(6001L);
+        baseline.setEmpleadoId(empleadoId);
+        baseline.setAnio(ingreso.getYear());
+        baseline.setDiasGanados(0d);
+        baseline.setDiasGozados(40d);
+        baseline.setActivo(1);
+        when(saldoRepo.findByEmpleadoIdAndActivo(empleadoId, 1)).thenReturn(List.of(baseline));
 
         svc.recalcularProvisionManual(empleadoId, SUSTENTO_TEST);
 

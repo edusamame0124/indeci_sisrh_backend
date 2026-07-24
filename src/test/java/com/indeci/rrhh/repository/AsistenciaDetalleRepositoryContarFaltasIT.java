@@ -57,11 +57,39 @@ class AsistenciaDetalleRepositoryContarFaltasIT {
         assertThat(total).isZero();
     }
 
+    /**
+     * Bug real (Melina, DNI 46112220, julio 2026): una re-importación del mismo mes deja la
+     * versión anterior en activo=0 (single-active) y crea la nueva en activo=1, ambas con las
+     * MISMAS faltas. Sin el filtro {@code cab.activo = 1} se contaban las dos (13+13 = duplicado).
+     * Debe contar SOLO la versión vigente.
+     */
+    @Test
+    void contarFaltas_ignora_version_desactivada_solo_cuenta_la_vigente() {
+        // Versión v1 SUPERADA (activo=0) con 2 faltas.
+        Long julioV1 = cabecera("2026-07", 0);
+        detalleRepository.save(detalle(julioV1, LocalDate.of(2026, 7, 2), "FALTA"));
+        detalleRepository.save(detalle(julioV1, LocalDate.of(2026, 7, 6), "FALTA"));
+
+        // Versión v2 VIGENTE (activo=1) con las mismas 2 faltas.
+        Long julioV2 = cabecera("2026-07", 1);
+        detalleRepository.save(detalle(julioV2, LocalDate.of(2026, 7, 2), "FALTA"));
+        detalleRepository.save(detalle(julioV2, LocalDate.of(2026, 7, 6), "FALTA"));
+
+        long total = detalleRepository.contarFaltas(
+                EMPLEADO_ID, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31));
+
+        assertThat(total).as("solo la versión vigente (2), no las dos (4)").isEqualTo(2);
+    }
+
     private Long cabecera(String periodo) {
+        return cabecera(periodo, 1);
+    }
+
+    private Long cabecera(String periodo, int activo) {
         AsistenciaCabecera cab = new AsistenciaCabecera();
         cab.setEmpleadoId(EMPLEADO_ID);
         cab.setPeriodo(periodo);
-        cab.setActivo(1);
+        cab.setActivo(activo);
         return cabeceraRepository.save(cab).getId();
     }
 

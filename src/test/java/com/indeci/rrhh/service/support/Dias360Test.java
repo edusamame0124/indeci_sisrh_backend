@@ -43,4 +43,37 @@ class Dias360Test {
         LocalDate b = LocalDate.of(2020, 3, 1);
         assertThat(Dias360.entre(b, a)).isEqualTo(-Dias360.entre(a, b));
     }
+
+    @Test
+    void desglosar_reparte_anios_meses_dias() {
+        // 5*360 + 8*30 + 10 = 2050
+        Dias360.AniosMesesDias amd = Dias360.desglosar(2050);
+        assertThat(amd.anios()).isEqualTo(5);
+        assertThat(amd.meses()).isEqualTo(8);
+        assertThat(amd.dias()).isEqualTo(10);
+    }
+
+    @Test
+    void desglosar_cero_da_cero_cero_cero() {
+        Dias360.AniosMesesDias amd = Dias360.desglosar(0);
+        assertThat(amd.anios()).isZero();
+        assertThat(amd.meses()).isZero();
+        assertThat(amd.dias()).isZero();
+    }
+
+    @Test
+    void desglosar_negativo_se_trata_como_cero() {
+        Dias360.AniosMesesDias amd = Dias360.desglosar(-15);
+        assertThat(amd.anios()).isZero();
+        assertThat(amd.meses()).isZero();
+        assertThat(amd.dias()).isZero();
+    }
+
+    @Test
+    void desglosar_menos_de_un_mes_solo_dias() {
+        Dias360.AniosMesesDias amd = Dias360.desglosar(25);
+        assertThat(amd.anios()).isZero();
+        assertThat(amd.meses()).isZero();
+        assertThat(amd.dias()).isEqualTo(25);
+    }
 }

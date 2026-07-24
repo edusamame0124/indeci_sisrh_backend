@@ -56,4 +56,22 @@ public final class Dias360 {
         }
         return (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1);
     }
+
+    /**
+     * Desglosa un total de días comerciales (base 30/360) en años/meses/días — la misma
+     * fórmula que ya usaba {@code TiempoServicioService} inline, extraída aquí para
+     * reutilizarla también en el cómputo de "tiempo efectivo" (bruto − no computables)
+     * sin duplicar la aritmética. Negativo se trata como 0 (defensivo: un total de
+     * días no computables mayor al bruto nunca debe producir un desglose negativo).
+     */
+    public static AniosMesesDias desglosar(int totalDias) {
+        final int total = Math.max(0, totalDias);
+        final int anios = total / 360;
+        final int meses = (total - anios * 360) / 30;
+        final int dias = total - anios * 360 - meses * 30;
+        return new AniosMesesDias(anios, meses, dias);
+    }
+
+    public record AniosMesesDias(int anios, int meses, int dias) {
+    }
 }

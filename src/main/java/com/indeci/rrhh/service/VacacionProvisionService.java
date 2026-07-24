@@ -63,6 +63,9 @@ public class VacacionProvisionService {
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final AuditoriaContext auditoriaContext;
     private final VacacionRepository vacacionRepository;
+    /** Self-proxy: en la provisión masiva, invoca recalcularProvisionManual A TRAVÉS del proxy
+     *  para que cada empleado corra en su propia transacción (@Transactional) y su @Auditable. */
+    private final org.springframework.beans.factory.ObjectProvider<VacacionProvisionService> selfProvider;
 
     /** Resultado de {@link #provisionar} — distingue "recién creado" de "ya existía" (idempotencia). */
     public enum ProvisionResultado { CREADO, YA_EXISTIA }
@@ -155,18 +158,23 @@ public class VacacionProvisionService {
             }
         }
 
-        // 2) Goce REAL desde las papeletas aprobadas (NO desde DIAS_GOZADOS, contaminado por
-        //    el Excel). Se excluyen las reprogramadas/sustituidas (estado != GOZADO).
-        double totalGozadoReal = vacacionRepository.findByEmpleadoIdAndActivo(empleadoId, 1).stream()
-                .filter(v -> ESTADO_GOZADO.equals(v.getEstado()) && v.getDias() != null)
-                .mapToDouble(Vacacion::getDias)
+        // 2) Gozado AUTORITATIVO = Σ DIAS_GOZADOS actual del empleado (baseline Excel importado +
+        //    incrementos FIFO por aprobación de papeletas — ver VacacionService.descontarSaldoVacacional).
+        //    Se PRESERVA (ya NO se recomputa desde papeletas): el goce importado no se reinicia y el
+        //    adelanto (goce de período aún no ganado) se conserva como deuda hasta que el período venza.
+        List<VacacionSaldo> existentes = vacacionSaldoRepository.findByEmpleadoIdAndActivo(empleadoId, 1);
+        double totalGozado = existentes.stream()
+                .mapToDouble(s -> s.getDiasGozados() != null ? s.getDiasGozados() : 0d)
                 .sum();
+        // Marcador "importado" que se conserva hacia adelante (para que "Provisionar para todos"
+        // siga identificando al empleado tras re-provisionar).
+        LocalDate fechaCorteBaseline = existentes.stream()
+                .map(VacacionSaldo::getFechaCorte).filter(java.util.Objects::nonNull).findFirst().orElse(null);
 
-        // 3) Distribución FIFO del goce real sobre los períodos válidos (más antiguo primero).
-        Map<Integer, Double> gozadoPorAnio = distribuirGozadoFifo(periodosValidos, totalGozadoReal);
+        // 3) Distribución FIFO del gozado sobre los períodos válidos (más antiguo primero).
+        Map<Integer, Double> gozadoPorAnio = distribuirGozadoFifo(periodosValidos, totalGozado);
 
         // ── RECONCILIACIÓN CON LA BD (soft-delete + insert, sin churn si ya coincide) ───────
-        List<VacacionSaldo> existentes = vacacionSaldoRepository.findByEmpleadoIdAndActivo(empleadoId, 1);
         List<CorreccionSaldoDto> cambios = new ArrayList<>();
         List<String> detalleAuditoria = new ArrayList<>();
         int sinCambios = 0;
@@ -218,6 +226,7 @@ public class VacacionProvisionService {
             nueva.setDiasGozados(gozados);
             nueva.setOrigen(ORIGEN_RECALCULO);
             nueva.setObservacion(marcador);
+            nueva.setFechaCorte(fechaCorteBaseline);
             nueva.setActivo(1);
             nueva.setCreatedAt(LocalDateTime.now());
             vacacionSaldoRepository.save(nueva);
@@ -226,12 +235,70 @@ public class VacacionProvisionService {
             log.info("Recálculo manual — empleado {} año {}: fila creada (ganados 30, gozados {})", empleadoId, anio, gozados);
         }
 
+        // Adelanto / deuda vacacional (o baseline importado aún sin período ganado):
+        // si no hay períodos válidos, se conserva UNA fila del período en curso con Corresponden=0
+        // y el gozado preservado → Saldo negativo (deuda) regularizable al vencer el período; y si el
+        // gozado es 0, mantiene al empleado en el padrón e identificable como importado (fechaCorte).
+        if (periodosValidos.isEmpty() && (totalGozado > 0d || fechaCorteBaseline != null)) {
+            int anioEnCurso = fechaIngreso.getYear() + (int) Math.max(aniosCumplidos, 0) + 1;
+            VacacionSaldo deuda = new VacacionSaldo();
+            deuda.setEmpleadoId(empleadoId);
+            deuda.setAnio(anioEnCurso);
+            deuda.setDiasGanados(0d);
+            deuda.setDiasGozados(totalGozado);
+            deuda.setOrigen(ORIGEN_RECALCULO);
+            deuda.setObservacion(marcador);
+            deuda.setFechaCorte(fechaCorteBaseline);
+            deuda.setActivo(1);
+            deuda.setCreatedAt(LocalDateTime.now());
+            vacacionSaldoRepository.save(deuda);
+            cambios.add(new CorreccionSaldoDto(anioEnCurso, 0d, 0d, totalGozado, "CREADO"));
+            detalleAuditoria.add(String.format(
+                    "año %d: deuda/adelanto (Corresponden 0, gozados preservados %.1f)", anioEnCurso, totalGozado));
+        }
+
         auditoriaContext.setDetalle(
-                "Provisionar Auto — empleado " + empleadoId + ". Sustento: " + sustento
-                        + ". Goce real (papeletas): " + totalGozadoReal
+                "Provisionar — empleado " + empleadoId + ". Sustento: " + sustento
+                        + ". Gozado preservado: " + totalGozado
                         + (detalleAuditoria.isEmpty() ? ". Sin cambios." : ". Cambios: " + String.join(" | ", detalleAuditoria)));
 
         return new RecalculoManualResultDto(cambios, sinCambios);
+    }
+
+    /**
+     * "Provisionar para todos": recalcula Corresponden (30 × períodos ganados) y CONSERVA los
+     * Gozados para TODOS los empleados con baseline vacacional importado — evita el recálculo
+     * uno por uno. Cada empleado se procesa en su PROPIA transacción (vía self-proxy; este método
+     * NO es @Transactional) para que un error puntual no aborte el lote completo.
+     */
+    @Auditable(accion = "PROVISIONAR_TODOS_IMPORTADOS")
+    public com.indeci.rrhh.dto.ProvisionMasivaResultDto provisionarTodosImportados(String sustento) {
+        if (sustento == null || sustento.isBlank()) {
+            throw new NegocioException("El sustento de la provisión masiva es obligatorio");
+        }
+        List<Long> empleadoIds = vacacionSaldoRepository.findEmpleadoIdsImportados();
+        int provisionados = 0;
+        int sinCambios = 0;
+        List<String> errores = new ArrayList<>();
+        for (Long empId : empleadoIds) {
+            try {
+                RecalculoManualResultDto r = selfProvider.getObject().recalcularProvisionManual(empId, sustento);
+                if (r.cambios().isEmpty()) {
+                    sinCambios++;
+                } else {
+                    provisionados++;
+                }
+            } catch (Exception e) {
+                String motivo = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                errores.add("Empleado " + empId + ": " + motivo);
+                log.warn("Provisión masiva — empleado {} con error: {}", empId, motivo);
+            }
+        }
+        auditoriaContext.setDetalle("Provisionar para todos (importados): " + empleadoIds.size()
+                + " empleados; " + provisionados + " provisionados; " + sinCambios + " sin cambios; "
+                + errores.size() + " errores.");
+        return new com.indeci.rrhh.dto.ProvisionMasivaResultDto(
+                empleadoIds.size(), provisionados, sinCambios, errores);
     }
 
     /**

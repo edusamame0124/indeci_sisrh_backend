@@ -326,6 +326,17 @@ public class AsistenciaImportService {
         // F3 — calendario del período: genera las FALTAS de días laborables sin marca.
         PeriodoPlanilla periodoPlan = obtenerPeriodo(periodo);
         CalendarioLaboralService.Calendario calendario = calendarioDe(periodoPlan);
+
+        // Fase 1 — RANGO CUBIERTO por esta carga: declarado por RR.HH. (request), o el detectado
+        // (mín/máx del archivo), o el mes completo como fallback. Las FALTAS por "día laborable sin
+        // marca" se generan SOLO dentro de [rangoIni, rangoFin]; los días del mes fuera del rango
+        // quedan SIN REGISTRO (no se asume falta sin datos). El rango efectivo se persiste.
+        LocalDate rangoIni = resolverRangoIni(request, importacion, periodoPlan);
+        LocalDate rangoFin = resolverRangoFin(request, importacion, periodoPlan);
+        validarRangoCubierto(rangoIni, rangoFin, periodoPlan);
+        importacion.setPeriodoDetectadoIni(rangoIni);
+        importacion.setPeriodoDetectadoFin(rangoFin);
+
         avanzar(job, 10, "Procesando empleados");
         final int totalEmpleados = porEmpleado.size();
         int iterados = 0;
@@ -343,20 +354,24 @@ public class AsistenciaImportService {
                     omitidos++;
                     continue;
                 }
-                // R2 — rectificar una asistencia VALIDADA (consumible por M05) o un periodo
-                // GENERADO exige rol autorizado (PLA_APPROVE) + motivo. D2: bloquea solo este empleado.
-                boolean requiereAutorizacion =
-                        "VALIDADA".equals(activa.getEstado()) || periodoGenerado;
-                if (requiereAutorizacion && (!autorizado || isBlank(motivo))) {
+                // R2 — rectificar asistencia ya VALIDADA (o periodo GENERADO). Decisión RR.HH.:
+                //   · VALIDADA (periodo abierto, planilla aún NO generada): basta el MOTIVO (traza),
+                //     ya NO requiere rol PLA_APPROVE (corregir aquí es seguro).
+                //   · GENERADO (planilla ya generada): sigue exigiendo rol PLA_APPROVE + motivo
+                //     (sobrescribir asistencia detrás de una planilla es riesgoso).
+                //   D2: bloquea solo este empleado. (APROBADO/CERRADO ya se bloqueó a nivel de periodo).
+                boolean requiereMotivo = "VALIDADA".equals(activa.getEstado()) || periodoGenerado;
+                boolean requiereRol = periodoGenerado;
+                if ((requiereMotivo && isBlank(motivo)) || (requiereRol && !autorizado)) {
                     bloqueados++;
                     continue;
                 }
-                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, empleadoId,
-                        entry.getValue(), motivo, usuarioActual(), autorizadoPor);
+                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, rangoIni, rangoFin,
+                        empleadoId, entry.getValue(), motivo, usuarioActual(), autorizadoPor);
                 procesados++;
             } else {
-                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, empleadoId,
-                        entry.getValue(), null, null, null);
+                guardarEmpleadoDesdeImport(importacion, calendario, periodoPlan, rangoIni, rangoFin,
+                        empleadoId, entry.getValue(), null, null, null);
                 procesados++;
             }
             iterados++;
@@ -923,10 +938,54 @@ public class AsistenciaImportService {
                 .setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
     }
 
+    // ── Fase 1 — Rango de días CUBIERTO por la carga ────────────────────────────────────
+    // Prioridad: lo declarado por RR.HH. (request) → lo detectado (mín/máx del archivo) →
+    // el mes completo (fallback / compatibilidad hacia atrás).
+    static LocalDate resolverRangoIni(AsistenciaImportConfirmRequest req,
+            AsistenciaImportacion imp, PeriodoPlanilla plan) {
+        if (req != null && req.getDiaInicio() != null) {
+            return req.getDiaInicio();
+        }
+        if (imp.getPeriodoDetectadoIni() != null) {
+            return imp.getPeriodoDetectadoIni();
+        }
+        return plan != null ? plan.getFechaInicio() : null;
+    }
+
+    static LocalDate resolverRangoFin(AsistenciaImportConfirmRequest req,
+            AsistenciaImportacion imp, PeriodoPlanilla plan) {
+        if (req != null && req.getDiaFin() != null) {
+            return req.getDiaFin();
+        }
+        if (imp.getPeriodoDetectadoFin() != null) {
+            return imp.getPeriodoDetectadoFin();
+        }
+        return plan != null ? plan.getFechaFin() : null;
+    }
+
+    /** El rango cubierto debe ser coherente y caber dentro del periodo de planilla. */
+    static void validarRangoCubierto(LocalDate ini, LocalDate fin, PeriodoPlanilla plan) {
+        if (ini == null || fin == null) {
+            return; // sin rango → aguas abajo no se generan faltas por calendario (guard existente).
+        }
+        if (fin.isBefore(ini)) {
+            throw new NegocioException(
+                    "El rango cubierto es inválido: el día fin no puede ser anterior al día inicio.");
+        }
+        if (plan != null && plan.getFechaInicio() != null && plan.getFechaFin() != null
+                && (ini.isBefore(plan.getFechaInicio()) || fin.isAfter(plan.getFechaFin()))) {
+            throw new NegocioException(String.format(
+                    "El rango cubierto (%s a %s) debe estar dentro del periodo (%s a %s).",
+                    ini, fin, plan.getFechaInicio(), plan.getFechaFin()));
+        }
+    }
+
     private void guardarEmpleadoDesdeImport(
             AsistenciaImportacion importacion,
             CalendarioLaboralService.Calendario calendario,
             PeriodoPlanilla periodoPlan,
+            LocalDate rangoIni,
+            LocalDate rangoFin,
             Long empleadoId,
             List<AsistenciaImportacionFila> filasEmpleado,
             String motivoRectificacion,
@@ -941,12 +1000,10 @@ public class AsistenciaImportService {
         // ASISTENCIA_JUSTIFICADA (tiempo completo, no descuenta). Sin papeleta, sigue OMISION.
         diasMarcados = justificarOmisiones(empleadoId, diasMarcados,
                 periodoPlan != null ? periodoPlan.getFechaFin() : null);
-        // F3 — completa con las FALTAS de días laborables sin marca (persiste como detalle).
+        // F3 — completa con las FALTAS de días laborables sin marca DENTRO del rango cubierto
+        // por la carga (Fase 1). Fuera de [rangoIni, rangoFin] los días quedan SIN REGISTRO.
         List<AsistenciaDiaDto> dias = conFaltasCalendario(
-                empleadoId, calendario,
-                periodoPlan != null ? periodoPlan.getFechaInicio() : null,
-                periodoPlan != null ? periodoPlan.getFechaFin() : null,
-                diasMarcados);
+                empleadoId, calendario, rangoIni, rangoFin, diasMarcados);
 
         BaseAsistenciaResult base = baseResolver.resolver(empleadoId);
         String estadoCabecera = resolverEstadoCabecera(filasEmpleado, dias);
@@ -1437,8 +1494,9 @@ public class AsistenciaImportService {
             int bloqueados) {
         String sufijo = "";
         if (bloqueados > 0) {
-            sufijo = " " + bloqueados + " empleado(s) quedaron bloqueados por requerir autorización"
-                    + " (rol PLA_APPROVE) y motivo de rectificación.";
+            sufijo = " " + bloqueados + " empleado(s) quedaron bloqueados: falta el MOTIVO de"
+                    + " rectificación (obligatorio para reemplazar asistencia ya validada)."
+                    + " Si la planilla del periodo ya fue GENERADA, además se requiere rol PLA_APPROVE.";
         }
         if (procesados == 0) {
             return ("No se importó ningún empleado con la estrategia seleccionada." + sufijo).trim();
