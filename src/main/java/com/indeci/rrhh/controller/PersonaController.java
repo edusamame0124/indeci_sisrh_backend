@@ -116,11 +116,17 @@ public class PersonaController {
                 personaService.actualizarMiPerfil(dto));
     }
 
-    /** Autoservicio — foto del empleado autenticado. */
+    /** Autoservicio — foto del empleado autenticado. 204 si aún no subió foto (no es un error). */
     @PreAuthorize("isAuthenticated()")
     @GetMapping(value = "/persona/me/foto", produces = MediaType.IMAGE_JPEG_VALUE)
     public ResponseEntity<byte[]> fotoMiPerfil() {
-        return ResponseEntity.ok().body(personaService.obtenerFotoMiPerfil());
+        byte[] foto = personaService.obtenerFotoMiPerfil();
+
+        if (foto == null) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok().body(foto);
     }
 
     /** Autoservicio — subir/actualizar foto del empleado autenticado. */

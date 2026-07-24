@@ -429,9 +429,19 @@ public class PersonaService {
         return mapearPersona(persona, empleado);
     }
 
+    /** Autoservicio — a diferencia de {@link #obtenerFoto}, no lanza excepción si aún no subió foto. */
     @Transactional(readOnly = true)
     public byte[] obtenerFotoMiPerfil() {
-        return obtenerFoto(resolverEmpleadoPropio().getPersonaId());
+
+        Persona persona = personaRepository
+                .findById(resolverEmpleadoPropio().getPersonaId())
+                .orElseThrow(() -> new NegocioException("Persona no encontrada"));
+
+        if (persona.getFotoPerfil() == null || persona.getFotoPerfil().isBlank()) {
+            return null;
+        }
+
+        return ftpService.descargarArchivo(persona.getFotoPerfil());
     }
 
     @Transactional
