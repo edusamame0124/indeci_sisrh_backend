@@ -6,113 +6,89 @@ import org.springframework.transaction.annotation.Transactional;
 import com.indeci.rrhh.dto.LegajoResumenDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
 
+import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.entity.Empleado;
+import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.security.util.SecurityUtil;
+
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class LegajoResumenService {
 
-    private final PersonaService personaService;
+	private final PersonaService personaService;
+	private final EmpleadoRepository empleadoRepository;
 
-    private final FormacionAcademicaService
-            formacionAcademicaService;
+	private final FormacionAcademicaService formacionAcademicaService;
+	private final CapacitacionService capacitacionService;
+	private final IdiomaService idiomaService;
+	private final ConocimientoInformaticoService conocimientoInformaticoService;
+	private final FamiliarService familiarService;
+	private final ExperienciaLaboralService experienciaLaboralExternaService;
+	private final ReconocimientoService reconocimientoService;
+	private final MedidaDisciplinariaService medidaDisciplinariaService;
+	private final FtpService ftpService;
 
-    private final CapacitacionService
-            capacitacionService;
+	@Transactional(readOnly = true)
+	public LegajoResumenDto obtenerMiLegajo() {
 
-    private final IdiomaService
-            idiomaService;
+		Long empleadoId = SecurityUtil.getEmpleadoId();
 
-    private final ConocimientoInformaticoService
-            conocimientoInformaticoService;
+		if (empleadoId == null) {
+			throw new NegocioException("El usuario no tiene un empleado vinculado");
+		}
 
-    private final FamiliarService
-            familiarService;
+		Empleado empleado = empleadoRepository.findById(empleadoId)
+				.orElseThrow(() -> new NegocioException("Empleado no encontrado"));
 
-    private final ExperienciaLaboralService
-            experienciaLaboralExternaService;
+		if (empleado.getPersonaId() == null) {
+			throw new NegocioException("El empleado no tiene una persona vinculada");
+		}
 
-    private final ReconocimientoService
-            reconocimientoService;
+		return obtener(empleado.getPersonaId());
+	}
 
-    private final MedidaDisciplinariaService
-            medidaDisciplinariaService;
+	@Transactional(readOnly = true)
+	public LegajoResumenDto obtener(Long personaId) {
 
-    private final FtpService
-            ftpService;
+		PersonaEmpleadoResponseDto persona = personaService.obtenerPorId(personaId);
 
-    @Transactional(readOnly = true)
-    public LegajoResumenDto obtener(
-            Long personaId) {
+		LegajoResumenDto dto = new LegajoResumenDto();
 
-        PersonaEmpleadoResponseDto persona =
-                personaService.obtenerPorId(
-                        personaId);
+		dto.setPersona(persona);
 
-        LegajoResumenDto dto =
-                new LegajoResumenDto();
+		// FOTO
+		if (persona.getFotoPerfil() != null && !persona.getFotoPerfil().isBlank()) {
 
-        dto.setPersona(persona);
+			try {
 
-        // FOTO
-        if(persona.getFotoPerfil() != null
-                && !persona.getFotoPerfil().isBlank()) {
+				dto.setFotoPerfil(ftpService.descargarArchivo(persona.getFotoPerfil()));
 
-            try {
+			} catch (Exception ex) {
 
-                dto.setFotoPerfil(
-                        ftpService.descargarArchivo(
-                                persona.getFotoPerfil()));
+				dto.setFotoPerfil(null);
+			}
+		}
 
-            } catch (Exception ex) {
+		Long empleadoId = persona.getEmpleadoId();
 
-                dto.setFotoPerfil(null);
-            }
-        }
+		dto.setFormacionAcademica(formacionAcademicaService.listarPorEmpleado(empleadoId));
 
-        Long empleadoId =
-                persona.getEmpleadoId();
+		dto.setCapacitaciones(capacitacionService.listarPorEmpleado(empleadoId));
 
-        dto.setFormacionAcademica(
-                formacionAcademicaService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setIdiomas(idiomaService.listarPorEmpleado(empleadoId));
 
-        dto.setCapacitaciones(
-                capacitacionService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setConocimientosInformaticos(conocimientoInformaticoService.listarPorEmpleado(empleadoId));
 
-        dto.setIdiomas(
-                idiomaService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setFamiliares(familiarService.listarPorEmpleado(empleadoId));
 
-        dto.setConocimientosInformaticos(
-                conocimientoInformaticoService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setExperienciaLaboralExterna(experienciaLaboralExternaService.listarPorEmpleado(empleadoId));
 
-        dto.setFamiliares(
-                familiarService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setReconocimientos(reconocimientoService.listarPorEmpleado(empleadoId));
 
-        dto.setExperienciaLaboralExterna(
-                experienciaLaboralExternaService
-                        .listarPorEmpleado(
-                                empleadoId));
+		dto.setMedidasDisciplinarias(medidaDisciplinariaService.listarPorEmpleado(empleadoId));
 
-        dto.setReconocimientos(
-                reconocimientoService
-                        .listarPorEmpleado(
-                                empleadoId));
-
-        dto.setMedidasDisciplinarias(
-                medidaDisciplinariaService
-                        .listarPorEmpleado(
-                                empleadoId));
-
-        return dto;
-    }
+		return dto;
+	}
 }

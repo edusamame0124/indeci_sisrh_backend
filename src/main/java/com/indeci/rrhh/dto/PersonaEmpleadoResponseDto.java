@@ -1,6 +1,6 @@
 package com.indeci.rrhh.dto;
 
-import java.time.LocalDate;
+//import java.time.LocalDate;
 import java.util.Date;
 
 import lombok.Data;

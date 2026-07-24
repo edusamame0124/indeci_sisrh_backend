@@ -17,8 +17,10 @@ import java.util.List;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+
+import com.indeci.rrhh.dto.MiPerfilUpdateDto;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/rrhh")
@@ -63,7 +65,37 @@ public class PersonaController {
                 "Foto actualizada",
                 null);
     }
+    @GetMapping(
+            value = "/persona/me/foto",
+            produces = MediaType.IMAGE_JPEG_VALUE
+    )
+    public ResponseEntity<byte[]> obtenerFotoMiPerfil() {
 
+        byte[] archivo =
+                personaService.obtenerFotoMiPerfil();
+
+        return ResponseEntity
+                .ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .body(archivo);
+    }
+    @PostMapping(
+            value = "/persona/me/foto",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<Void> actualizarFotoMiPerfil(
+            @RequestPart("file") MultipartFile file
+    ) {
+
+        personaService.actualizarFotoMiPerfil(file);
+
+        return new ApiResponse<>(
+                "OK",
+                "Foto de perfil actualizada correctamente",
+                null
+        );
+    }
+    
     // CREAR
     @PostMapping("/persona")
     @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
@@ -95,6 +127,18 @@ public class PersonaController {
                 "OK",
                 "Detalle del empleado logueado",
                 personaService.obtenerMiPerfil());
+    }
+    @PutMapping("/persona/me")
+    public ApiResponse<PersonaEmpleadoResponseDto> actualizarMiPerfil(
+            @Valid @RequestBody MiPerfilUpdateDto dto) {
+
+        PersonaEmpleadoResponseDto perfilActualizado =
+                personaService.actualizarMiPerfil(dto);
+
+        return new ApiResponse<>(
+                "OK",
+                "Perfil actualizado correctamente",
+                perfilActualizado);
     }
     // DETALLE
     @GetMapping("/persona/{id}")

@@ -20,7 +20,16 @@ import lombok.RequiredArgsConstructor;
 public class LegajoResumenController {
 
     private final LegajoResumenService service;
+    
+    @GetMapping("/me")
+    public ApiResponse<LegajoResumenDto> obtenerMiLegajo() {
 
+        return new ApiResponse<>(
+                "OK",
+                "Legajo del empleado autenticado",
+                service.obtenerMiLegajo()
+        );
+    }
     @GetMapping("/{personaId}")
     public ApiResponse<LegajoResumenDto>
     obtener(
@@ -33,4 +42,5 @@ public class LegajoResumenController {
                 service.obtener(
                         personaId));
     }
+
 }

@@ -38,6 +38,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import com.indeci.security.util.SecurityUtil;
 
+import com.indeci.rrhh.dto.MiPerfilUpdateDto;
 
 @Service
 @RequiredArgsConstructor
@@ -101,7 +102,51 @@ public class PersonaService {
 
         personaRepository.save(persona);
     }
-    
+    @Transactional(readOnly = true)
+    public byte[] obtenerFotoMiPerfil() {
+
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado"
+            );
+        }
+
+        Empleado empleado = empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"
+                        )
+                );
+
+        return obtenerFoto(empleado.getPersonaId());
+    }
+    @Transactional
+    public void actualizarFotoMiPerfil(MultipartFile file) {
+
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado"
+            );
+        }
+
+        Empleado empleado = empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"
+                        )
+                );
+
+        actualizarFoto(
+                empleado.getPersonaId(),
+                file
+        );
+    }
     @Auditable(accion = "CREAR_PERSONA_EMPLEADO")
     public void guardar(PersonaEmpleadoDto dto) {
 
@@ -394,6 +439,7 @@ public class PersonaService {
         
         return dto;
     }
+    @Transactional(readOnly = true)
     public PersonaEmpleadoResponseDto obtenerMiPerfil() {
 
         Long empleadoId = SecurityUtil.getEmpleadoId();
@@ -415,4 +461,88 @@ public class PersonaService {
 
         return mapearPersona(persona, empleado);
     }
+    
+    @Auditable(accion = "ACTUALIZAR_MI_PERFIL")
+    @Transactional
+    public PersonaEmpleadoResponseDto actualizarMiPerfil(
+            MiPerfilUpdateDto dto) {
+
+        Long empleadoId = SecurityUtil.getEmpleadoId();
+
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "El usuario no tiene un empleado vinculado. "
+                    + "Solicite al administrador que vincule su cuenta.");
+        }
+
+        Empleado empleado = empleadoRepository
+                .findById(empleadoId)
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Empleado no encontrado"));
+
+        Persona persona = personaRepository
+                .findById(empleado.getPersonaId())
+                .orElseThrow(() ->
+                        new NegocioException(
+                                "Persona no encontrada"));
+
+        String correoPersonal =
+                limpiarTexto(dto.getCorreoPersonal());
+
+        if (correoPersonal != null
+                && !correoPersonal.equalsIgnoreCase(
+                        persona.getEmail())
+                && personaRepository.existsByEmail(
+                        correoPersonal)) {
+
+            throw new NegocioException(
+                    "El correo personal ya está registrado");
+        }
+
+        persona.setTelefono(
+                limpiarTexto(dto.getTelefono()));
+
+        persona.setEmail(correoPersonal);
+
+        persona.setDireccion(
+                limpiarTexto(dto.getDireccion()));
+
+        persona.setContactoEmergenciaNombre(
+                limpiarTexto(
+                        dto.getContactoEmergenciaNombre()));
+
+        persona.setContactoEmergenciaParentesco(
+                limpiarTexto(
+                        dto.getContactoEmergenciaParentesco()));
+
+        persona.setContactoEmergenciaTelefono(
+                limpiarTexto(
+                        dto.getContactoEmergenciaTelefono()));
+
+        persona.setUpdatedAt(LocalDateTime.now());
+
+        personaRepository.save(persona);
+
+        auditoriaContext.setDetalle(
+                "Actualización de perfil del empleado ID: "
+                + empleadoId);
+
+        return mapearPersona(persona, empleado);
+    }
+
+    private String limpiarTexto(String valor) {
+
+        if (valor == null) {
+            return null;
+        }
+
+        String valorLimpio = valor.trim();
+
+        return valorLimpio.isEmpty()
+                ? null
+                : valorLimpio;
+    }
+
+    
 }
