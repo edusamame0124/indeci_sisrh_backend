@@ -3,10 +3,9 @@ package com.indeci.rrhh.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.LegajoResumenDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
-
-import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.security.util.SecurityUtil;
@@ -17,78 +16,127 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class LegajoResumenService {
 
-	private final PersonaService personaService;
-	private final EmpleadoRepository empleadoRepository;
+    private final PersonaService personaService;
 
-	private final FormacionAcademicaService formacionAcademicaService;
-	private final CapacitacionService capacitacionService;
-	private final IdiomaService idiomaService;
-	private final ConocimientoInformaticoService conocimientoInformaticoService;
-	private final FamiliarService familiarService;
-	private final ExperienciaLaboralService experienciaLaboralExternaService;
-	private final ReconocimientoService reconocimientoService;
-	private final MedidaDisciplinariaService medidaDisciplinariaService;
-	private final FtpService ftpService;
+    private final EmpleadoRepository empleadoRepository;
 
-	@Transactional(readOnly = true)
-	public LegajoResumenDto obtenerMiLegajo() {
+    private final FormacionAcademicaService
+            formacionAcademicaService;
 
-		Long empleadoId = SecurityUtil.getEmpleadoId();
+    private final CapacitacionService
+            capacitacionService;
 
-		if (empleadoId == null) {
-			throw new NegocioException("El usuario no tiene un empleado vinculado");
-		}
+    private final IdiomaService
+            idiomaService;
 
-		Empleado empleado = empleadoRepository.findById(empleadoId)
-				.orElseThrow(() -> new NegocioException("Empleado no encontrado"));
+    private final ConocimientoInformaticoService
+            conocimientoInformaticoService;
 
-		if (empleado.getPersonaId() == null) {
-			throw new NegocioException("El empleado no tiene una persona vinculada");
-		}
+    private final FamiliarService
+            familiarService;
 
-		return obtener(empleado.getPersonaId());
-	}
+    private final ExperienciaLaboralService
+            experienciaLaboralExternaService;
 
-	@Transactional(readOnly = true)
-	public LegajoResumenDto obtener(Long personaId) {
+    private final ReconocimientoService
+            reconocimientoService;
 
-		PersonaEmpleadoResponseDto persona = personaService.obtenerPorId(personaId);
+    private final MedidaDisciplinariaService
+            medidaDisciplinariaService;
 
-		LegajoResumenDto dto = new LegajoResumenDto();
+    private final FtpService
+            ftpService;
 
-		dto.setPersona(persona);
+    /** Autoservicio — resuelve la persona del empleado autenticado (claim {@code empleadoId} del JWT). */
+    @Transactional(readOnly = true)
+    public LegajoResumenDto obtenerPropio() {
 
-		// FOTO
-		if (persona.getFotoPerfil() != null && !persona.getFotoPerfil().isBlank()) {
+        Long empleadoId = SecurityUtil.getEmpleadoId();
 
-			try {
+        if (empleadoId == null) {
+            throw new NegocioException(
+                    "Su usuario no tiene un empleado vinculado. Contacte al administrador.");
+        }
 
-				dto.setFotoPerfil(ftpService.descargarArchivo(persona.getFotoPerfil()));
+        Empleado empleado = empleadoRepository.findById(empleadoId)
+                .orElseThrow(() -> new NegocioException(
+                        "No se encontró el empleado vinculado a su usuario."));
 
-			} catch (Exception ex) {
+        return obtener(empleado.getPersonaId());
+    }
 
-				dto.setFotoPerfil(null);
-			}
-		}
+    @Transactional(readOnly = true)
+    public LegajoResumenDto obtener(
+            Long personaId) {
 
-		Long empleadoId = persona.getEmpleadoId();
+        PersonaEmpleadoResponseDto persona =
+                personaService.obtenerPorId(
+                        personaId);
 
-		dto.setFormacionAcademica(formacionAcademicaService.listarPorEmpleado(empleadoId));
+        LegajoResumenDto dto =
+                new LegajoResumenDto();
 
-		dto.setCapacitaciones(capacitacionService.listarPorEmpleado(empleadoId));
+        dto.setPersona(persona);
 
-		dto.setIdiomas(idiomaService.listarPorEmpleado(empleadoId));
+        // FOTO
+        if(persona.getFotoPerfil() != null
+                && !persona.getFotoPerfil().isBlank()) {
 
-		dto.setConocimientosInformaticos(conocimientoInformaticoService.listarPorEmpleado(empleadoId));
+            try {
 
-		dto.setFamiliares(familiarService.listarPorEmpleado(empleadoId));
+                dto.setFotoPerfil(
+                        ftpService.descargarArchivo(
+                                persona.getFotoPerfil()));
 
-		dto.setExperienciaLaboralExterna(experienciaLaboralExternaService.listarPorEmpleado(empleadoId));
+            } catch (Exception ex) {
 
-		dto.setReconocimientos(reconocimientoService.listarPorEmpleado(empleadoId));
+                dto.setFotoPerfil(null);
+            }
+        }
 
-		dto.setMedidasDisciplinarias(medidaDisciplinariaService.listarPorEmpleado(empleadoId));
+        Long empleadoId =
+                persona.getEmpleadoId();
 
-		return dto;
-	}
+        dto.setFormacionAcademica(
+                formacionAcademicaService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setCapacitaciones(
+                capacitacionService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setIdiomas(
+                idiomaService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setConocimientosInformaticos(
+                conocimientoInformaticoService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setFamiliares(
+                familiarService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setExperienciaLaboralExterna(
+                experienciaLaboralExternaService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setReconocimientos(
+                reconocimientoService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        dto.setMedidasDisciplinarias(
+                medidaDisciplinariaService
+                        .listarPorEmpleado(
+                                empleadoId));
+
+        return dto;
+    }
 }

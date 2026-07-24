@@ -4,6 +4,7 @@ import com.indeci.common.dto.ApiResponse;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.indeci.rrhh.dto.MiPerfilUpdateDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
 import com.indeci.rrhh.dto.PersonaResumenDto;
@@ -17,10 +18,8 @@ import java.util.List;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-
-import com.indeci.rrhh.dto.MiPerfilUpdateDto;
-import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/rrhh")
@@ -65,37 +64,7 @@ public class PersonaController {
                 "Foto actualizada",
                 null);
     }
-    @GetMapping(
-            value = "/persona/me/foto",
-            produces = MediaType.IMAGE_JPEG_VALUE
-    )
-    public ResponseEntity<byte[]> obtenerFotoMiPerfil() {
 
-        byte[] archivo =
-                personaService.obtenerFotoMiPerfil();
-
-        return ResponseEntity
-                .ok()
-                .contentType(MediaType.IMAGE_JPEG)
-                .body(archivo);
-    }
-    @PostMapping(
-            value = "/persona/me/foto",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
-    public ApiResponse<Void> actualizarFotoMiPerfil(
-            @RequestPart("file") MultipartFile file
-    ) {
-
-        personaService.actualizarFotoMiPerfil(file);
-
-        return new ApiResponse<>(
-                "OK",
-                "Foto de perfil actualizada correctamente",
-                null
-        );
-    }
-    
     // CREAR
     @PostMapping("/persona")
     @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE + " or " + SisrhSecurityExpressions.ADM_USERS)
@@ -121,6 +90,13 @@ public class PersonaController {
         if (page < 0) page = 0;
         return new ApiResponse<>("OK", "Listado paginado", personaService.listarPaginado(q, page, size));
     }
+    /**
+     * Autoservicio: el empleado resuelve SU PROPIO perfil vía JWT (SecurityUtil),
+     * no recibe un id del cliente. Override necesario: EMP_READ (clase) es para
+     * personal RRHH que consulta a OTROS empleados; el rol EMPLEADO no lo tiene
+     * y no debe tenerlo (le daría acceso a /persona/{id} de cualquier persona).
+     */
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/persona/me")
     public ApiResponse<PersonaEmpleadoResponseDto> obtenerMiPerfil() {
         return new ApiResponse<>(
@@ -128,17 +104,31 @@ public class PersonaController {
                 "Detalle del empleado logueado",
                 personaService.obtenerMiPerfil());
     }
+
+    /** Autoservicio — solo campos de contacto (ver MiPerfilUpdateDto). */
+    @PreAuthorize("isAuthenticated()")
     @PutMapping("/persona/me")
     public ApiResponse<PersonaEmpleadoResponseDto> actualizarMiPerfil(
-            @Valid @RequestBody MiPerfilUpdateDto dto) {
-
-        PersonaEmpleadoResponseDto perfilActualizado =
-                personaService.actualizarMiPerfil(dto);
-
+            @RequestBody MiPerfilUpdateDto dto) {
         return new ApiResponse<>(
                 "OK",
-                "Perfil actualizado correctamente",
-                perfilActualizado);
+                "Perfil actualizado",
+                personaService.actualizarMiPerfil(dto));
+    }
+
+    /** Autoservicio — foto del empleado autenticado. */
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping(value = "/persona/me/foto", produces = MediaType.IMAGE_JPEG_VALUE)
+    public ResponseEntity<byte[]> fotoMiPerfil() {
+        return ResponseEntity.ok().body(personaService.obtenerFotoMiPerfil());
+    }
+
+    /** Autoservicio — subir/actualizar foto del empleado autenticado. */
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping(value = "/persona/me/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Void> subirFotoMiPerfil(@RequestPart("file") MultipartFile file) {
+        personaService.actualizarFotoMiPerfil(file);
+        return new ApiResponse<>("OK", "Foto actualizada", null);
     }
     // DETALLE
     @GetMapping("/persona/{id}")

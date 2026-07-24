@@ -20,16 +20,24 @@ import lombok.RequiredArgsConstructor;
 public class LegajoResumenController {
 
     private final LegajoResumenService service;
-    
+
+    /**
+     * Autoservicio — legajo del empleado autenticado. Debe mapearse antes de "/{personaId}".
+     * Override necesario: EMP_READ (clase) es para personal RRHH que consulta a OTROS
+     * empleados; el rol EMPLEADO no lo tiene y no debe tenerlo (le daría acceso al
+     * legajo de cualquier persona vía /{personaId}).
+     */
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
-    public ApiResponse<LegajoResumenDto> obtenerMiLegajo() {
+    public ApiResponse<LegajoResumenDto>
+    obtenerPropio() {
 
         return new ApiResponse<>(
                 "OK",
-                "Legajo del empleado autenticado",
-                service.obtenerMiLegajo()
-        );
+                "Resumen de legajo",
+                service.obtenerPropio());
     }
+
     @GetMapping("/{personaId}")
     public ApiResponse<LegajoResumenDto>
     obtener(
@@ -42,5 +50,4 @@ public class LegajoResumenController {
                 service.obtener(
                         personaId));
     }
-
 }
