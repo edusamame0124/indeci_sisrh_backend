@@ -150,7 +150,13 @@
     <artifactId>commons-net</artifactId>
     <version>3.9.0</version>
 </dependency>
-        
+
+        <!-- Pooling de conexiones FTP (FtpService) — versión gestionada por spring-boot-starter-parent -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+
         <dependency>
     <groupId>net.sf.jasperreports</groupId>
     <artifactId>jasperreports</artifactId>
