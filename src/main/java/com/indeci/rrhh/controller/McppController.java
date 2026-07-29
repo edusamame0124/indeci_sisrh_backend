@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/mcpp")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class McppController {
 
     private final McppService mcppService;

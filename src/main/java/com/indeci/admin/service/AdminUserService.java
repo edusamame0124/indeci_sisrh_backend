@@ -45,11 +45,13 @@ import com.indeci.sistema.repository.SistemaRolRepository;
 import com.indeci.sistema.repository.UsuarioSistemaRepository;
 import com.indeci.user.entity.Permiso;
 import com.indeci.user.entity.Rol;
+import com.indeci.user.entity.RolLegacy;
 import com.indeci.user.entity.User;
 import com.indeci.user.entity.UsuarioPermiso;
 import com.indeci.user.entity.UsuarioPermisoDeny;
 import com.indeci.user.entity.UsuarioRol;
 import com.indeci.user.repository.PermisoRepository;
+import com.indeci.user.repository.RolLegacyRepository;
 import com.indeci.user.repository.RolRepository;
 import com.indeci.user.repository.UserRepository;
 import com.indeci.user.repository.UsuarioPermisoDenyRepository;
@@ -70,6 +72,7 @@ public class AdminUserService {
     private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
     private final UsuarioPermisoRepository usuarioPermisoRepository;
     private final RolRepository rolRepository;
+    private final RolLegacyRepository rolLegacyRepository;
     private final PermisoRepository permisoRepository;
     private final PasswordEncoder passwordEncoder;
     private final SistemaRepository sistemaRepository;
@@ -86,8 +89,11 @@ public class AdminUserService {
     @Value("${indeci.admin.new-user-default-role-codigo:}")
     private String newUserDefaultRoleCodigo;
 
-    /** FK legacy USERS.ROLE_ID → catálogo padre (distinto del rol en SS_USUARIO_ROL). */
-    @Value("${indeci.admin.new-user-legacy-role-codigo:ADMIN}")
+    /**
+     * FK legacy USERS.ROLE_ID → GESTIONRRHH.ROLES (NAME), catálogo de 4 filas
+     * sin relación con SS_ROL. Ver resolveLegacyUsersRoleId().
+     */
+    @Value("${indeci.admin.new-user-legacy-role-codigo:Administrador}")
     private String newUserLegacyRoleCodigo;
 
     @Transactional(readOnly = true)
@@ -264,19 +270,20 @@ public class AdminUserService {
     }
 
     /**
-     * USERS.ROLE_ID tiene FK legacy (FK_USERS_USERS_IBFK_1). Los roles nuevos Fase 1
-     * pueden no existir en esa tabla padre; se usa un código histórico (ADMIN).
-     * Los permisos reales vienen de SS_USUARIO_ROL.
+     * USERS.ROLE_ID tiene FK legacy (FK_USERS_USERS_IBFK_1) hacia GESTIONRRHH.ROLES
+     * (id, name — 4 filas: Administrador/Empleado/Branch Admin/Admin Licencias), una
+     * tabla ajena al catálogo Fase 1 (SS_ROL). Los permisos reales del JWT vienen de
+     * SS_USUARIO_ROL/SS_ROL_PERMISO, no de esta columna.
      */
     private Long resolveLegacyUsersRoleId() {
         String raw = newUserLegacyRoleCodigo != null ? newUserLegacyRoleCodigo.trim() : "";
-        final String cod = raw.isEmpty() ? "ADMIN" : raw;
-        return rolRepository.findFirstByCodigoIgnoreCase(cod)
-                .map(Rol::getId)
+        final String nombre = raw.isEmpty() ? "Administrador" : raw;
+        return rolLegacyRepository.findFirstByNameIgnoreCase(nombre)
+                .map(RolLegacy::getId)
                 .orElseThrow(() -> new NegocioException(
                         "El rol legacy para USERS.ROLE_ID ("
-                                + cod
-                                + ") no existe. Revise indeci.admin.new-user-legacy-role-codigo."));
+                                + nombre
+                                + ") no existe en GESTIONRRHH.ROLES. Revise indeci.admin.new-user-legacy-role-codigo."));
     }
 
     private Long resolveNewUserDefaultRolId() {

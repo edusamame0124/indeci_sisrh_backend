@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/export-archivo")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class ExportArchivoController {
 
     private final ExportLogService exportLog;

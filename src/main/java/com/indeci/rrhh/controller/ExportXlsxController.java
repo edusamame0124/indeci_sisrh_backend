@@ -41,7 +41,7 @@ public class ExportXlsxController {
      * Requiere el mismo permiso que ver movimientos de planilla.
      */
     @GetMapping("/xlsx")
-    @PreAuthorize("hasAnyAuthority('PLA_READ','PLA_WRITE','ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('PLA_READ','PLA_WRITE','ROLE_SUPER_ADMIN')")
     public ResponseEntity<byte[]> descargarXlsx(@RequestParam String periodo) {
         byte[] bytes = xlsxService.generarYRegistrar(periodo);
         String filename = "planilla_consolidada_" + periodo + ".xlsx";
@@ -59,7 +59,7 @@ public class ExportXlsxController {
      * remunerativos → requiere PLA_WRITE (PLA_READ NO autoriza).
      */
     @GetMapping("/cas-consolidada")
-    @PreAuthorize("hasAnyAuthority('PLA_WRITE','ROLE_ADMIN', 'ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('PLA_WRITE','ROLE_SUPER_ADMIN')")
     public ResponseEntity<byte[]> descargarCasConsolidada(@RequestParam String periodo) {
         byte[] bytes = casConsolidadaService.generarYRegistrar(periodo);
         String filename = "planilla-cas-consolidada-" + periodo + ".xlsx";
@@ -76,7 +76,7 @@ public class ExportXlsxController {
      * Útil para que el analista sepa cuántas veces se generó y con qué hash.
      */
     @GetMapping("/historial")
-    @PreAuthorize("hasAnyAuthority('PLA_READ','PLA_WRITE','ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('PLA_READ','PLA_WRITE','ROLE_SUPER_ADMIN')")
     public List<ExportHistorialDto> historial(@RequestParam String periodo) {
         return exportRepo.findByPeriodoOrderByFechaGeneradoDesc(periodo)
                 .stream()

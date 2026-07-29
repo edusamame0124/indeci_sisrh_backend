@@ -17,9 +17,12 @@ import java.util.List;
 
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.MediaType;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/rrhh")
@@ -116,17 +119,46 @@ public class PersonaController {
                 personaService.actualizarMiPerfil(dto));
     }
 
-    /** Autoservicio — foto del empleado autenticado. 204 si aún no subió foto (no es un error). */
+    /**
+     * Autoservicio — foto del empleado autenticado. 204 si aún no subió foto (no es un error).
+     *
+     * <p>Cacheable en el navegador: la foto cambia solo cuando el empleado sube una nueva,
+     * así que se sirve con {@code Cache-Control}/{@code ETag} basado en la ruta almacenada
+     * (que incluye el timestamp de subida). Con el ETag vigente, el navegador ni siquiera
+     * reenvía el body en la revalidación (304) — y dentro de la ventana de {@code max-age}
+     * no vuelve a pedirlo en absoluto. Ninguno de los dos casos toca el FTP.
+     */
     @PreAuthorize("isAuthenticated()")
     @GetMapping(value = "/persona/me/foto", produces = MediaType.IMAGE_JPEG_VALUE)
-    public ResponseEntity<byte[]> fotoMiPerfil() {
+    public ResponseEntity<byte[]> fotoMiPerfil(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+
+        String ruta = personaService.obtenerRutaFotoMiPerfil();
+
+        if (ruta == null || ruta.isBlank()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        String etag = Integer.toHexString(ruta.hashCode());
+        CacheControl cacheControl = CacheControl.maxAge(Duration.ofDays(7)).cachePrivate();
+
+        if (("\"" + etag + "\"").equals(ifNoneMatch)) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
+                    .cacheControl(cacheControl)
+                    .eTag(etag)
+                    .build();
+        }
+
         byte[] foto = personaService.obtenerFotoMiPerfil();
 
         if (foto == null) {
             return ResponseEntity.noContent().build();
         }
 
-        return ResponseEntity.ok().body(foto);
+        return ResponseEntity.ok()
+                .cacheControl(cacheControl)
+                .eTag(etag)
+                .body(foto);
     }
 
     /** Autoservicio — subir/actualizar foto del empleado autenticado. */

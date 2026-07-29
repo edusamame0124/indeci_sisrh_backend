@@ -62,12 +62,22 @@ public class LegajoResumenService {
                 .orElseThrow(() -> new NegocioException(
                         "No se encontró el empleado vinculado a su usuario."));
 
-        return obtener(empleado.getPersonaId());
+        // Autoservicio: sin foto acá — el frontend la trae de /persona/me/foto
+        // (mismo endpoint que Mi Perfil). Evita pagar el round-trip FTP dentro
+        // de este endpoint agregado, que ya hace 8 consultas más.
+        return obtener(empleado.getPersonaId(), false);
     }
 
+    /** Operativo RRHH — mantiene la foto embebida (comportamiento histórico, sin cambios). */
     @Transactional(readOnly = true)
     public LegajoResumenDto obtener(
             Long personaId) {
+        return obtener(personaId, true);
+    }
+
+    private LegajoResumenDto obtener(
+            Long personaId,
+            boolean incluirFoto) {
 
         PersonaEmpleadoResponseDto persona =
                 personaService.obtenerPorId(
@@ -79,7 +89,8 @@ public class LegajoResumenService {
         dto.setPersona(persona);
 
         // FOTO
-        if(persona.getFotoPerfil() != null
+        if(incluirFoto
+                && persona.getFotoPerfil() != null
                 && !persona.getFotoPerfil().isBlank()) {
 
             try {

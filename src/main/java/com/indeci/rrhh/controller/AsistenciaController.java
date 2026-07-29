@@ -32,10 +32,15 @@ import org.springframework.data.web.PageableDefault;
 
 import java.time.LocalDate;
 
+/**
+ * Asistencia (M04). La autorización se declara <b>por método</b>, no a nivel de clase:
+ * {@code /mis-asistencias} es autoservicio del propio empleado y debe seguir abierto a
+ * cualquier usuario autenticado, mientras el resto exige la familia {@code ASI_*}
+ * (rol ASISTENCIA / PLANILLA), que sustituye al antiguo {@code EMP_*}.
+ */
 @RestController
 @RequestMapping("/api/rrhh/asistencia")
 @RequiredArgsConstructor
-//@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class AsistenciaController {
 
     private final AsistenciaService service;
@@ -44,6 +49,7 @@ public class AsistenciaController {
 
     /** Consulta de asistencia por rango [fechaInicio, fechaFin] y filtros opcionales (DNI, nombre). */
     @GetMapping("/diaria")
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
     public ApiResponse<Page<AsistenciaDiariaRowDto>> listarDiaria(
             @RequestParam LocalDate fechaInicio,
             @RequestParam(required = false) LocalDate fechaFin,
@@ -56,6 +62,7 @@ public class AsistenciaController {
     
     /** Detalle diario de una importación (lote) — módulo de detalle del historial (solo lectura). */
     @GetMapping("/importacion/{importacionId}/diaria")
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
     public ApiResponse<Page<AsistenciaDiariaRowDto>> listarPorImportacion(
             @PathVariable Long importacionId,
             @RequestParam(required = false) String dni,
@@ -66,7 +73,9 @@ public class AsistenciaController {
                 service.listarPorImportacion(importacionId, dni, q, tipoDia, pageable));
     }
 
+    /** Autoservicio: el empleado consulta SU propia asistencia. No exige permisos ASI_*. */
     @GetMapping("/mis-asistencias")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<Page<AsistenciaDiariaRowDto>> misAsistencias(
             @RequestParam LocalDate fechaInicio,
             @RequestParam LocalDate fechaFin,
@@ -83,7 +92,7 @@ public class AsistenciaController {
 
     /** Edición puntual de un día desde consulta diaria. */
     @PatchMapping("/diaria/{detalleId}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.ASI_WRITE)
     public ApiResponse<AsistenciaDiariaRowDto> editarDia(
             @PathVariable Long detalleId,
             @RequestBody AsistenciaDiariaEditDto dto) {
@@ -92,6 +101,7 @@ public class AsistenciaController {
     }
 
     @GetMapping("/{empleadoId}/{periodo}")
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
     public ApiResponse<AsistenciaResponseDto> obtener(
             @PathVariable Long empleadoId,
             @PathVariable String periodo) {
@@ -101,7 +111,7 @@ public class AsistenciaController {
 
     /** Recalcula tardanza (desde marcas + jornada vigente) y descuentos del empleado/periodo. */
     @PostMapping("/{empleadoId}/{periodo}/recalcular")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.ASI_WRITE)
     public ApiResponse<AsistenciaResponseDto> recalcular(
             @PathVariable Long empleadoId,
             @PathVariable String periodo) {
@@ -111,14 +121,14 @@ public class AsistenciaController {
     }
 
     @PostMapping
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.ASI_WRITE)
     public ApiResponse<Void> guardar(@RequestBody AsistenciaGuardarDto dto) {
         service.guardar(dto);
         return new ApiResponse<>("OK", "Asistencia registrada", null);
     }
 
     @GetMapping("/{empleadoId}/{periodo}/pdf")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
     public ResponseEntity<byte[]> pdf(
             @PathVariable Long empleadoId,
             @PathVariable String periodo) {

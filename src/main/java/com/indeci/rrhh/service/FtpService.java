@@ -1,8 +1,8 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,11 +15,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Almacenamiento de legajo: FTP institucional o disco local (fallback dev).
+ * Almacenamiento de legajo: FTP institucional (vía {@link FtpConnectionPool}) o disco
+ * local (fallback dev).
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class FtpService {
+
+    private final FtpConnectionPool ftpConnectionPool;
 
     @Value("${ftp.host}")
     private String host;
@@ -59,9 +63,10 @@ public class FtpService {
         }
 
         FTPClient ftp = null;
+        boolean conexionValida = false;
 
         try {
-            ftp = conectar();
+            ftp = ftpConnectionPool.borrow();
 
             String rutaCompleta = basePath + carpeta;
             crearDirectorios(ftp, rutaCompleta);
@@ -75,6 +80,7 @@ public class FtpService {
                 }
             }
 
+            conexionValida = true;
             return rutaCompleta + "/" + nombreFinal;
 
         } catch (NegocioException e) {
@@ -85,7 +91,7 @@ public class FtpService {
                     "No se pudo guardar el sustento documental. "
                             + "Verifique la conexión FTP o use almacenamiento local en desarrollo.");
         } finally {
-            desconectar(ftp);
+            liberar(ftp, conexionValida);
         }
     }
     
@@ -128,10 +134,11 @@ public class FtpService {
         }
 
         FTPClient ftp = null;
+        boolean conexionValida = false;
 
         try {
 
-            ftp = conectar();
+            ftp = ftpConnectionPool.borrow();
 
             String rutaCompleta =
                     basePath + carpeta;
@@ -159,6 +166,7 @@ public class FtpService {
                 }
             }
 
+            conexionValida = true;
             return rutaCompleta
                     + "/"
                     + nombreFinal;
@@ -170,7 +178,7 @@ public class FtpService {
 
         } finally {
 
-            desconectar(ftp);
+            liberar(ftp, conexionValida);
         }
     }
 
@@ -180,9 +188,10 @@ public class FtpService {
         }
 
         FTPClient ftp = null;
+        boolean conexionValida = false;
 
         try {
-            ftp = conectar();
+            ftp = ftpConnectionPool.borrow();
 
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             boolean ok = ftp.retrieveFile(rutaArchivo, output);
@@ -192,6 +201,7 @@ public class FtpService {
                         "No se encontró el documento en el servidor de archivos.");
             }
 
+            conexionValida = true;
             return output.toByteArray();
 
         } catch (NegocioException e) {
@@ -201,7 +211,7 @@ public class FtpService {
             throw new NegocioException(
                     "No se pudo descargar el sustento documental.");
         } finally {
-            desconectar(ftp);
+            liberar(ftp, conexionValida);
         }
     }
 
@@ -252,24 +262,20 @@ public class FtpService {
         }
     }
 
-    private FTPClient conectar() throws Exception {
-        FTPClient ftp = new FTPClient();
-        ftp.connect(host, port);
-        log.debug("FTP reply: {}", ftp.getReplyString());
-
-        boolean login = ftp.login(user, password);
-        if (!login) {
-            throw new NegocioException(
-                    "No se pudo autenticar en el servidor FTP. "
-                            + "Configure INDECI_FTP_USER e INDECI_FTP_PASSWORD.");
+    /**
+     * Libera la conexión tomada del pool. Si la operación terminó bien, vuelve al pool
+     * para reutilizarse; si hubo una excepción a mitad de uso, se invalida (nunca se
+     * reutiliza una sesión FTP en estado dudoso).
+     */
+    private void liberar(FTPClient ftp, boolean conexionValida) {
+        if (ftp == null) {
+            return;
         }
-
-        ftp.enterLocalPassiveMode();
-        ftp.setFileType(FTP.BINARY_FILE_TYPE);
-        // Buffer amplio → transferencia más rápida (papeletas/sustentos). El costo dominante
-        // sigue siendo el handshake de conexión por descarga (ver nota de arquitectura).
-        ftp.setBufferSize(1024 * 1024);
-        return ftp;
+        if (conexionValida) {
+            ftpConnectionPool.devolver(ftp);
+        } else {
+            ftpConnectionPool.invalidar(ftp);
+        }
     }
 
     private void crearDirectorios(FTPClient ftp, String path) throws Exception {
@@ -285,17 +291,4 @@ public class FtpService {
         }
     }
 
-    private void desconectar(FTPClient ftp) {
-        if (ftp == null) {
-            return;
-        }
-        try {
-            if (ftp.isConnected()) {
-                ftp.logout();
-                ftp.disconnect();
-            }
-        } catch (Exception ex) {
-            log.warn("Error al cerrar sesión FTP", ex);
-        }
-    }
 }

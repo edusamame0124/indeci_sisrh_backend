@@ -47,7 +47,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/rrhh/asistencia/import")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+@PreAuthorize(SisrhSecurityExpressions.ASI_WRITE)
 public class AsistenciaImportController {
 
     private final AsistenciaImportService importService;

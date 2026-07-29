@@ -27,6 +27,19 @@ public final class SisrhSecurityExpressions {
     public static final String PLA_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_WRITE   + "')";
     public static final String PLA_APPROVE = SA + " or hasAuthority('" + SisrhPermission.PLA_APPROVE + "')";
 
+    /** Asistencia (M04) — familia propia, independiente de PLA_* y EMP_*. */
+    public static final String ASI_READ    = SA + " or hasAuthority('" + SisrhPermission.ASI_READ    + "')";
+    public static final String ASI_WRITE   = SA + " or hasAuthority('" + SisrhPermission.ASI_WRITE   + "')";
+
+    /**
+     * Lectura de períodos de planilla. Acepta PLA_READ (rol PLANILLA, acceso pleno)
+     * o PER_READ (rol ASISTENCIA, que solo necesita ver qué período está abierto).
+     * La escritura y la aprobación siguen exigiendo PLA_WRITE / PLA_APPROVE.
+     */
+    public static final String PERIODO_READ = SA
+            + " or hasAuthority('" + SisrhPermission.PLA_READ + "')"
+            + " or hasAuthority('" + SisrhPermission.PER_READ + "')";
+
     public static final String PLA_CTS_READ    = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_READ    + "')";
     public static final String PLA_CTS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_WRITE   + "')";
     public static final String PLA_CTS_APPROVE = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_APPROVE + "')";
@@ -34,8 +47,9 @@ public final class SisrhSecurityExpressions {
     public static final String PLA_LBS_READ    = SA + " or hasAuthority('" + SisrhPermission.PLA_LBS_READ    + "')";
     public static final String PLA_LBS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_LBS_WRITE   + "')";
 
-    public static final String RPT_READ    = SA + " or hasAuthority('" + SisrhPermission.RPT_READ    + "')";
-    public static final String RPT_WRITE   = SA + " or hasAuthority('" + SisrhPermission.RPT_WRITE   + "')";
+    /** Reportes — códigos reales del catálogo: REP_READ / REP_EXPORT. */
+    public static final String REP_READ    = SA + " or hasAuthority('" + SisrhPermission.REP_READ    + "')";
+    public static final String REP_EXPORT  = SA + " or hasAuthority('" + SisrhPermission.REP_EXPORT  + "')";
 
     public static final String SUB_READ           = SA + " or hasAuthority('" + SisrhPermission.SUB_READ           + "')";
     public static final String SUB_WRITE          = SA + " or hasAuthority('" + SisrhPermission.SUB_WRITE          + "')";

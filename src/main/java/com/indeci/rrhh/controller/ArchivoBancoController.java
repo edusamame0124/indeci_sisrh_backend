@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/archivo-banco")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class ArchivoBancoController {
 
     private final ArchivoBancoService archivoBancoService;

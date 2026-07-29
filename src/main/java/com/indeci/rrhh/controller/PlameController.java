@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/plame")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class PlameController {
 
     private final PlameService plameService;

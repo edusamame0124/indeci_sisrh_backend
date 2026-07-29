@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/reportes/consolidado")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class ReporteConsolidadoController {
 
     private final ReporteConsolidadoService service;

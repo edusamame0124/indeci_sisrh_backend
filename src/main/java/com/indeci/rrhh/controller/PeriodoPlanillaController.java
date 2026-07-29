@@ -15,10 +15,16 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Períodos de planilla. La lectura acepta {@code PERIODO_READ} (PLA_READ o PER_READ)
+ * para que el rol ASISTENCIA pueda consultar qué período está abierto sin recibir
+ * acceso al resto de planilla. Escritura y aprobación siguen exigiendo PLA_WRITE /
+ * PLA_APPROVE, exclusivos del rol PLANILLA.
+ */
 @RestController
 @RequestMapping("/api/rrhh/periodo-planilla")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.PLA_READ)
+@PreAuthorize(SisrhSecurityExpressions.PERIODO_READ)
 public class PeriodoPlanillaController {
 
     private final PeriodoPlanillaService service;

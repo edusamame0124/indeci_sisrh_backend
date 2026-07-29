@@ -17,13 +17,13 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/ftp")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class FtpController {
 
     private final FtpService ftpService;
 
     @PostMapping("/upload")
-    @PreAuthorize(SisrhSecurityExpressions.RPT_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.REP_EXPORT)
     public ResponseEntity<String> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("carpeta") String carpeta,

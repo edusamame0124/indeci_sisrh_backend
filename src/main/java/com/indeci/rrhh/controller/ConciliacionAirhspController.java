@@ -23,13 +23,13 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/conciliacion-airhsp")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.RPT_READ)
+@PreAuthorize(SisrhSecurityExpressions.REP_READ)
 public class ConciliacionAirhspController {
 
     private final ConciliacionAirhspService service;
 
     @PostMapping
-    @PreAuthorize(SisrhSecurityExpressions.RPT_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.REP_EXPORT)
     public ApiResponse<Void> registrar(@RequestBody ConciliacionAirhspDto dto) {
         service.registrar(dto);
         return new ApiResponse<>("OK", "Conciliación AIRHSP registrada", null);
@@ -43,7 +43,7 @@ public class ConciliacionAirhspController {
     }
 
     @PutMapping("/{id}/revisar")
-    @PreAuthorize(SisrhSecurityExpressions.RPT_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.REP_EXPORT)
     public ApiResponse<Void> revisar(
             @PathVariable Long id, @RequestBody ConciliacionRevisionDto dto) {
         service.revisar(id, dto);

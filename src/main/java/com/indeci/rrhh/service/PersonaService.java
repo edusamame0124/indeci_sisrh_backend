@@ -429,6 +429,23 @@ public class PersonaService {
         return mapearPersona(persona, empleado);
     }
 
+    /**
+     * Solo la ruta almacenada (sin tocar FTP) — usado por el controller para armar el
+     * ETag y responder 304 sin descargar el archivo cuando el navegador ya lo tiene
+     * en caché. La ruta cambia únicamente cuando se sube una foto nueva (el nombre de
+     * archivo incluye el timestamp de subida), así que es un identificador de cambio
+     * válido y barato de calcular.
+     */
+    @Transactional(readOnly = true)
+    public String obtenerRutaFotoMiPerfil() {
+
+        Persona persona = personaRepository
+                .findById(resolverEmpleadoPropio().getPersonaId())
+                .orElseThrow(() -> new NegocioException("Persona no encontrada"));
+
+        return persona.getFotoPerfil();
+    }
+
     /** Autoservicio — a diferencia de {@link #obtenerFoto}, no lanza excepción si aún no subió foto. */
     @Transactional(readOnly = true)
     public byte[] obtenerFotoMiPerfil() {

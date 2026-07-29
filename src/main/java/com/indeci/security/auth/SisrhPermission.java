@@ -29,6 +29,17 @@ public final class SisrhPermission {
     public static final String PLA_WRITE = "PLA_WRITE";
     public static final String PLA_APPROVE = "PLA_APPROVE";
 
+    // Asistencia (M04). Familia propia para poder delegar la carga y corrección de
+    // marcaciones SIN otorgar acceso a planilla: antes colgaban de PLA_WRITE/EMP_WRITE,
+    // lo que hacía imposible segregar al rol ASISTENCIA.
+    // READ = consultar asistencia de cualquier empleado; WRITE = importar/editar/recalcular.
+    public static final String ASI_READ = "ASI_READ";
+    public static final String ASI_WRITE = "ASI_WRITE";
+
+    // Periodos de planilla — SOLO lectura. Permite al rol ASISTENCIA saber qué período
+    // está abierto sin concederle PLA_READ (que expone montos y movimientos de planilla).
+    public static final String PER_READ = "PER_READ";
+
     // Liquidación de CTS Trunca (feature 016). Módulo PLANILLAS / LIQUIDACIONES.
     // Semántica: READ = ver módulo/buscar cesantes/ver snapshot; WRITE = calcular/
     // precargar (PENDIENTE/CALCULADO); APPROVE = sellar y cerrar (estado inmutable).
@@ -39,8 +50,11 @@ public final class SisrhPermission {
     public static final String PLA_LBS_READ = "PLA_LBS_READ";
     public static final String PLA_LBS_WRITE = "PLA_LBS_WRITE";
 
-    public static final String RPT_READ = "RPT_READ";
-    public static final String RPT_WRITE = "RPT_WRITE";
+    // Reportes. Los códigos reales en SS_PERMISO son REP_READ / REP_EXPORT; las
+    // constantes anteriores (RPT_READ / RPT_WRITE) no existían en el catálogo, por
+    // lo que sus @PreAuthorize solo pasaban por el bypass de SUPER_ADMIN.
+    public static final String REP_READ = "REP_READ";
+    public static final String REP_EXPORT = "REP_EXPORT";
 
     public static final String SUB_READ            = "SUB_READ";
     public static final String SUB_WRITE           = "SUB_WRITE";
