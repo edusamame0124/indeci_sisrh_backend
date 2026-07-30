@@ -10,6 +10,8 @@ public class AsistenciaImportHistorialDto {
     private Long id;
     private String periodo;
     private String nombreArchivo;
+    /** RELOJ1_DIARIO | RELOJ2_COEN | null (cargas anteriores a V012_46). */
+    private String formatoOrigen;
     private String usuario;
     private LocalDateTime fechaImportacion;
     private String estado;

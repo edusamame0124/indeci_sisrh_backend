@@ -122,6 +122,17 @@ public class MovimientoPlanillaService {
         return mapearMovimientos(repository.findByPeriodoAndActivo(periodo, 1));
     }
 
+    /**
+     * ¿El período ya tiene planilla generada? Devuelve solo el booleano de estado,
+     * sin exponer ningún movimiento ni monto, para que Asistencia pueda advertir
+     * "este período ya tiene planilla; coordine el recálculo" sin necesitar
+     * PLA_READ.
+     */
+    public boolean existePlanillaEnPeriodo(String periodo) {
+
+        return repository.existsByPeriodoAndActivo(periodo, 1);
+    }
+
     // ==========================================
     // LISTAR POR EMPLEADO (historial — PANTALLA-08)
     // ==========================================

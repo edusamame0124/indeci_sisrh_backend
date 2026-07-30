@@ -90,4 +90,13 @@ public class AsistenciaImportacion {
 
     @Column(name = "FECHA_CONFIRMACION")
     private LocalDateTime fechaConfirmacion;
+
+    /**
+     * Formato de marcador detectado al leer el archivo (V012_46): {@code RELOJ1_DIARIO}
+     * o {@code RELOJ2_COEN} — ver {@link com.indeci.rrhh.service.asistencia.FormatoMarcador}.
+     * NULL en importaciones anteriores a esta columna (no se puede reconstruir sin
+     * volver a leer el archivo original).
+     */
+    @Column(name = "FORMATO_ORIGEN")
+    private String formatoOrigen;
 }

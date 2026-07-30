@@ -166,6 +166,10 @@ public class AsistenciaImportService {
             importacion.setUsuario(usuario);
             importacion.setFechaImportacion(LocalDateTime.now());
             importacion.setEstado(ESTADO_PREVIEW);
+            // V012_46 — persiste el formato detectado (Reloj 1 / COEN). Antes se
+            // detectaba y se descartaba: no quedaba trazabilidad de qué reloj generó
+            // cada carga, necesaria para que ambos formatos convivan sin confundirse.
+            importacion.setFormatoOrigen(formato.name());
             inicializarContadoresPreview(importacion, parseResult.getFilas().size());
             importacion = importacionRepository.save(importacion);
             log.info("[CARGA-DEBUG] Fase 3 — importación creada id={}", importacion.getId());
@@ -343,6 +347,7 @@ public class AsistenciaImportService {
         int procesados = 0;
         int omitidos = 0;
         int bloqueados = 0;
+        int colisionesOrigenCruzado = 0;
         for (Map.Entry<Long, List<AsistenciaImportacionFila>> entry : porEmpleado.entrySet()) {
             Long empleadoId = entry.getKey();
             AsistenciaCabecera activa = cabeceraRepository
@@ -350,6 +355,14 @@ public class AsistenciaImportService {
                     .orElse(null);
 
             if (activa != null) {
+                // Reloj 1 y COEN cubren poblaciones de empleados distintas por diseño
+                // (sedes distintas); si igual coinciden en el mismo empleado+período puede
+                // ser una rectificación real o un cruce accidental de alias. No se bloquea
+                // (las reglas de motivo/rol de abajo ya rigen igual), solo se hace visible
+                // en el mensaje de confirmación en vez de quedar en silencio.
+                if (esOrigenCruzado(importacion, activa)) {
+                    colisionesOrigenCruzado++;
+                }
                 if (!estrategia.reemplazaExistente()) {
                     omitidos++;
                     continue;
@@ -404,9 +417,28 @@ public class AsistenciaImportService {
         resultado.setPeriodo(periodo);
         resultado.setEmpleadosDetectados(procesados);
         resultado.setEstadoImportacion(importacion.getEstado());
-        resultado.setMensaje(mensajeConfirmacion(estrategia, procesados, omitidos, bloqueados));
+        resultado.setMensaje(mensajeConfirmacion(
+                estrategia, procesados, omitidos, bloqueados, colisionesOrigenCruzado));
         avanzar(job, 99, "Finalizando");
         return resultado;
+    }
+
+    /**
+     * ¿La cabecera activa existente proviene de un formato de marcador distinto al
+     * de la importación que se está confirmando? (V012_46). NULL en cualquiera de
+     * los dos lados (carga anterior a esta columna) se trata como "no determinable"
+     * — nunca como cruce, para no generar falsos positivos sobre datos históricos.
+     */
+    private boolean esOrigenCruzado(AsistenciaImportacion actual, AsistenciaCabecera activa) {
+        String origenActual = actual.getFormatoOrigen();
+        Long importacionAnteriorId = activa.getImportacionId();
+        if (origenActual == null || importacionAnteriorId == null) {
+            return false;
+        }
+        return importacionRepository.findById(importacionAnteriorId)
+                .map(AsistenciaImportacion::getFormatoOrigen)
+                .filter(origenAnterior -> origenAnterior != null && !origenAnterior.equals(origenActual))
+                .isPresent();
     }
 
     /** R3/R9/R10 — valida que el estado del periodo permita confirmar/rectificar. */
@@ -624,6 +656,7 @@ public class AsistenciaImportService {
         dto.setImportacionId(imp.getId());
         dto.setNombreArchivo(imp.getNombreArchivo());
         dto.setPeriodo(imp.getPeriodo());
+        dto.setFormatoOrigen(imp.getFormatoOrigen());
         dto.setPeriodoDetectadoIni(imp.getPeriodoDetectadoIni());
         dto.setPeriodoDetectadoFin(imp.getPeriodoDetectadoFin());
         dto.setFilasLeidas(valor(imp.getFilasTotal()));
@@ -1311,6 +1344,7 @@ public class AsistenciaImportService {
         AsistenciaImportPreviewDto preview = new AsistenciaImportPreviewDto();
         preview.setPeriodo(importacion.getPeriodo());
         preview.setNombreArchivo(importacion.getNombreArchivo());
+        preview.setFormatoOrigen(importacion.getFormatoOrigen());
         preview.setEncoding(importacion.getEncoding());
         preview.setHashArchivo(importacion.getHashSha256());
         preview.setEstadoImportacion(importacion.getEstado());
@@ -1491,12 +1525,22 @@ public class AsistenciaImportService {
             AsistenciaImportEstrategia estrategia,
             int procesados,
             int omitidos,
-            int bloqueados) {
+            int bloqueados,
+            int colisionesOrigenCruzado) {
         String sufijo = "";
         if (bloqueados > 0) {
-            sufijo = " " + bloqueados + " empleado(s) quedaron bloqueados: falta el MOTIVO de"
+            sufijo += " " + bloqueados + " empleado(s) quedaron bloqueados: falta el MOTIVO de"
                     + " rectificación (obligatorio para reemplazar asistencia ya validada)."
                     + " Si la planilla del periodo ya fue GENERADA, además se requiere rol PLA_APPROVE.";
+        }
+        if (colisionesOrigenCruzado > 0) {
+            // Informativo, no bloqueante: Reloj 1 y COEN cubren poblaciones distintas por
+            // diseño; que coincidan en el mismo empleado+período puede ser una rectificación
+            // real (ej. traslado de sede) o un cruce accidental de alias — RR.HH. decide.
+            sufijo += " " + colisionesOrigenCruzado + " empleado(s) ya tenían asistencia activa"
+                    + " cargada desde OTRO formato de marcador (Reloj 1 / COEN); se aplicó la"
+                    + " rectificación igual. Verifique que no se trate de un cruce accidental de"
+                    + " identidad entre ambos relojes.";
         }
         if (procesados == 0) {
             return ("No se importó ningún empleado con la estrategia seleccionada." + sufijo).trim();
@@ -1612,6 +1656,7 @@ public class AsistenciaImportService {
         dto.setId(importacion.getId());
         dto.setPeriodo(importacion.getPeriodo());
         dto.setNombreArchivo(importacion.getNombreArchivo());
+        dto.setFormatoOrigen(importacion.getFormatoOrigen());
         dto.setUsuario(importacion.getUsuario());
         dto.setFechaImportacion(importacion.getFechaImportacion());
         dto.setEstado(importacion.getEstado());

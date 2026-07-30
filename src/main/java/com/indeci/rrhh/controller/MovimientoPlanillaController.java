@@ -40,6 +40,23 @@ public class MovimientoPlanillaController {
         return new ApiResponse<>("OK", "Planillas periodo", service.listarPeriodo(periodo));
     }
 
+    /**
+     * ¿El período ya tiene planilla generada? Devuelve un booleano de estado, no
+     * los movimientos: por eso se abre a {@code PERIODO_READ} (PLA_READ o PER_READ)
+     * y el rol ASISTENCIA puede consultarlo sin acceder a montos.
+     *
+     * <p>Existe para que Asistencia advierta "este período ya tiene planilla,
+     * coordine el recálculo" antes de seguir corrigiendo faltas o tardanzas.
+     * Sustituye al patrón de descargar todos los movimientos del período solo
+     * para evaluar si la lista venía vacía.
+     */
+    @GetMapping("/periodo/{periodo}/existe")
+    @PreAuthorize(SisrhSecurityExpressions.PERIODO_READ)
+    public ApiResponse<Boolean> existePlanillaEnPeriodo(@PathVariable String periodo) {
+        return new ApiResponse<>("OK", "Estado de planilla del periodo",
+                service.existePlanillaEnPeriodo(periodo));
+    }
+
     @GetMapping("/empleado/{empleadoId}")
     public ApiResponse<List<MovimientoPlanillaResponseDto>> listarPorEmpleado(
             @PathVariable Long empleadoId) {

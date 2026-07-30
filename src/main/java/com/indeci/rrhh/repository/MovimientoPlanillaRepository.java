@@ -57,6 +57,16 @@ public interface MovimientoPlanillaRepository
             String periodo,
             Integer activo);
 
+    /**
+     * ¿El período ya tiene planilla generada? Consulta de existencia: Spring Data
+     * traduce {@code existsBy...} a un SELECT acotado que no materializa entidades.
+     * Sustituye al patrón anterior de traer TODOS los movimientos del período solo
+     * para evaluar {@code length > 0} en el frontend.
+     */
+    boolean existsByPeriodoAndActivo(
+            String periodo,
+            Integer activo);
+
     /** Track B — todos los movimientos del empleado en el período (regular + AGUINALDO). */
     List<MovimientoPlanilla>
     findAllByEmpleadoIdAndPeriodoAndActivo(

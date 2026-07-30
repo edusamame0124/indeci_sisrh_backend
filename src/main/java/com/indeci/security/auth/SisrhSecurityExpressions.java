@@ -40,6 +40,17 @@ public final class SisrhSecurityExpressions {
             + " or hasAuthority('" + SisrhPermission.PLA_READ + "')"
             + " or hasAuthority('" + SisrhPermission.PER_READ + "')";
 
+    /**
+     * Lectura de la configuración de jornada y tolerancias (M04). La consumen tanto
+     * Planilla como Asistencia: el cálculo de tardanzas depende de ella. Antes la
+     * clase entera exigía PLA_WRITE, de modo que un GET de configuración pedía
+     * permiso de ESCRITURA de planilla y dejaba fuera al rol ASISTENCIA.
+     * La escritura de esa configuración sigue siendo PLA_WRITE.
+     */
+    public static final String JORNADA_READ = SA
+            + " or hasAuthority('" + SisrhPermission.ASI_READ + "')"
+            + " or hasAuthority('" + SisrhPermission.PLA_READ + "')";
+
     public static final String PLA_CTS_READ    = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_READ    + "')";
     public static final String PLA_CTS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_WRITE   + "')";
     public static final String PLA_CTS_APPROVE = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_APPROVE + "')";

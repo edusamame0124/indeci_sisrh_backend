@@ -11,6 +11,8 @@ public class AsistenciaImportPreviewDto {
     private Long importacionId;
     private String periodo;
     private String nombreArchivo;
+    /** RELOJ1_DIARIO | RELOJ2_COEN — formato de marcador detectado (V012_46). */
+    private String formatoOrigen;
     private String encoding;
     private String hashArchivo;
     private int filasTotal;

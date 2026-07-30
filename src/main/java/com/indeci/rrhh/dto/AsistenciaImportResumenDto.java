@@ -15,6 +15,8 @@ public class AsistenciaImportResumenDto {
     private Long importacionId;
     private String nombreArchivo;
     private String periodo;
+    /** RELOJ1_DIARIO | RELOJ2_COEN — formato de marcador detectado (V012_46). */
+    private String formatoOrigen;
     private LocalDate periodoDetectadoIni;
     private LocalDate periodoDetectadoFin;
 
