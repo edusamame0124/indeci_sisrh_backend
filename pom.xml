@@ -167,6 +167,19 @@
     <artifactId>jasperreports-pdf</artifactId>
     <version>7.0.1</version>
 </dependency>
+<!--
+    Tipografías DejaVu como font extension de Jasper. Las plantillas
+    (legajo_personal.jasper y otras) declaran "DejaVu Sans"; sin este módulo la
+    JVM no la encuentra y el llenado revienta con JRFontNotFoundException antes
+    de pintar el primer dato. Se resuelve por classpath, NO instalando fuentes
+    en el SO: así funciona igual en local, en el servidor y en la imagen Docker
+    (que al ser slim no trae ninguna fuente).
+-->
+<dependency>
+    <groupId>net.sf.jasperreports</groupId>
+    <artifactId>jasperreports-fonts</artifactId>
+    <version>7.0.1</version>
+</dependency>
         <!-- Apache POI — generación XLSX planilla consolidada (B1 export). -->
         <dependency>
             <groupId>org.apache.poi</groupId>
