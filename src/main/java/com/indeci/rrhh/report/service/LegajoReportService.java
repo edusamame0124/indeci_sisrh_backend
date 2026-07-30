@@ -12,11 +12,13 @@ import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
 import com.indeci.rrhh.service.LegajoResumenService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.sf.jasperreports.engine.*;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.util.JRLoader;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class LegajoReportService {
 
@@ -230,8 +232,16 @@ public class LegajoReportService {
 
         } catch (Exception ex) {
 
+            // Sin este log el fallo llegaba al cliente como un 500 mudo: al reenviar
+            // solo ex.getMessage() se perdía el tipo, y las excepciones sin mensaje
+            // (NPE, JRFontNotFoundException) dejaban el cuerpo vacío. Aquí queda la
+            // traza completa con el personaId para poder reproducir.
+            log.error("Error generando el PDF de legajo de la persona {}", personaId, ex);
+
             throw new RuntimeException(
-                    ex.getMessage(),
+                    "No se pudo generar el PDF del legajo: "
+                            + ex.getClass().getSimpleName()
+                            + (ex.getMessage() != null ? " — " + ex.getMessage() : ""),
                     ex);
         }
     }
