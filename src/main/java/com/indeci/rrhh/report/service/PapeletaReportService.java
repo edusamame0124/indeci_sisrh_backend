@@ -640,24 +640,29 @@ public String generarPdf(
         }
         if("011".equals(tipo.getCodigo())) {
 
-            nombreReporte = "formato_3.jasper";
+            nombreReporte = "papeleta_licencia_sin_goce.jasper";
         }
-        
+
         if("012".equals(tipo.getCodigo())) {
 
-            nombreReporte = "formato_5.jasper";
+            nombreReporte = "papeleta_vacaciones.jasper";
         }
-        
+
         if("013".equals(tipo.getCodigo())) {
 
             nombreReporte = "formato_6.jasper";
+        }
+
+        if("TELETRABAJO".equals(tipo.getCodigo())) {
+
+            nombreReporte = "papeleta_teletrabajo.jasper";
         }
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
                                 "/reportes/rrhh/" + nombreReporte);
 
-        
+
 	if (jasperStream == null) {
 	    throw new RuntimeException(
 	            "No existe /reportes/rrhh/" + nombreReporte);
@@ -669,42 +674,21 @@ public String generarPdf(
         }
 
         System.out.println("ANTES DE CARGAR JASPER");
-        
+
         // Papeleta de Licencia Unificada (Con Goce / Sin Goce): TODA licencia (código "011")
-        // usa la plantilla institucional papeleta_licencia_sin_goce.jrxml. La modalidad
+        // usa la plantilla institucional papeleta_licencia_sin_goce.jasper. La modalidad
         // (con/sin goce) se distingue dentro de la plantilla vía P_MODALIDAD_LICENCIA,
         // que cargarParametrosLicencia arma según t.getEsSinGoce().
         boolean esLicencia = "011".equals(tipo.getCodigo());
 
-        // Papeleta de Vacaciones (formato institucional) — plantilla propia compilada en runtime.
+        // Papeleta de Vacaciones (formato institucional).
         boolean esVacaciones = "012".equals(tipo.getCodigo());
         boolean esTeletrabajo = "TELETRABAJO".equals(tipo.getCodigo());
 
-        JasperReport jasperReport;
-        if (esLicencia) {
-            InputStream jrxml = getClass().getResourceAsStream(
-                    "/reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
-            if (jrxml == null) {
-                throw new RuntimeException("No existe /reportes/rrhh/papeleta_licencia_sin_goce.jrxml");
-            }
-            jasperReport = JasperCompileManager.compileReport(jrxml);
-        } else if (esVacaciones) {
-            InputStream jrxml = getClass().getResourceAsStream(
-                    "/reportes/rrhh/papeleta_vacaciones.jrxml");
-            if (jrxml == null) {
-                throw new RuntimeException("No existe /reportes/rrhh/papeleta_vacaciones.jrxml");
-            }
-            jasperReport = JasperCompileManager.compileReport(jrxml);
-        } else if (esTeletrabajo) {
-            InputStream jrxml = getClass().getResourceAsStream(
-                    "/reportes/rrhh/papeleta_teletrabajo.jrxml");
-            if (jrxml == null) {
-                throw new RuntimeException("No existe /reportes/rrhh/papeleta_teletrabajo.jrxml");
-            }
-            jasperReport = JasperCompileManager.compileReport(jrxml);
-        } else {
-            jasperReport = (JasperReport) JRLoader.loadObject(jasperStream);
-        }
+        // Los 3 formatos institucionales (licencia/vacaciones/teletrabajo) se cargan ya
+        // precompilados (.jasper), igual que el resto de formatos — no se compila JRXML
+        // en runtime (evita depender de un compilador Java disponible en el contenedor).
+        JasperReport jasperReport = (JasperReport) JRLoader.loadObject(jasperStream);
 
         System.out.println("DESPUES DE CARGAR JASPER");
 
