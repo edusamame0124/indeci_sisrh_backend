@@ -283,4 +283,55 @@ class VacacionServiceSaldoTest {
         assertThat(saldo.getDiasGozados()).isEqualTo(15.0);
         verify(vacacionRepository, times(1)).save(any());
     }
+
+    /** Fracción hábil que "atrapa" un fin de semana: totalDias=4 (hábil, Art.35) vs diasCalendario=6 (Art.34). */
+    private SolicitudVacacionDet detFraccion(double habiles, double calendario, LocalDate ini, LocalDate fin) {
+        SolicitudVacacionDet d = new SolicitudVacacionDet();
+        d.setTipo("FRACC_1");
+        d.setTotalDias(habiles);
+        d.setDiasCalendario(calendario);
+        d.setFechaInicio(ini);
+        d.setFechaFin(fin);
+        return d;
+    }
+
+    // ── Fix Art. 34/35: el fraccionamiento debe descontar CALENDARIO (6), no HÁBILES (4) ──
+    @Test
+    void fraccionamiento_descuenta_dias_calendario_no_habiles() {
+        SolicitudRrhh s = solicitud(900L, 1445L);
+        // Vie 17/07 → Mié 22/07/2026: 4 días hábiles (Art. 35), pero 6 días calendario (Art. 34).
+        when(solicitudVacacionDetRepository.findBySolicitudIdAndActivo(900L, 1)).thenReturn(List.of(
+                detFraccion(4d, 6d, LocalDate.of(2026, 7, 17), LocalDate.of(2026, 7, 22))));
+        VacacionSaldo saldo = saldo(1445L, 2026, 30, 0);
+        when(vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(1445L, 1))
+                .thenReturn(List.of(saldo));
+
+        org.mockito.ArgumentCaptor<Vacacion> captor = org.mockito.ArgumentCaptor.forClass(Vacacion.class);
+
+        service.procesarAprobacionVacaciones(s, null);
+
+        // El saldo se descuenta en CALENDARIO (6), no en hábiles (4).
+        assertThat(saldo.getDiasGozados()).isEqualTo(6.0);
+
+        verify(vacacionRepository).save(captor.capture());
+        Vacacion guardada = captor.getValue();
+        // El pool Art. 35.b sigue viendo HÁBILES (4) — no se toca su semántica histórica.
+        assertThat(guardada.getDias()).isEqualTo(4.0);
+        assertThat(guardada.getDiasCalendario()).isEqualTo(6.0);
+    }
+
+    // ── Mismo fix, del lado de la validación previa a aprobar ──
+    @Test
+    void fraccionamiento_valida_saldo_contra_dias_calendario() {
+        SolicitudRrhh s = solicitud(901L, 1446L);
+        when(solicitudVacacionDetRepository.findBySolicitudIdAndActivo(901L, 1)).thenReturn(List.of(
+                detFraccion(4d, 6d, LocalDate.of(2026, 7, 17), LocalDate.of(2026, 7, 22))));
+        // Saldo de solo 5 días: alcanza para los 4 hábiles (bug antiguo) pero NO para los 6 calendario.
+        when(vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(1446L, 1))
+                .thenReturn(List.of(saldo(1446L, 2026, 5, 0)));
+
+        assertThatThrownBy(() -> service.validarSaldoAprobacion(s))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("insuficiente");
+    }
 }

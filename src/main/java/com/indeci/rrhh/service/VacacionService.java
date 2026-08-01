@@ -446,8 +446,21 @@ public class VacacionService {
     private double sumaDetalles(List<SolicitudVacacionDet> detalles, boolean soloActual) {
         return detalles.stream()
                 .filter(d -> esDetalleActual(d) == soloActual)
-                .mapToDouble(d -> d.getTotalDias() != null ? d.getTotalDias() : 0d)
+                .mapToDouble(this::diasParaSaldo)
                 .sum();
+    }
+
+    /**
+     * Días que efectivamente consumen/liberan saldo anual: CALENDARIO (Art. 34), no el conteo
+     * HÁBIL del pool de fraccionamiento (Art. 35.b/c). Para Programación/Adelanto/Reprogramación
+     * ambos valores coinciden (totalDias ya es calendario); para Fraccionamiento difieren y aquí
+     * se usa el calendario. Fallback a totalDias si diasCalendario no se calculó (defensivo).
+     */
+    private double diasParaSaldo(SolicitudVacacionDet d) {
+        if (d.getDiasCalendario() != null) {
+            return d.getDiasCalendario();
+        }
+        return d.getTotalDias() != null ? d.getTotalDias() : 0d;
     }
 
     /** ¿El detalle es el periodo previo que se reprograma/fracciona (REPROG_ACTUAL/FRACC_ACTUAL)? */
@@ -508,6 +521,7 @@ public class VacacionService {
             vacacion.setAnioPeriodo(det.getFechaInicio().getYear());
             vacacion.setTipoGoce(det.getTipo());
             vacacion.setDias(det.getTotalDias() != null ? det.getTotalDias() : 0d);
+            vacacion.setDiasCalendario(det.getDiasCalendario());
             vacacion.setEstado("GOZADO");
             vacacion.setEsAdelanto("ADELANTO".equals(det.getTipo()) ? 1 : 0);
             vacacion.setOrigen("MOTOR");

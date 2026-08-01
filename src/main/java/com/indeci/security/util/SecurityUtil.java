@@ -37,4 +37,24 @@ public class SecurityUtil {
 
         return auth.getName();
     }
+
+    /** true si el usuario autenticado tiene alguna de las authorities dadas (permiso o "ROLE_x"). */
+    public static boolean hasAnyAuthority(String... codes) {
+
+        Authentication auth =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        java.util.Set<String> propios = auth.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .collect(java.util.stream.Collectors.toSet());
+
+        for (String codigo : codes) {
+            if (propios.contains(codigo)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

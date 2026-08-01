@@ -80,7 +80,10 @@ public class SolicitudRrhhResponseDto {
     private Long tipoVacacionId;
 
     private String tipoVacacion;
-    
+
+    /** Papeleta de Teletrabajo — modalidad elegida (PARCIAL/COMPLETA). Necesario para editar. */
+    private String modalidadTeletrabajo;
+
     private List<SolicitudVacacionDetDto> detallesVacacion;
     
     private List<SolicitudCompensacionDetDto>

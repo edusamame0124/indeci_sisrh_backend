@@ -98,8 +98,50 @@ class SolicitudRrhhArt34ValidacionTest {
     }
 
     @Test
+    @DisplayName("Fix doble conteo: inicia viernes pero el rango YA cubre el fin de semana → 6, NO 8")
+    void iniciaViernesRangoYaCubreFinde_noDuplica() {
+        // Vie 10 → Mié 15 = base 6 (sáb 11 y dom 12 ya están dentro del rango).
+        var det = det("PROGRAMACION", LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 15), 6);
+        assertDoesNotThrow(() -> service.validarDiasArt34(List.of(det)));
+
+        // El bug antiguo sumaba +2 igual (8) aunque el finde ya estuviera cubierto → ahora rechaza.
+        var detBuggy = det("PROGRAMACION", LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 15), 8);
+        NegocioException ex = assertThrows(NegocioException.class,
+                () -> service.validarDiasArt34(List.of(detBuggy)));
+        assertTrue(ex.getMessage().contains("Art. 34"));
+    }
+
+    @Test
+    @DisplayName("Viernes a sábado inmediato (finde parcialmente cubierto) → suma solo el domingo faltante (3)")
+    void iniciaViernesFindeParcial_sumaSoloElDiaFaltante() {
+        // Vie 10 → Sáb 11 = base 2; el sábado ya está en el rango, falta sumar el domingo 12.
+        var det = det("PROGRAMACION", LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 11), 3);
+        assertDoesNotThrow(() -> service.validarDiasArt34(List.of(det)));
+    }
+
+    @Test
     @DisplayName("Lista nula → no lanza (sin detalles de vacación)")
     void listaNula_noLanza() {
         assertDoesNotThrow(() -> service.validarDiasArt34(null));
+    }
+
+    // ── calcularDiasCalendarioDetalle: lo que realmente descuenta el saldo (VacacionService) ──
+
+    @Test
+    @DisplayName("Fraccionamiento normal (no media jornada): usa el cálculo Art. 34 completo")
+    void diasCalendarioDetalle_fraccionNormal_usaArt34() {
+        // Vie 10 → Mié 15 = 6 (mismo caso del fix de doble conteo).
+        double dias = service.calcularDiasCalendarioDetalle(
+                LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 15), 4d);
+        assertTrue(dias == 6d);
+    }
+
+    @Test
+    @DisplayName("Media jornada (0.5): NO activa la regla del viernes, aunque el día sea viernes")
+    void diasCalendarioDetalle_mediaJornada_noActivaFinde() {
+        // Un único viernes a medio día: sin el guard, el Art. 34 daría 3 (vie+sáb+dom).
+        double dias = service.calcularDiasCalendarioDetalle(
+                LocalDate.of(2026, 7, 10), LocalDate.of(2026, 7, 10), 0.5d);
+        assertTrue(dias == 0.5d);
     }
 }

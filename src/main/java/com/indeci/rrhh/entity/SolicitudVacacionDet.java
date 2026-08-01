@@ -37,6 +37,16 @@ public class SolicitudVacacionDet {
     private Double totalDias;
 
     /**
+     * Días CALENDARIO reales del bloque (Art. 34), recalculados server-side en
+     * {@code SolicitudRrhhService#guardarDetalleVacacion}. Para Fraccionamiento (FRACC_*),
+     * {@code totalDias} mide días HÁBILES (Art. 35.b/c) — este campo es el que efectivamente
+     * descuenta {@code VacacionSaldo.diasGozados}, porque el fin de semana atrapado dentro de
+     * un fraccionamiento igual consume saldo anual aunque no sea día hábil.
+     */
+    @Column(name = "DIAS_CALENDARIO")
+    private Double diasCalendario;
+
+    /**
      * Hub Vacacional — FK referencial a {@code Vacacion.id}. Se llena SOLO en detalles
      * "_ACTUAL" (REPROG_ACTUAL/FRACC_ACTUAL) elegidos del dropdown de periodos programados
      * (Poka-Yoke: reemplaza fechas tipeadas por selección). Al aprobar, el motor marca ese

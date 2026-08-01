@@ -90,6 +90,22 @@ public class AsistenciaController {
                         pageable));
     }
 
+    /** Autoservicio: PDF de la asistencia propia por rango (puede abarcar varios meses calendario). */
+    @GetMapping("/mis-asistencias/pdf")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<byte[]> misAsistenciasPdf(
+            @RequestParam LocalDate fechaInicio,
+            @RequestParam LocalDate fechaFin) {
+        Long empleadoId = service.obtenerEmpleadoActual();
+        byte[] pdf = pdfService.generarRango(empleadoId, fechaInicio, fechaFin);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.inline()
+                .filename("mis-asistencias-" + fechaInicio + "_" + fechaFin + ".pdf")
+                .build());
+        return ResponseEntity.ok().headers(headers).body(pdf);
+    }
+
     /** Edición puntual de un día desde consulta diaria. */
     @PatchMapping("/diaria/{detalleId}")
     @PreAuthorize(SisrhSecurityExpressions.ASI_WRITE)

@@ -38,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -70,6 +71,7 @@ public class AsistenciaService {
     private final BaseAsistenciaResolver baseResolver;
     private final SolicitudRrhhRepository solicitudRrhhRepository;
     private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
+    private final com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver papeletaJustificacionResolver;
 
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
@@ -216,7 +218,8 @@ public class AsistenciaService {
         return page;
     }
     
-    private Long obtenerEmpleadoActual() {
+    /** Autoservicio: resuelve el empleado vinculado al usuario autenticado (usado también para exportar PDF propio). */
+    public Long obtenerEmpleadoActual() {
 
         Long empleadoId = SecurityUtil.getEmpleadoId();
 
@@ -502,6 +505,92 @@ public class AsistenciaService {
     }
 
     /**
+     * Al aprobar una papeleta con JUSTIFICA_ASISTENCIA=1, reconcilia los días ya importados
+     * dentro de [fechaInicio, fechaFin] que hubieran quedado en FALTA/OMISION_MARCACION porque
+     * la carga de asistencia ocurrió ANTES de que RR. HH. aprobara la papeleta. Sin esto el día
+     * queda congelado en FALTA para siempre, aunque la papeleta ya esté aprobada (bug real:
+     * solicitud Nº376, teletrabajo aprobado el 31/07 para el 24/07 ya importado).
+     *
+     * <p>Tolerante: no reconcilia periodos con planilla CERRADA/APROBADA (LEY-05, inmutables)
+     * ni meses sin cabecera de asistencia cargada.
+     */
+    @Transactional
+    public void reconciliarPorPapeletaAprobada(SolicitudRrhh solicitud, TipoSolicitudRrhh tipo) {
+        if (tipo == null || !Integer.valueOf(1).equals(tipo.getJustificaAsistencia())) {
+            return;
+        }
+        Long empleadoId = solicitud.getEmpleadoId();
+        LocalDate ini = solicitud.getFechaInicio();
+        LocalDate fin = solicitud.getFechaFin() != null ? solicitud.getFechaFin() : ini;
+        if (empleadoId == null || ini == null) {
+            return;
+        }
+        List<SolicitudRrhh> justificantes =
+                papeletaJustificacionResolver.cargarJustificantes(empleadoId, fin);
+        if (justificantes.isEmpty()) {
+            return;
+        }
+        for (String periodo : periodosEntre(ini, fin)) {
+            cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
+                    .ifPresent(cab -> reconciliarDetalleCabecera(cab, ini, fin, justificantes));
+        }
+    }
+
+    private void reconciliarDetalleCabecera(
+            AsistenciaCabecera cab, LocalDate ini, LocalDate fin, List<SolicitudRrhh> justificantes) {
+        boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                .orElse(false);
+        if (periodoBloqueado) {
+            return;
+        }
+        boolean huboCambios = false;
+        for (AsistenciaDetalle det : detalleRepository.findByCabeceraIdOrderByDia(cab.getId())) {
+            LocalDate dia = det.getDia();
+            if (dia == null || dia.isBefore(ini) || dia.isAfter(fin)) {
+                continue;
+            }
+            Optional<AsistenciaDiaDto> justificado;
+            if ("OMISION_MARCACION".equals(det.getTipoDia())) {
+                justificado = papeletaJustificacionResolver.justificarOmision(dia, justificantes);
+            } else if ("FALTA".equals(det.getTipoDia())) {
+                justificado = papeletaJustificacionResolver.justificar(dia, justificantes);
+            } else {
+                justificado = Optional.empty();
+            }
+            if (justificado.isEmpty()) {
+                continue;
+            }
+            AsistenciaDiaDto dto = justificado.get();
+            det.setTipoDia(dto.getTipoDia());
+            det.setMinutosTardanza(dto.getMinutosTardanza());
+            det.setObservacion(dto.getObservacion());
+            det.setOrigen(dto.getOrigen());
+            detalleRepository.save(det);
+            huboCambios = true;
+        }
+        if (huboCambios) {
+            recalcularCabeceraDesdeDetalle(cab);
+        }
+    }
+
+    /**
+     * Los periodos mensuales que el rango [ini, fin] toca, para ubicar cada cabecera.
+     * Formato "yyyy-MM" (verificado contra INDECI_ASISTENCIA_CABECERA.PERIODO real, ej. "2026-07").
+     */
+    private List<String> periodosEntre(LocalDate ini, LocalDate fin) {
+        List<String> periodos = new ArrayList<>();
+        LocalDate cursor = ini.withDayOfMonth(1);
+        LocalDate limite = fin.withDayOfMonth(1);
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM");
+        while (!cursor.isAfter(limite)) {
+            periodos.add(cursor.format(fmt));
+            cursor = cursor.plusMonths(1);
+        }
+        return periodos;
+    }
+
+    /**
      * Aplica el descuento de tardanza de dos niveles (V010_95) a la cabecera:
      * clasifica cada día por el umbral, acumula el Descuento 2 y persiste el
      * split (D1/D2). {@code DESCUENTO_TARDANZA} queda como el total (D1+D2), que
@@ -552,6 +641,7 @@ public class AsistenciaService {
         d.setTipoDia(det.getTipoDia());
         d.setMinutosTardanza(det.getMinutosTardanza());
         d.setObservacion(det.getObservacion());
+        d.setDiaSemana(det.getDiaSemana());
         d.setMarcaEntrada(det.getMarcaEntrada());
         d.setMarcaSalida(det.getMarcaSalida());
         d.setMarca3(det.getMarca3());
@@ -935,14 +1025,7 @@ public class AsistenciaService {
         List<AsistenciaDiaDto> dias =
                 detalleRepository.findByCabeceraIdOrderByDia(cab.getId())
                         .stream()
-                        .map(det -> {
-                            AsistenciaDiaDto d = new AsistenciaDiaDto();
-                            d.setDia(det.getDia());
-                            d.setTipoDia(det.getTipoDia());
-                            d.setMinutosTardanza(det.getMinutosTardanza());
-                            d.setObservacion(det.getObservacion());
-                            return d;
-                        })
+                        .map(this::aDiaDto)
                         .toList();
         dto.setDias(new ArrayList<>(dias));
 

@@ -454,7 +454,17 @@ private VacacionDetReporteDto filaDetalle(SolicitudVacacionDet det) {
     return new VacacionDetReporteDto(
             formatearFecha(det.getFechaInicio()),
             formatearFecha(det.getFechaFin()),
-            formatearDias(det.getTotalDias()));
+            formatearDias(diasParaPapeleta(det)));
+}
+
+/**
+ * Días CALENDARIO reales (Art. 34) que efectivamente descuentan el saldo anual — no el
+ * conteo HÁBIL (Art. 35.b/c) que usa {@code totalDias} para Fraccionamiento. La papeleta
+ * oficial debe reflejar lo que realmente se descuenta. Fallback a {@code totalDias} para
+ * registros previos a este campo (donde ambos ya coinciden, o quedó null).
+ */
+private Double diasParaPapeleta(SolicitudVacacionDet det) {
+    return det.getDiasCalendario() != null ? det.getDiasCalendario() : det.getTotalDias();
 }
 
 /** Muestra "23" para días enteros y "0.5" para media jornada (Art. 35) — sin truncar. */

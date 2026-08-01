@@ -66,6 +66,15 @@ public class Vacacion {
 	@Column(name = "DIAS")
 	private Double dias;
 
+	/**
+	 * Días CALENDARIO reales (Art. 34) del bloque, copiados de
+	 * {@code SolicitudVacacionDet.diasCalendario} al aprobar. Para Fraccionamiento, {@code dias}
+	 * (arriba) sigue siendo HÁBILES (Art. 35.b/c, no tocar — lo usa el pool histórico); este
+	 * campo es el que efectivamente descontó {@code VacacionSaldo.diasGozados}.
+	 */
+	@Column(name = "DIAS_CALENDARIO")
+	private Double diasCalendario;
+
 	@Column(name = "ESTADO")
 	private String estado;
 

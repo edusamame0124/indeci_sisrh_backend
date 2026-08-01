@@ -71,12 +71,15 @@ public class SolicitudRrhhService {
     // Papeleta de Teletrabajo (Ley N° 31572): detalle de actividades del día.
     private final SolicitudTeletrabajoDetRepository solicitudTeletrabajoDetRepository;
     private final TipoDescansoDocRepository tipoDescansoDocRepository;
+    // G7 — resolver el nombre del tipo de descanso médico en listarMisSolicitudes/convertir().
+    private final TipoDescansoMedicoRepository tipoDescansoMedicoRepository;
     private final PersonaRepository personaRepository;
     // Gate de Teletrabajo (Ley N° 31572): config remunerativa del empleado.
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     // Art. 35 (fraccionamiento): histórico de goce por período + calendario de feriados.
     private final VacacionRepository vacacionRepository;
     private final FeriadoRepository feriadoRepository;
+    private final AsistenciaService asistenciaService;
     //private static final String TIPO_VACACIONES = "VAC";
     
 
@@ -296,6 +299,14 @@ public class SolicitudRrhhService {
             entity.setTotalDias(
                     det.getTotalDias());
 
+            // Días CALENDARIO reales del bloque (Art. 34) — ver javadoc del método.
+            if (det.getFechaInicio() != null && det.getFechaFin() != null
+                    && !det.getFechaFin().isBefore(det.getFechaInicio())) {
+                entity.setDiasCalendario(
+                        calcularDiasCalendarioDetalle(
+                                det.getFechaInicio(), det.getFechaFin(), det.getTotalDias()));
+            }
+
             entity.setVacacionOrigenId(
                     det.getVacacionOrigenId());
 
@@ -495,14 +506,40 @@ public class SolicitudRrhhService {
 
     /**
      * Días calendario del período (Art. 34): base = (Hasta − Desde) + 1; si INICIA o CONCLUYE
-     * en viernes ⇒ +2 (sábado y domingo inmediatos se computan). El OR evita la duplicidad del
-     * +4 cuando ambos extremos caen en viernes (incluido el mismo viernes de 1 día).
+     * en viernes, el sábado y domingo inmediatos siguientes "también se computan dentro de
+     * dicho periodo vacacional" — pero SOLO si aún no están dentro de [desde, hasta]. Si el
+     * rango ya se extiende más allá de ese fin de semana (ej. viernes a miércoles siguiente),
+     * el sábado/domingo ya están contados en la base y NO se suman de nuevo (evita el doble
+     * conteo). El fin de semana que sigue a un `hasta` en viernes SIEMPRE cae fuera del rango
+     * (es posterior a `hasta`), así que ahí sí se suma siempre — salvo que sea el mismo día que
+     * `desde` (viernes de 1 día), donde ya lo cubrió la rama de `desde`.
      */
     private int calcularDiasArt34(LocalDate desde, LocalDate hasta) {
         long base = ChronoUnit.DAYS.between(desde, hasta) + 1;
-        boolean aplicaViernes = desde.getDayOfWeek() == DayOfWeek.FRIDAY
-                || hasta.getDayOfWeek() == DayOfWeek.FRIDAY;
-        return (int) base + (aplicaViernes ? DIAS_ART34_FIN_SEMANA : 0);
+        int extra = 0;
+        if (desde.getDayOfWeek() == DayOfWeek.FRIDAY) {
+            if (desde.plusDays(1).isAfter(hasta)) extra++; // sábado no está ya en el rango
+            if (desde.plusDays(2).isAfter(hasta)) extra++; // domingo no está ya en el rango
+        }
+        if (hasta.getDayOfWeek() == DayOfWeek.FRIDAY && !hasta.equals(desde)) {
+            extra += DIAS_ART34_FIN_SEMANA;
+        }
+        return (int) base + extra;
+    }
+
+    /**
+     * Días CALENDARIO (Art. 34) que realmente descuentan el saldo anual de un detalle de
+     * vacación — independiente de {@code totalDias}, que para Fraccionamiento (FRACC_*) mide
+     * días HÁBILES (Art. 35.b/c). Un fin de semana "atrapado" dentro de un fraccionamiento
+     * igual consume saldo, aunque no sea día hábil. Excepción: la MEDIA JORNADA (0.5) nunca
+     * activa el cómputo del fin de semana del Art. 34 — el trabajador vuelve a laborar el resto
+     * de ese mismo día, no inicia un período de descanso continuo.
+     */
+    double calcularDiasCalendarioDetalle(LocalDate desde, LocalDate hasta, Double totalDias) {
+        if (totalDias != null && totalDias == 0.5d) {
+            return 0.5d;
+        }
+        return calcularDiasArt34(desde, hasta);
     }
 
     /**
@@ -2295,6 +2332,9 @@ public class SolicitudRrhhService {
                     estado.getNombre());
         }
         
+        dto.setTipoLicenciaId(
+                s.getTipoLicenciaId());
+
         if (s.getTipoLicenciaId() != null) {
 
             TipoLicencia licencia =
@@ -2309,6 +2349,36 @@ public class SolicitudRrhhService {
                         licencia.getNombre());
             }
         }
+
+        // G7 — faltaban en el mapeo de respuesta: sin esto, el frontend no puede precargar
+        // estos campos al editar una papeleta de Descanso Médico o de Teletrabajo.
+        dto.setTipoDescansoMedicoId(
+                s.getTipoDescansoMedicoId());
+
+        dto.setNombreMedico(
+                s.getNombreMedico());
+
+        dto.setNumeroColegiatura(
+                s.getNumeroColegiatura());
+
+        if (s.getTipoDescansoMedicoId() != null) {
+
+            TipoDescansoMedico descanso =
+                    tipoDescansoMedicoRepository
+                            .findById(
+                                    s.getTipoDescansoMedicoId())
+                            .orElse(null);
+
+            if (descanso != null) {
+
+                dto.setTipoDescansoMedico(
+                        descanso.getNombre());
+            }
+        }
+
+        dto.setModalidadTeletrabajo(
+                s.getModalidadTeletrabajo());
+
         dto.setFechaInicio(
                 s.getFechaInicio());
 
@@ -2403,6 +2473,9 @@ public class SolicitudRrhhService {
 
                             d.setTotalDias(
                                     det.getTotalDias());
+
+                            d.setDiasCalendario(
+                                    det.getDiasCalendario());
 
                             return d;
                         })
@@ -3080,6 +3153,14 @@ public class SolicitudRrhhService {
         materializarLicenciaSinGoce(solicitud);
 
         // ==========================================
+        // RECONCILIAR ASISTENCIA YA IMPORTADA (papeleta aprobada después de la carga)
+        // ==========================================
+        // Si el tipo justifica asistencia (JUSTIFICA_ASISTENCIA=1) y algún día del rango ya
+        // quedó en FALTA/OMISION_MARCACION por haberse importado antes de esta aprobación,
+        // lo reconcilia ahora. Sin esto el día queda congelado en FALTA para siempre.
+        asistenciaService.reconciliarPorPapeletaAprobada(solicitud, tipoSolicitud);
+
+        // ==========================================
         // AUDITORIA
         // ==========================================
 
@@ -3195,6 +3276,7 @@ public class SolicitudRrhhService {
     
     @Auditable(
             accion = "EDITAR_SOLICITUD_RRHH")
+    @Transactional
     public void editar(
             Long solicitudId,
             SolicitudRrhhDto dto) {
@@ -3248,16 +3330,34 @@ public class SolicitudRrhhService {
         validarVacacion(
                 dto,
                 tipo);
+
+        // B2 — al editar, revalidar Art. 34/35 igual que en registrar(): el servidor no
+        // debe confiar en los días recalculados por el cliente en la edición.
+        validarDetalleVacacion(
+                dto,
+                empleadoId);
+
+        completarFechasVacacion(
+                dto,
+                tipo);
+
         validarCompensacion(
                 dto,
                 tipo);
-        validarHorasCompensacion(
-                dto);
-        
+
+        // G6 — bug preexistente: llamar validarHorasCompensacion() sin guardar por tipo
+        // provoca NPE (dto.getDetallesCompensacion() es null) al editar cualquier papeleta
+        // que NO sea de Compensación. Se guarda igual que en registrar().
+        if(Integer.valueOf(1)
+                .equals(tipo.getMostrarCompensacion())) {
+            validarHorasCompensacion(
+                    dto);
+        }
+
         validarDescansoMedico(
                 dto,
                 tipo);
-        
+
         validarLicencia(
                 dto,
                 tipo);
@@ -3273,7 +3373,7 @@ public class SolicitudRrhhService {
         validarFechas(
                 dto,
                 tipo);
-        
+
         validarDuplicidadEditar(
                 solicitudId,
                 dto,
@@ -3298,14 +3398,52 @@ public class SolicitudRrhhService {
 
         repository.save(
                 solicitud);
-        
+
         actualizarDetalleVacacion(
+                solicitudId,
+                dto);
+
+        // B1 — espejo de actualizarDetalleVacacion: editar una papeleta de Compensación o
+        // Teletrabajo debe sincronizar su detalle hijo, igual que ya ocurre con Vacaciones.
+        actualizarDetalleCompensacion(
+                solicitudId,
+                dto);
+
+        actualizarDetalleTeletrabajo(
                 solicitudId,
                 dto);
 
         auditoriaContext.setDetalle(
                 "Solicitud RRHH editada ID: "
                         + solicitudId);
+    }
+
+    /** B1 — espejo de {@link #actualizarDetalleVacacion}: reemplaza el cronograma de compensación. */
+    private void actualizarDetalleCompensacion(
+            Long solicitudId,
+            SolicitudRrhhDto dto) {
+
+        solicitudCompensacionDetRepository
+                .deleteBySolicitudId(
+                        solicitudId);
+
+        guardarDetalleCompensacion(
+                solicitudId,
+                dto);
+    }
+
+    /** B1 — espejo de {@link #actualizarDetalleVacacion}: reemplaza las actividades de teletrabajo. */
+    private void actualizarDetalleTeletrabajo(
+            Long solicitudId,
+            SolicitudRrhhDto dto) {
+
+        solicitudTeletrabajoDetRepository
+                .deleteBySolicitudId(
+                        solicitudId);
+
+        guardarDetalleTeletrabajo(
+                solicitudId,
+                dto);
     }
     
     private void validarHorasCompensacion(

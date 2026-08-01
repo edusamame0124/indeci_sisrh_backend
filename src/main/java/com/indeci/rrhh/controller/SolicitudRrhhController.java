@@ -12,7 +12,6 @@ import com.indeci.rrhh.dto.DocumentoAdjuntoDto;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.dto.SolicitudRrhhResponseDto;
 import com.indeci.rrhh.service.SolicitudRrhhService;
-import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
@@ -178,15 +177,23 @@ public class SolicitudRrhhController {
         return new ApiResponse<>("OK", "Solicitud rechazada por RRHH", null);
     }
 
+    /**
+     * Autoservicio de papeletas: edita una papeleta PROPIA en BORRADOR. Exige
+     * {@code PAP_EMPLEADO} (módulo de papeletas del empleado) — antes exigía {@code EMP_WRITE}
+     * (permiso administrativo de RRHH sobre el legajo de terceros: Familiares, Experiencia
+     * Laboral, etc.), que el rol Empleado nunca tuvo, bloqueando con 403 a cualquier empleado
+     * que intentara editar su propia papeleta. La seguridad de negocio (dueño == usuario,
+     * estado BORRADOR) la sigue dando el servicio, sin cambios.
+     */
     @PutMapping("/editar/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     public ApiResponse<Void> editar(@PathVariable Long id, @RequestBody SolicitudRrhhDto dto) {
         service.editar(id, dto);
         return new ApiResponse<>("OK", "Solicitud editada", null);
     }
 
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     @PutMapping("/anular/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> anular(@PathVariable Long id) {
         service.anular(id);
         return new ApiResponse<>("OK", "Solicitud anulada", null);
@@ -194,10 +201,12 @@ public class SolicitudRrhhController {
 
     /**
      * Elimina (soft-delete) una papeleta propia en BORRADOR. Endpoint de autoservicio:
-     * solo requiere estar autenticado (igual que registrar/enviar). La seguridad real la
-     * da el servicio, que valida propiedad (dueño == usuario) y estado (BORRADOR).
+     * requiere el permiso PAP_EMPLEADO (módulo de papeletas del empleado, igual que editar).
+     * La seguridad de negocio la da el servicio, que valida propiedad (dueño == usuario) y
+     * estado (BORRADOR).
      */
     @DeleteMapping("/eliminar/{id}")
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO')")
     public ApiResponse<Void> eliminarBorrador(@PathVariable Long id) {
         service.eliminarBorrador(id);
         return new ApiResponse<>("OK", "Papeleta eliminada", null);

@@ -17,7 +17,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/rrhh/solicitudes-doc")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
 public class SolicitudRrhhDocController {
 
     private final SolicitudRrhhDocService service;
@@ -36,7 +35,20 @@ public class SolicitudRrhhDocController {
                 null);
     }
 
+    /**
+     * Documentos adjuntos de una papeleta (trazabilidad + descarga en los diálogos de
+     * aprobación). Antes exigía solo EMP_READ (permiso administrativo de legajo) — que ni el
+     * rol Empleado (dueño de su propia papeleta) ni el rol dedicado a aprobar papeletas por
+     * RRHH (PAP_APROBAR_RRHH/PAP_RRHH, sin EMP_READ) tienen, bloqueando con 403 la trazabilidad
+     * del propio empleado y la descarga de sustento del evaluador RRHH. Acepta también los
+     * permisos de papeleta (PAP_EMPLEADO/PAP_JEFE/PAP_RRHH/PAP_APROBAR_RRHH). El guard de
+     * propiedad para PAP_EMPLEADO (evita leer documentos de una papeleta ajena) vive en el
+     * servicio — ver {@link SolicitudRrhhDocService#listar}.
+     */
     @GetMapping("/{solicitudId}")
+    @PreAuthorize("hasAuthority('PAP_EMPLEADO') or hasAuthority('PAP_JEFE') "
+            + "or hasAuthority('PAP_RRHH') or hasAuthority('PAP_APROBAR_RRHH') "
+            + "or " + SisrhSecurityExpressions.EMP_READ)
     public ApiResponse<
             List<SolicitudRrhhDocResponseDto>>
     listar(

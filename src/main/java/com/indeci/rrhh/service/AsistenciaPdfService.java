@@ -21,7 +21,9 @@ import org.springframework.stereotype.Service;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -37,10 +39,7 @@ public class AsistenciaPdfService {
 
     public byte[] generar(Long empleadoId, String periodo) {
         AsistenciaResponseDto asistencia = asistenciaService.obtener(empleadoId, periodo);
-        PersonaResumenDto persona = personaService.listar().stream()
-                .filter(p -> empleadoId.equals(p.getEmpleadoId()))
-                .findFirst()
-                .orElse(null);
+        PersonaResumenDto persona = buscarPersona(empleadoId);
 
         ByteArrayOutputStream salida = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 36f, 36f, 32f, 32f);
@@ -58,7 +57,7 @@ public class AsistenciaPdfService {
 
             doc.add(encabezado(periodo, titulo, texto));
             doc.add(datosTrabajador(persona, empleadoId, label, texto));
-            doc.add(resumen(asistencia, seccion, label, texto, navy));
+            doc.add(resumen(asistencia, seccion, label, texto, navy, "RESUMEN"));
             doc.add(detalle(asistencia.getDias(), base, label, texto));
             doc.add(notaReferencial(texto));
             doc.close();
@@ -66,6 +65,91 @@ public class AsistenciaPdfService {
             throw new NegocioException("No se pudo generar el PDF de asistencia.");
         }
         return salida.toByteArray();
+    }
+
+    /**
+     * Reporte de asistencia por rango libre de fechas (puede abarcar varios meses
+     * calendario). El resumen de cada bloque mensual conserva el agregado oficial
+     * de esa cabecera (tope mensual de tardanza, D.Leg. 276 Art. 24); solo el
+     * detalle diario se recorta al rango solicitado.
+     */
+    public byte[] generarRango(Long empleadoId, LocalDate fechaInicio, LocalDate fechaFin) {
+        if (fechaFin.isBefore(fechaInicio)) {
+            throw new NegocioException("La fecha fin debe ser posterior o igual a la de inicio.");
+        }
+        PersonaResumenDto persona = buscarPersona(empleadoId);
+
+        ByteArrayOutputStream salida = new ByteArrayOutputStream();
+        Document doc = new Document(PageSize.A4, 36f, 36f, 32f, 32f);
+        try {
+            PdfWriter.getInstance(doc, salida);
+            doc.open();
+
+            Font titulo = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
+            Font seccion = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8);
+            Font label = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7);
+            Font texto = FontFactory.getFont(FontFactory.HELVETICA, 8);
+            Color navy = new Color(10, 34, 64);
+
+            doc.add(encabezadoRango(fechaInicio, fechaFin, titulo, texto));
+            doc.add(datosTrabajador(persona, empleadoId, label, texto));
+
+            boolean conDatos = false;
+            for (String periodo : mesesEnRango(fechaInicio, fechaFin)) {
+                AsistenciaResponseDto mes = asistenciaService.obtener(empleadoId, periodo);
+                List<AsistenciaDiaDto> diasDelRango = filtrarPorRango(mes.getDias(), fechaInicio, fechaFin);
+                if (diasDelRango.isEmpty()) {
+                    continue;
+                }
+                conDatos = true;
+                double base = mes.getRemuneracionBase() != null ? mes.getRemuneracionBase() : 0.0;
+                doc.add(resumen(mes, seccion, label, texto, navy, "RESUMEN — " + tituloPeriodoLegible(periodo)));
+                doc.add(detalle(diasDelRango, base, label, texto));
+            }
+            if (!conDatos) {
+                Paragraph vacio = new Paragraph(
+                        "No hay asistencia registrada en el rango consultado.", texto);
+                vacio.setSpacingBefore(8f);
+                doc.add(vacio);
+            }
+            doc.add(notaReferencial(texto));
+            doc.close();
+        } catch (NegocioException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new NegocioException("No se pudo generar el PDF de asistencia.");
+        }
+        return salida.toByteArray();
+    }
+
+    private PersonaResumenDto buscarPersona(Long empleadoId) {
+        return personaService.listar().stream()
+                .filter(p -> empleadoId.equals(p.getEmpleadoId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** Lista "yyyy-MM" de cada mes calendario tocado por [fechaInicio, fechaFin], en orden. */
+    private List<String> mesesEnRango(LocalDate fechaInicio, LocalDate fechaFin) {
+        List<String> periodos = new ArrayList<>();
+        YearMonth actual = YearMonth.from(fechaInicio);
+        YearMonth ultimo = YearMonth.from(fechaFin);
+        while (!actual.isAfter(ultimo)) {
+            periodos.add(actual.toString());
+            actual = actual.plusMonths(1);
+        }
+        return periodos;
+    }
+
+    private List<AsistenciaDiaDto> filtrarPorRango(List<AsistenciaDiaDto> dias, LocalDate ini, LocalDate fin) {
+        return dias.stream()
+                .filter(d -> d.getDia() != null && !d.getDia().isBefore(ini) && !d.getDia().isAfter(fin))
+                .toList();
+    }
+
+    private String tituloPeriodoLegible(String periodo) {
+        String legible = YearMonth.parse(periodo).format(DateTimeFormatter.ofPattern("MMMM yyyy", PE));
+        return legible.substring(0, 1).toUpperCase(PE) + legible.substring(1);
     }
 
     private PdfPTable encabezado(String periodo, Font titulo, Font texto) {
@@ -89,6 +173,27 @@ public class AsistenciaPdfService {
         return table;
     }
 
+    private PdfPTable encabezadoRango(LocalDate fechaInicio, LocalDate fechaFin, Font titulo, Font texto) {
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(8f);
+
+        PdfPCell izq = celdaSinBorde();
+        izq.addElement(new Paragraph("INSTITUTO NACIONAL DE DEFENSA CIVIL", titulo));
+        izq.addElement(new Paragraph("SISRH - Sistema Integrado de RR. HH.", texto));
+        table.addCell(izq);
+
+        PdfPCell der = celdaSinBorde();
+        Paragraph p = new Paragraph();
+        p.setAlignment(Element.ALIGN_RIGHT);
+        p.add(new Phrase("REPORTE DE ASISTENCIA\n", titulo));
+        p.add(new Phrase("Rango: " + FECHA.format(fechaInicio) + " - " + FECHA.format(fechaFin) + "\n", texto));
+        p.add(new Phrase("Emision: " + FECHA.format(LocalDate.now()), texto));
+        der.addElement(p);
+        table.addCell(der);
+        return table;
+    }
+
     private PdfPTable datosTrabajador(PersonaResumenDto persona, Long empleadoId, Font label, Font texto) {
         PdfPTable table = new PdfPTable(4);
         table.setWidthPercentage(100);
@@ -101,11 +206,13 @@ public class AsistenciaPdfService {
         return table;
     }
 
-    private PdfPTable resumen(AsistenciaResponseDto asistencia, Font seccion, Font label, Font texto, Color navy) {
+    private PdfPTable resumen(
+            AsistenciaResponseDto asistencia, Font seccion, Font label, Font texto, Color navy,
+            String tituloSeccion) {
         PdfPTable table = new PdfPTable(4);
         table.setWidthPercentage(100);
         table.setSpacingAfter(8f);
-        PdfPCell title = new PdfPCell(new Phrase("RESUMEN", seccion));
+        PdfPCell title = new PdfPCell(new Phrase(tituloSeccion, seccion));
         title.setColspan(4);
         title.setBackgroundColor(navy);
         title.setPadding(5f);
