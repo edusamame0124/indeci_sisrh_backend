@@ -22,6 +22,8 @@ import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.service.AsistenciaImportService;
 import com.indeci.rrhh.service.AsistenciaService;
 import com.indeci.rrhh.service.AsistenciaPdfService;
+import com.indeci.rrhh.service.asistencia.AsistenciaResumenPeriodoService;
+import com.indeci.rrhh.service.asistencia.AsistenciaResumenPeriodoXlsxWriter;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,8 @@ public class AsistenciaController {
     private final AsistenciaService service;
     private final AsistenciaPdfService pdfService;
     private final AsistenciaImportService importService;
+    private final AsistenciaResumenPeriodoService resumenPeriodoService;
+    private final AsistenciaResumenPeriodoXlsxWriter resumenPeriodoXlsxWriter;
 
     /** Consulta de asistencia por rango [fechaInicio, fechaFin] y filtros opcionales (DNI, nombre). */
     @GetMapping("/diaria")
@@ -59,7 +63,28 @@ public class AsistenciaController {
         return new ApiResponse<>("OK", "Asistencia del rango",
                 service.listarDiaria(fechaInicio, fechaFin, dni, q, pageable));
     }
-    
+
+    /**
+     * Reporte de asistencia consolidado por período (XLSX, 1 fila por empleado x período),
+     * formato institucional {@code docs/reporte_asistencia.xlsx}. Usa el mismo rango de la
+     * "Consulta diaria de asistencia" — si el rango cruza meses, exporta un bloque por cada
+     * período calendario tocado.
+     */
+    @GetMapping("/diaria/xlsx")
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
+    public ResponseEntity<byte[]> exportarResumenPeriodoXlsx(
+            @RequestParam LocalDate fechaInicio,
+            @RequestParam LocalDate fechaFin) {
+        byte[] xlsx = resumenPeriodoXlsxWriter.generar(resumenPeriodoService.generar(fechaInicio, fechaFin));
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename("reporte_asistencia_" + fechaInicio + "_" + fechaFin + ".xlsx")
+                .build());
+        return ResponseEntity.ok().headers(headers).body(xlsx);
+    }
+
     /** Detalle diario de una importación (lote) — módulo de detalle del historial (solo lectura). */
     @GetMapping("/importacion/{importacionId}/diaria")
     @PreAuthorize(SisrhSecurityExpressions.ASI_READ)

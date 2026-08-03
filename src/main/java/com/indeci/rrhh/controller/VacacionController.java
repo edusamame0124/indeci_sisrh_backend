@@ -249,6 +249,30 @@ public class VacacionController {
 	}
 
 	/**
+	 * Botón "Editar Gozados" del Padrón Vacacional: corrige el TOTAL de días gozados de un
+	 * empleado a un valor arbitrario (dato migrado incompleto, error de digitación, goce
+	 * gestionado fuera del flujo de papeletas). El motivo es obligatorio (Poka-Yoke); queda en
+	 * AUDITORIA y como fila nueva en {@code INDECI_VACACIONES} — ver
+	 * {@link VacacionService#corregirGozadoManual}. Saldo/Récord se recalculan solos (derivados
+	 * en vivo por {@code VacacionCalculoService}).
+	 */
+	@PostMapping("/padron/{empleadoId}/corregir-gozados")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
+	public ApiResponse<com.indeci.rrhh.dto.CorreccionGozadosResultDto> corregirGozados(
+			@PathVariable Long empleadoId,
+			@org.springframework.validation.annotation.Validated @RequestBody
+			com.indeci.rrhh.dto.CorregirGozadosDto dto) {
+
+		com.indeci.rrhh.dto.CorreccionGozadosResultDto resultado =
+				vacacionService.corregirGozadoManual(empleadoId, dto);
+		String mensaje = resultado.delta() == 0d
+				? "El total de días gozados ya estaba correcto — sin cambios"
+				: "Días gozados corregidos correctamente";
+
+		return new ApiResponse<>("OK", mensaje, resultado);
+	}
+
+	/**
 	 * F9.3 — D.S. 013-2019-PCM: registra la decisión de RR.HH. sobre la acumulación de
 	 * períodos sin gozar de un empleado (auditoría append-only, no modifica saldos).
 	 */

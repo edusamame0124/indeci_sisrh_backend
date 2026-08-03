@@ -20,7 +20,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.CorreccionGozadosResultDto;
+import com.indeci.rrhh.dto.CorregirGozadosDto;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.SolicitudVacacionDet;
 import com.indeci.rrhh.entity.Vacacion;
@@ -49,6 +52,7 @@ class VacacionServiceSaldoTest {
     @Mock SolicitudVacacionDetRepository solicitudVacacionDetRepository;
     @Mock TiempoServicioService tiempoServicioService;
     @Mock com.indeci.rrhh.service.incidencia.IncidenciaLaboralCompuesta incidenciaLaboralProvider;
+    @Mock AuditoriaContext auditoriaContext;
 
     @InjectMocks VacacionService service;
 
@@ -333,5 +337,86 @@ class VacacionServiceSaldoTest {
         assertThatThrownBy(() -> service.validarSaldoAprobacion(s))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("insuficiente");
+    }
+
+    private CorregirGozadosDto corregirDto(Double nuevoTotal, String motivo) {
+        CorregirGozadosDto dto = new CorregirGozadosDto();
+        dto.setNuevoTotalGozado(nuevoTotal);
+        dto.setMotivo(motivo);
+        return dto;
+    }
+
+    // ── Botón "Editar Gozados" — caso feliz: sube el total, ajusta saldo FIFO y deja rastro
+    //    en el histórico con el DELTA en diasCalendario (nunca en dias/hábiles, Art.35 pool) ──
+    @Test
+    void corregirGozadoManual_sube_total_ajusta_saldo_y_registra_historico() {
+        VacacionSaldo saldo = saldo(1500L, 2026, 30, 10);
+        when(vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(1500L, 1))
+                .thenReturn(List.of(saldo));
+
+        CorreccionGozadosResultDto resultado =
+                service.corregirGozadoManual(1500L, corregirDto(18d, "Corrige goce no registrado en papeleta"));
+
+        assertThat(resultado.gozadoAnterior()).isEqualTo(10d);
+        assertThat(resultado.gozadoNuevo()).isEqualTo(18d);
+        assertThat(resultado.delta()).isEqualTo(8d);
+        // El saldo se ajustó vía el mismo FIFO que usan papeletas/goce directo.
+        assertThat(saldo.getDiasGozados()).isEqualTo(18d);
+
+        org.mockito.ArgumentCaptor<Vacacion> captor = org.mockito.ArgumentCaptor.forClass(Vacacion.class);
+        verify(vacacionRepository).save(captor.capture());
+        Vacacion historico = captor.getValue();
+        assertThat(historico.getOrigen()).isEqualTo("CORRECCION_MANUAL_RRHH");
+        assertThat(historico.getTipoGoce()).isEqualTo("CORRECCION_MANUAL");
+        assertThat(historico.getDiasCalendario()).isEqualTo(8d);
+        // Nunca toca el pool de 7 días fraccionables (Art. 35) — dias hábiles queda null.
+        assertThat(historico.getDias()).isNull();
+        assertThat(historico.getMotivoExcepcion()).isEqualTo("Corrige goce no registrado en papeleta");
+    }
+
+    // ── Caso de error normativo: motivo en blanco — Poka-Yoke, nunca corrige en silencio ──
+    @Test
+    void corregirGozadoManual_sin_motivo_lanza_negocio() {
+        assertThatThrownBy(() -> service.corregirGozadoManual(1501L, corregirDto(20d, "  ")))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("motivo");
+
+        verify(vacacionSaldoRepository, never()).findByEmpleadoIdAndActivoOrderByAnioAsc(anyLong(), anyInt());
+    }
+
+    // ── Caso de borde: nuevo total == actual (delta 0) — no-op, no toca saldo ni histórico ──
+    @Test
+    void corregirGozadoManual_sin_cambio_no_toca_saldo_ni_historico() {
+        VacacionSaldo saldo = saldo(1502L, 2026, 30, 12);
+        when(vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(1502L, 1)).thenReturn(List.of(saldo));
+
+        CorreccionGozadosResultDto resultado =
+                service.corregirGozadoManual(1502L, corregirDto(12d, "Verificación, sin cambio"));
+
+        assertThat(resultado.delta()).isEqualTo(0d);
+        assertThat(saldo.getDiasGozados()).isEqualTo(12d);
+        verify(vacacionRepository, never()).save(any());
+        // Solo la lectura inicial (para comparar el total) — ajustarSaldoVacacional nunca corre.
+        verify(vacacionSaldoRepository, times(1)).findByEmpleadoIdAndActivoOrderByAnioAsc(1502L, 1);
+    }
+
+    // ── Caso de borde: total negativo — rechazado, nunca dejaría un gozado imposible ──
+    @Test
+    void corregirGozadoManual_total_negativo_lanza_negocio() {
+        assertThatThrownBy(() -> service.corregirGozadoManual(1503L, corregirDto(-5d, "Motivo cualquiera")))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("negativo");
+
+        verify(vacacionSaldoRepository, never()).findByEmpleadoIdAndActivoOrderByAnioAsc(anyLong(), anyInt());
+    }
+
+    // ── Empleado sin saldo provisionado — no puede corregir lo que no existe ──
+    @Test
+    void corregirGozadoManual_sin_saldo_provisionado_lanza_negocio() {
+        when(vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(1504L, 1)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.corregirGozadoManual(1504L, corregirDto(10d, "Motivo cualquiera")))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("saldo vacacional");
     }
 }

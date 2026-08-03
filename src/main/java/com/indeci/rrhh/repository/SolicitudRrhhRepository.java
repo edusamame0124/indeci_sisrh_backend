@@ -108,4 +108,28 @@ public interface SolicitudRrhhRepository
 	        Integer activo,
 	        LocalDate fechaFin,
 	        LocalDate fechaInicio);
+
+    /**
+     * Reporte de asistencia consolidado — suma en batch (sin N+1) las horas de papeletas
+     * APROBADAS de los {@code codigos} indicados (p.ej. "001" Permiso por asuntos
+     * personales) que se solapan con [desde, hasta], agrupadas por empleado.
+     */
+    @Query("select s.empleadoId as empleadoId, coalesce(sum(s.cantidadHoras), 0) as totalHoras "
+            + "from SolicitudRrhh s join s.tipoSolicitud t "
+            + "where s.activo = 1 and s.estadoSolicitudId = :estadoAprobada "
+            + "and t.codigo in :codigos "
+            + "and s.fechaInicio is not null and s.fechaInicio <= :hasta "
+            + "and (s.fechaFin is null or s.fechaFin >= :desde) "
+            + "group by s.empleadoId")
+    List<HorasPermisoAgg> sumarHorasPorTipoEnRango(
+            @Param("estadoAprobada") Long estadoAprobada,
+            @Param("codigos") List<String> codigos,
+            @Param("desde") LocalDate desde,
+            @Param("hasta") LocalDate hasta);
+
+    /** Proyección de {@link #sumarHorasPorTipoEnRango}. */
+    interface HorasPermisoAgg {
+        Long getEmpleadoId();
+        Double getTotalHoras();
+    }
 }

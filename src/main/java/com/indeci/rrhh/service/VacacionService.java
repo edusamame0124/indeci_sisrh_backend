@@ -7,10 +7,14 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.indeci.audit.annotation.Auditable;
+import com.indeci.audit.context.AuditoriaContext;
 import com.indeci.exception.NegocioException;
 import com.indeci.exception.VinculoNoEncontradoException;
 import com.indeci.rrhh.dto.AcumulacionDecisionInputDto;
 import com.indeci.rrhh.dto.AcumulacionDecisionResponseDto;
+import com.indeci.rrhh.dto.CorreccionGozadosResultDto;
+import com.indeci.rrhh.dto.CorregirGozadosDto;
 import com.indeci.rrhh.dto.DiasNoComputablesDto;
 import com.indeci.rrhh.dto.PeriodoProgramadoDto;
 import com.indeci.rrhh.dto.SaldoProporcionalDto;
@@ -64,6 +68,8 @@ public class VacacionService {
 
     private final VacacionAcumulacionDecisionRepository acumulacionDecisionRepository;
 
+    private final AuditoriaContext auditoriaContext;
+
     /** F9.3 — D.S. 013-2019-PCM: tope de períodos vacacionales acumulables sin gozar. */
     public static final int TOPE_PERIODOS_ACUMULACION = 2;
 
@@ -72,6 +78,12 @@ public class VacacionService {
 
     /** Hub Vacacional — marca el período origen como ya reprogramado/fraccionado (no disponible). */
     private static final String ESTADO_SUSTITUIDO = "SUSTITUIDO";
+
+    /** Botón "Editar Gozados" del Padrón — corrección manual del total de días gozados. */
+    private static final String ORIGEN_CORRECCION_MANUAL = "CORRECCION_MANUAL_RRHH";
+
+    /** Marca el registro histórico como un ajuste administrativo, no un goce físico real. */
+    private static final String TIPO_GOCE_CORRECCION = "CORRECCION_MANUAL";
 	
 	/**
 	 * Obtenidos/Gozados/Saldo — SIEMPRE visible en toda papeleta (pedido RR.HH.).
@@ -538,6 +550,73 @@ public class VacacionService {
         // Programación/adelanto ⇒ neto = díasNuevos (idéntico al comportamiento previo).
         // Reprogramación/fraccionamiento ⇒ neto = 0 (no toca el saldo).
         ajustarSaldoVacacional(solicitud.getEmpleadoId(), consumoNeto(detalles));
+    }
+
+    /**
+     * Botón "Editar Gozados" del Padrón Vacacional — RR.HH. corrige el TOTAL de días gozados
+     * de un empleado a un valor arbitrario (dato migrado incompleto, error de digitación, goce
+     * gestionado fuera del flujo de papeletas, etc.). El motivo es obligatorio (Poka-Yoke).
+     *
+     * <p>Reutiliza {@link #ajustarSaldoVacacional} — el MISMO reparto FIFO que ya usa la
+     * aprobación de papeletas y "Goce Directo" — por lo que Saldo/Récord (derivados en vivo por
+     * {@code VacacionCalculoService}) quedan recalculados sin tocar código adicional.</p>
+     *
+     * <p>Trazabilidad: además del registro en AUDITORIA (vía {@code @Auditable}), se inserta una
+     * fila en {@code INDECI_VACACIONES} ({@code ORIGEN=CORRECCION_MANUAL_RRHH}) con el DELTA
+     * aplicado en {@code diasCalendario} (el campo que efectivamente mueve el saldo). Se deja
+     * {@code dias} (hábiles) en {@code null} a propósito: ese campo alimenta el pool de 7 días
+     * fraccionables (Art. 35) y una corrección administrativa no es un goce fraccionado real —
+     * tocarlo distorsionaría esa validación normativa (CONSTRAINT: no modificar lógica existente).</p>
+     */
+    @Auditable(accion = "CORREGIR_GOZADOS_MANUAL")
+    @Transactional
+    public CorreccionGozadosResultDto corregirGozadoManual(Long empleadoId, CorregirGozadosDto dto) {
+        if (dto.getMotivo() == null || dto.getMotivo().isBlank()) {
+            throw new NegocioException("El motivo de la corrección es obligatorio");
+        }
+        if (dto.getNuevoTotalGozado() == null || dto.getNuevoTotalGozado() < 0d) {
+            throw new NegocioException("El nuevo total de días gozados no puede ser negativo");
+        }
+
+        List<VacacionSaldo> saldos = vacacionSaldoRepository.findByEmpleadoIdAndActivoOrderByAnioAsc(empleadoId, 1);
+        if (saldos.isEmpty()) {
+            throw new NegocioException("El empleado no tiene saldo vacacional provisionado");
+        }
+
+        double totalActual = saldos.stream()
+                .mapToDouble(s -> s.getDiasGozados() != null ? s.getDiasGozados() : 0d)
+                .sum();
+        double nuevoTotal = dto.getNuevoTotalGozado();
+        double delta = nuevoTotal - totalActual;
+
+        if (delta != 0d) {
+            ajustarSaldoVacacional(empleadoId, delta);
+
+            LocalDate hoy = LocalDate.now();
+            Vacacion correccion = new Vacacion();
+            correccion.setEmpleadoId(empleadoId);
+            correccion.setPeriodoDesde(hoy);
+            correccion.setPeriodoHasta(hoy);
+            correccion.setPeriodo(String.valueOf(hoy.getYear()));
+            correccion.setAnioPeriodo(hoy.getYear());
+            correccion.setTipoGoce(TIPO_GOCE_CORRECCION);
+            correccion.setDiasCalendario(delta);
+            correccion.setEstado("GOZADO");
+            correccion.setEsAdelanto(0);
+            correccion.setOrigen(ORIGEN_CORRECCION_MANUAL);
+            correccion.setMotivoExcepcion(dto.getMotivo());
+            correccion.setObservacion(String.format(
+                    "Corrección manual RR.HH.: %.1f -> %.1f días gozados. Motivo: %s",
+                    totalActual, nuevoTotal, dto.getMotivo()));
+            correccion.setActivo(1);
+            vacacionRepository.save(correccion);
+        }
+
+        auditoriaContext.setDetalle(String.format(
+                "Corrección manual de días gozados — empleado %d. Anterior: %.1f. Nuevo: %.1f. Delta: %.1f. Motivo: %s",
+                empleadoId, totalActual, nuevoTotal, delta, dto.getMotivo()));
+
+        return new CorreccionGozadosResultDto(totalActual, nuevoTotal, delta);
     }
 
     /** Ajusta el saldo: {@code delta>0} consume (descuenta), {@code delta<0} libera (acredita), {@code 0} no-op. */
