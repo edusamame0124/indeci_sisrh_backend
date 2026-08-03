@@ -156,4 +156,31 @@ public class AsistenciaController {
                 .build());
         return ResponseEntity.ok().headers(headers).body(pdf);
     }
+
+    /**
+     * Backfill ÚNICO (temporal) — sanea el histórico afectado por la falta de reconciliación
+     * LABORAL/TARDANZA → VACACIONES antes de este fix. Reconcilia TODAS las papeletas de
+     * Vacaciones ya APROBADAS contra las cabeceras activas actuales. Idempotente (seguro
+     * reintentar). Gateado a SUPER_ADMIN por ser una operación masiva de una sola vez —
+     * quitar este endpoint una vez ejecutado en cada ambiente.
+     */
+    @PostMapping("/backfill-reconciliacion-vacaciones")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillReconciliacionVacaciones() {
+        int procesadas = service.backfillReconciliarVacacionesAprobadas();
+        return new ApiResponse<>("OK", "Papeletas de vacaciones reconciliadas: " + procesadas, procesadas);
+    }
+
+    /**
+     * Backfill ÚNICO (temporal, independiente del anterior) — corrige días ya persistidos mal
+     * clasificados como LABORAL/OBSERVADO que en realidad son FERIADO según el catálogo oficial
+     * (INDECI_FERIADO) y no tienen marcación real. Idempotente. Gateado a SUPER_ADMIN — quitar
+     * este endpoint una vez ejecutado en cada ambiente.
+     */
+    @PostMapping("/backfill-feriados")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillFeriados() {
+        int corregidos = service.backfillFeriadosMalClasificados();
+        return new ApiResponse<>("OK", "Días de feriado corregidos: " + corregidos, corregidos);
+    }
 }

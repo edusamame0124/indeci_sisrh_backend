@@ -22,6 +22,27 @@ public final class AsistenciaMarcadorMapper {
             int minutosTardanza,
             int minutosSalidaAnticipada,
             String observacionMarcador) {
+        return toDia(diaSemana, fecha, marca1, marca2, marca3, marca4, horaEntrada,
+                minutosTardanza, minutosSalidaAnticipada, observacionMarcador, false);
+    }
+
+    /**
+     * @param esFeriadoCatalogo la fecha está en el catálogo oficial de feriados
+     *     ({@code CalendarioLaboralService.Calendario#esFeriado}) — autoritativo, no depende
+     *     de que el marcador rotule el texto de la observación con el nombre exacto del feriado.
+     */
+    public static AsistenciaDiaDto toDia(
+            String diaSemana,
+            java.time.LocalDate fecha,
+            String marca1,
+            String marca2,
+            String marca3,
+            String marca4,
+            String horaEntrada,
+            int minutosTardanza,
+            int minutosSalidaAnticipada,
+            String observacionMarcador,
+            boolean esFeriadoCatalogo) {
 
         AsistenciaDiaDto dia = new AsistenciaDiaDto();
         dia.setDia(fecha);
@@ -36,7 +57,7 @@ public final class AsistenciaMarcadorMapper {
         dia.setOrigen("IMPORT_MARCADOR");
 
         String obs = observacionMarcador != null ? observacionMarcador.trim() : "";
-        String tipo = resolverTipo(obs, marca1, marca2, minutosTardanza, minutosSalidaAnticipada);
+        String tipo = resolverTipo(obs, marca1, marca2, minutosTardanza, minutosSalidaAnticipada, esFeriadoCatalogo);
         dia.setTipoDia(tipo);
         dia.setMinutosTardanza("TARDANZA".equals(tipo) ? minutosTardanza : 0);
 
@@ -50,11 +71,14 @@ public final class AsistenciaMarcadorMapper {
             String marca1,
             String marca2,
             int minutosTardanza,
-            int minutosSalidaAnticipada) {
+            int minutosSalidaAnticipada,
+            boolean esFeriadoCatalogo) {
+
+        boolean entrada = AsistenciaTiempoUtil.tieneMarca(marca1);
+        boolean salida = AsistenciaTiempoUtil.tieneMarca(marca2);
+        boolean sinMarcacionReal = !entrada && !salida;
 
         if (obs.isBlank()) {
-            boolean entrada = AsistenciaTiempoUtil.tieneMarca(marca1);
-            boolean salida = AsistenciaTiempoUtil.tieneMarca(marca2);
             if (entrada && salida) {
                 return minutosTardanza > 0 ? "TARDANZA" : "LABORAL";
             }
@@ -63,7 +87,9 @@ public final class AsistenciaMarcadorMapper {
             if (entrada || salida) {
                 return "OMISION_MARCACION";
             }
-            return "OBSERVADO";
+            // Sin ninguna marca: si el catálogo dice que la fecha es feriado, es FERIADO — no
+            // el genérico OBSERVADO (un feriado sin marcación es lo esperado, no una anomalía).
+            return esFeriadoCatalogo ? "FERIADO" : "OBSERVADO";
         }
 
         String normalizada = obs.toLowerCase(Locale.ROOT);
@@ -76,7 +102,14 @@ public final class AsistenciaMarcadorMapper {
             }
             return "DESCANSO";
         }
-        if (normalizada.contains("jueves santo") || normalizada.contains("viernes santo")) {
+        // Catálogo de feriados (autoritativo, INDECI_FERIADO) tiene prioridad sobre el matching
+        // de texto legado — antes solo reconocía "jueves santo"/"viernes santo" hardcodeados y
+        // caía a LABORAL para el resto (Fiestas Patrias, Día de la Fuerza Aérea, etc.). Solo
+        // aplica sin marcación real: si la persona sí fichó, es feriado TRABAJADO → sigue LABORAL.
+        if (sinMarcacionReal
+                && (esFeriadoCatalogo
+                        || normalizada.contains("jueves santo")
+                        || normalizada.contains("viernes santo"))) {
             return "FERIADO";
         }
         if (normalizada.contains("marca incompleta")) {

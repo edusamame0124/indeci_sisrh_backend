@@ -28,6 +28,11 @@ public interface AsistenciaCabeceraRepository
             String periodo,
             Integer activo);
 
+    /** Backfill — todas las cabeceras vigentes (cualquier período/empleado). */
+    List<AsistenciaCabecera>
+    findByActivo(
+            Integer activo);
+
     List<AsistenciaCabecera>
     findByImportacionIdAndActivo(
             Long importacionId,

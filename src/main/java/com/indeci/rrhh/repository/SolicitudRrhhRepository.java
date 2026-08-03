@@ -13,23 +13,63 @@ public interface SolicitudRrhhRepository
         extends JpaRepository<SolicitudRrhh, Long> {
 
     /**
-     * Papeletas APROBADAS y activas del empleado, cuyo tipo JUSTIFICA la
-     * asistencia (con goce / teletrabajo), que podrian cubrir el periodo
-     * (fecha de inicio no posterior a {@code hasta}). El descarte fino por
-     * fecha exacta se hace en memoria (cubreFecha), respetando FECHA_FIN nula.
+     * Papeletas APROBADAS y activas del empleado que podrian cubrir el periodo (fecha de inicio
+     * no posterior a {@code hasta}), candidatas para justificar/reclasificar un dia de
+     * asistencia. El descarte fino por fecha exacta y por tipo especifico se hace en memoria
+     * (cubreFecha, codigo) en {@code PapeletaJustificacionResolver}.
+     *
+     * <p>Incluye dos familias de tipo, sin mezclarlas en el significado de negocio:
+     * <ul>
+     *   <li>{@code t.justificaAsistencia = 1} — tipos "con goce" genericos que justifican
+     *       cualquier FALTA que cubran (Teletrabajo, Licencia, etc.).</li>
+     *   <li>{@code t.codigo in :codigosSiempreIncluidos} — tipos que el resolver reconoce por
+     *       codigo especifico y aplican su PROPIA regla sin depender del flag generico
+     *       (Vacaciones "012" sobrescribe LABORAL/TARDANZA; Omision "004" justifica
+     *       OMISION_MARCACION). Estos NUNCA tienen el flag en 1 porque "tienen su propio tipo
+     *       de dia" (V012_36) — sin este OR, la reconciliacion de vacaciones/omision nunca
+     *       encontraria su propia papeleta.</li>
+     * </ul>
      * Trae el tipo (join fetch) para conocer el codigo sin lazy loading extra.
      */
     @Query("select s from SolicitudRrhh s join fetch s.tipoSolicitud t "
             + "where s.empleadoId = :empleadoId "
             + "and s.activo = 1 "
             + "and s.estadoSolicitudId = :estadoAprobada "
-            + "and t.justificaAsistencia = 1 "
+            + "and (t.justificaAsistencia = 1 or t.codigo in :codigosSiempreIncluidos) "
             + "and s.fechaInicio is not null "
             + "and s.fechaInicio <= :hasta")
     List<SolicitudRrhh> findJustificantesAsistencia(
             @Param("empleadoId") Long empleadoId,
             @Param("estadoAprobada") Long estadoAprobada,
-            @Param("hasta") LocalDate hasta);
+            @Param("hasta") LocalDate hasta,
+            @Param("codigosSiempreIncluidos") List<String> codigosSiempreIncluidos);
+
+    /**
+     * Backfill — TODAS las papeletas activas APROBADAS cuyo tipo JUSTIFICA la asistencia
+     * (flag {@code JUSTIFICA_ASISTENCIA}, REGLA-02: no hardcodeado por código), sin filtrar por
+     * empleado. Trae el tipo (join fetch) para no requerir lazy loading extra.
+     */
+    @Query("select s from SolicitudRrhh s join fetch s.tipoSolicitud t "
+            + "where s.activo = 1 "
+            + "and s.estadoSolicitudId = :estadoAprobada "
+            + "and t.justificaAsistencia = 1")
+    List<SolicitudRrhh> findAprobadasQueJustificanAsistencia(
+            @Param("estadoAprobada") Long estadoAprobada);
+
+    /**
+     * Backfill — papeletas activas APROBADAS cuyo tipo está en {@code codigos} (usado con
+     * {@code CODIGOS_PERMISO_ASISTENCIA}, el mismo set que habilita la autorización manual de
+     * tardanza en "Consulta diaria"), para poder autorizar automáticamente la tardanza que
+     * cubren aunque su tipo no tenga el flag JUSTIFICA_ASISTENCIA (p.ej. "006" Comisión de
+     * Servicio). Trae el tipo (join fetch) para no requerir lazy loading extra.
+     */
+    @Query("select s from SolicitudRrhh s join fetch s.tipoSolicitud t "
+            + "where s.activo = 1 "
+            + "and s.estadoSolicitudId = :estadoAprobada "
+            + "and t.codigo in :codigos")
+    List<SolicitudRrhh> findAprobadasPorTipoCodigoIn(
+            @Param("estadoAprobada") Long estadoAprobada,
+            @Param("codigos") List<String> codigos);
 
     List<SolicitudRrhh>
     findByEmpleadoIdAndActivo(

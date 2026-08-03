@@ -5,6 +5,7 @@ import com.indeci.rrhh.dto.AsistenciaDiaDto;
 import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
+import com.indeci.rrhh.service.asistencia.TipoDiaAsistencia;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
@@ -245,7 +246,7 @@ public class AsistenciaPdfService {
         for (AsistenciaDiaDto dia : dias) {
             table.addCell(celdaTexto(dia.getDia() != null ? FECHA.format(dia.getDia()) : "-", texto));
             table.addCell(celdaTexto(valor(dia.getDiaSemana()), texto));
-            table.addCell(celdaTexto(valor(dia.getTipoDia()), texto));
+            table.addCell(celdaTexto(TipoDiaAsistencia.etiqueta(dia.getTipoDia()), texto));
             table.addCell(celdaTexto(valor(dia.getHoraEntradaEsperada()), texto));
             table.addCell(celdaTexto(valor(dia.getMarcaEntrada()), texto));
             table.addCell(celdaTexto(valor(dia.getMarcaSalida()), texto));

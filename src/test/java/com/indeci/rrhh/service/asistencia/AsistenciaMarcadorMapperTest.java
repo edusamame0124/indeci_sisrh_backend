@@ -52,4 +52,45 @@ class AsistenciaMarcadorMapperTest {
                 0, 0, "");
         assertThat(dia.getTipoDia()).isEqualTo("OBSERVADO");
     }
+
+    // ── Catálogo de feriados (INDECI_FERIADO) — caso real: Fiestas Patrias / Día de la Fuerza
+    // Aérea quedaban como LABORAL porque el mapeo por texto solo reconocía "jueves/viernes santo".
+
+    @Test
+    void feriadoDelCatalogo_conObservacionDelMarcadorNoReconocida_esFeriado() {
+        // El marcador rotula el nombre real del feriado ("Fiestas Patrias"), que el matching de
+        // texto legado no reconocía → antes caía a LABORAL. El catálogo lo corrige.
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Mar", LocalDate.of(2026, 7, 28), "", "", null, null, "08:00",
+                0, 0, "Fiestas Patrias", true);
+        assertThat(dia.getTipoDia()).isEqualTo("FERIADO");
+        assertThat(dia.getObservacion()).isEqualTo("Fiestas Patrias");
+    }
+
+    @Test
+    void feriadoDelCatalogo_sinObservacionDelMarcador_esFeriadoNoObservado() {
+        // Antes: obs vacía + sin marcas → OBSERVADO genérico, aunque fuera un feriado real.
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Jue", LocalDate.of(2026, 7, 23), "", "", null, null, "08:00",
+                0, 0, "", true);
+        assertThat(dia.getTipoDia()).isEqualTo("FERIADO");
+    }
+
+    @Test
+    void feriadoDelCatalogo_conMarcacionReal_siguePresenteONoDescuentaComoFeriadoTrabajado() {
+        // La persona SÍ fichó ese día (feriado trabajado) — no se reclasifica a FERIADO, sigue
+        // como día laborado normal (el pago especial de feriado trabajado es otro mecanismo).
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Mar", LocalDate.of(2026, 7, 28), "08:00", "17:00", null, null, "08:00",
+                0, 0, "", true);
+        assertThat(dia.getTipoDia()).isEqualTo("LABORAL");
+    }
+
+    @Test
+    void fechaFueraDelCatalogoDeFeriados_noSeReclasifica() {
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Mar", LocalDate.of(2026, 7, 14), "", "", null, null, "08:00",
+                0, 0, "", false);
+        assertThat(dia.getTipoDia()).isEqualTo("OBSERVADO");
+    }
 }

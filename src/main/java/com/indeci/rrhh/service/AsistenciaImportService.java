@@ -1027,7 +1027,7 @@ public class AsistenciaImportService {
 
         List<AsistenciaDiaDto> diasMarcados = filasEmpleado.stream()
                 .sorted(Comparator.comparing(AsistenciaImportacionFila::getFecha))
-                .map(this::toDiaImportado)
+                .map(f -> toDiaImportado(f, calendario))
                 .toList();
         // Regla omisión: una OMISION_MARCACION cubierta por papeleta 004 aprobada pasa a
         // ASISTENCIA_JUSTIFICADA (tiempo completo, no descuenta). Sin papeleta, sigue OMISION.
@@ -1037,6 +1037,13 @@ public class AsistenciaImportService {
         // por la carga (Fase 1). Fuera de [rangoIni, rangoFin] los días quedan SIN REGISTRO.
         List<AsistenciaDiaDto> dias = conFaltasCalendario(
                 empleadoId, calendario, rangoIni, rangoFin, diasMarcados);
+        // Reconciliación durable (decisión RR.HH.): si el día quedó LABORAL/TARDANZA (el
+        // marcador registró su ingreso) pero ya hay una papeleta de Vacaciones APROBADA que
+        // cubre la fecha, la papeleta manda — se reclasifica a VACACIONES. Corre en cada
+        // import/reimport, así una nueva versión de cabecera nace ya reconciliada (antes, una
+        // reimportación posterior a la aprobación "olvidaba" la justificación ya resuelta).
+        dias = sobrescribirVacacionesSobreMarcacion(
+                empleadoId, dias, periodoPlan != null ? periodoPlan.getFechaFin() : rangoFin);
 
         BaseAsistenciaResult base = baseResolver.resolver(empleadoId);
         String estadoCabecera = resolverEstadoCabecera(filasEmpleado, dias);
@@ -1149,8 +1156,9 @@ public class AsistenciaImportService {
      * el día se marca OBSERVADO con el motivo del error: no descuenta y mantiene la cabecera fuera
      * de VALIDADA hasta que se corrija y re-suba. Las demás filas conservan su tipo calculado.
      */
-    private AsistenciaDiaDto toDiaImportado(AsistenciaImportacionFila fila) {
-        AsistenciaDiaDto dia = toDiaDto(fila);
+    private AsistenciaDiaDto toDiaImportado(
+            AsistenciaImportacionFila fila, CalendarioLaboralService.Calendario calendario) {
+        AsistenciaDiaDto dia = toDiaDto(fila, calendario);
         if ("ERROR".equals(fila.getEstadoFila())) {
             dia.setTipoDia("OBSERVADO");
             String motivo = fila.getMensajeValidacion();
@@ -1187,13 +1195,43 @@ public class AsistenciaImportService {
                 .toList();
     }
 
-    private AsistenciaDiaDto toDiaDto(AsistenciaImportacionFila fila) {
+    /**
+     * Decisión RR.HH.: la papeleta de VACACIONES aprobada manda sobre una marcación física real.
+     * Reclasifica a VACACIONES cualquier día LABORAL/TARDANZA cubierto por una papeleta de
+     * vacaciones ya aprobada — sin esto, cada reimportación (nueva versión de cabecera) "olvida"
+     * la justificación resuelta en la versión anterior, porque el día nace fresco desde el
+     * marcador. No aplica a Teletrabajo/Permiso (esos no tienen definida esta regla).
+     */
+    private List<AsistenciaDiaDto> sobrescribirVacacionesSobreMarcacion(
+            Long empleadoId, List<AsistenciaDiaDto> dias, java.time.LocalDate finPeriodo) {
+        boolean hayMarcados = dias.stream()
+                .anyMatch(d -> "LABORAL".equals(d.getTipoDia()) || "TARDANZA".equals(d.getTipoDia()));
+        if (!hayMarcados || finPeriodo == null) {
+            return dias;
+        }
+        List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
+                papeletaJustificacionResolver.cargarJustificantes(empleadoId, finPeriodo);
+        if (justificantes.isEmpty()) {
+            return dias;
+        }
+        return dias.stream()
+                .map(d -> ("LABORAL".equals(d.getTipoDia()) || "TARDANZA".equals(d.getTipoDia()))
+                        ? papeletaJustificacionResolver
+                                .justificarVacacionSobreMarcacion(d.getDia(), justificantes)
+                                .orElse(d)
+                        : d)
+                .toList();
+    }
+
+    private AsistenciaDiaDto toDiaDto(
+            AsistenciaImportacionFila fila, CalendarioLaboralService.Calendario calendario) {
         Map<String, Object> metadatos = leerMetadatosFila(fila.getErroresJson());
         int minTard = fila.getTardanzaMin() != null
                 ? fila.getTardanzaMin()
                 : AsistenciaTiempoUtil.toMinutos(fila.getTardanzaRaw());
         int minSat = AsistenciaTiempoUtil.toMinutos(
                 metadatos.getOrDefault("salidaAnticipada", "").toString());
+        boolean esFeriado = calendario != null && calendario.esFeriado(fila.getFecha());
         return AsistenciaMarcadorMapper.toDia(
                 null,
                 fila.getFecha(),
@@ -1204,7 +1242,8 @@ public class AsistenciaImportService {
                 null,
                 minTard,
                 minSat,
-                fila.getObservacionMarcador());
+                fila.getObservacionMarcador(),
+                esFeriado);
     }
 
     private MarcadorCsvRow toMarcadorRow(AsistenciaImportacionFila fila) {
@@ -1434,7 +1473,8 @@ public class AsistenciaImportService {
                         f.getHoraEntradaEsperada(),
                         tardanzaMinFinal(f),
                         AsistenciaTiempoUtil.toMinutos(f.getSalidaAnticipada()),
-                        f.getObservacion()))
+                        f.getObservacion(),
+                        calendario != null && calendario.esFeriado(f.getFecha())))
                 .toList();
 
         // F3 — completa con las FALTAS de días laborables sin marca para el conteo/descuento.

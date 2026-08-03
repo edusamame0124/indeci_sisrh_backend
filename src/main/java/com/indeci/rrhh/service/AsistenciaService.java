@@ -11,6 +11,7 @@ import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.Feriado;
 import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
@@ -18,12 +19,15 @@ import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
+import com.indeci.rrhh.repository.FeriadoRepository;
 import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
+import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
+import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
 import com.indeci.rrhh.service.asistencia.TardanzaDescuentoCalculator;
 
 import java.math.BigDecimal;
@@ -38,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -76,6 +81,8 @@ public class AsistenciaService {
     private final JornadaRegimenRepository jornadaRegimenRepository;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
+    private final FeriadoRepository feriadoRepository;
+    private final CalendarioLaboralService calendarioLaboralService;
 
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
@@ -92,6 +99,8 @@ public class AsistenciaService {
 
     /** Tipo de día que exige observación obligatoria (motivo/expediente PAD). */
     private static final String TIPO_DIA_SANCION_PAD = "SANCION_PAD";
+
+    private static final DateTimeFormatter FECHA_CORTA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private static final Set<String> ESTADOS_CABECERA = Set.of(
             "BORRADOR", "PREVALIDADA", "LISTA_PARA_VALIDAR", "OBSERVADA", "VALIDADA");
@@ -365,9 +374,10 @@ public class AsistenciaService {
         }
         validarPeriodoEditable(cab.getPeriodo());
 
-        boolean tienePapeleta = buscarPapeletaAprobada(cab.getEmpleadoId(), det.getDia()).isPresent();
-        if (tienePapeleta) {
-            aplicarDecisionPapeleta(det, dto);
+        Optional<SolicitudRrhh> papeleta = buscarPapeletaAprobada(cab.getEmpleadoId(), det.getDia());
+        boolean autorizacionAplicada = false;
+        if (papeleta.isPresent()) {
+            autorizacionAplicada = aplicarDecisionPapeleta(det, dto, papeleta.get());
         } else if (dto.getTipoDia() != null) {
             if (!TIPOS_DIA.contains(dto.getTipoDia())) {
                 throw new NegocioException("Tipo de día inválido: " + dto.getTipoDia());
@@ -385,11 +395,16 @@ public class AsistenciaService {
         if (dto.getMarcaSalida() != null) {
             det.setMarcaSalida(dto.getMarcaSalida().isBlank() ? null : dto.getMarcaSalida().trim());
         }
-        if (dto.getMinutosTardanza() != null) {
-            det.setMinutosTardanza(Math.max(0, dto.getMinutosTardanza()));
-        }
-        if (dto.getObservacion() != null) {
-            det.setObservacion(dto.getObservacion().isBlank() ? null : dto.getObservacion().trim());
+        // Si se acaba de autorizar la papeleta, MINUTOS_TARDANZA/OBSERVACION ya quedaron al día
+        // dentro de aplicarDecisionPapeleta (Punto 1); no reaplicar aquí valores del form que
+        // podrían venir stale (p.ej. el minutosTardanza previo a la marcación real).
+        if (!autorizacionAplicada) {
+            if (dto.getMinutosTardanza() != null) {
+                det.setMinutosTardanza(Math.max(0, dto.getMinutosTardanza()));
+            }
+            if (dto.getObservacion() != null) {
+                det.setObservacion(dto.getObservacion().isBlank() ? null : dto.getObservacion().trim());
+            }
         }
         det.setOrigen("MANUAL");
         detalleRepository.save(det);
@@ -407,7 +422,13 @@ public class AsistenciaService {
         return row;
     }
 
-    private void aplicarDecisionPapeleta(AsistenciaDetalle det, AsistenciaDiariaEditDto dto) {
+    /**
+     * @return true si la papeleta quedó AUTORIZADA (Punto 1: en ese caso ya deja
+     *         MINUTOS_TARDANZA/OBSERVACION al día — el llamador no debe reaplicar los valores
+     *         del formulario encima).
+     */
+    private boolean aplicarDecisionPapeleta(
+            AsistenciaDetalle det, AsistenciaDiariaEditDto dto, SolicitudRrhh papeleta) {
         if (dto.getPapeletaAutorizada() == null) {
             throw new NegocioException(
                     "Debe indicar si autoriza o no autoriza la papeleta del día.");
@@ -419,6 +440,11 @@ public class AsistenciaService {
         if (autorizada) {
             det.setTipoDia("LABORAL");
             det.setPapeletaMotivoRechazo(null);
+            // Bug reportado: PAPELETA_AUTORIZADA quedaba en 1 pero MINUTOS_TARDANZA/OBSERVACION
+            // seguían mostrando el valor de la marcación física original (ej. "289 min" /
+            // "NO AUTORIZADO"), porque antes esto no se tocaba al autorizar.
+            det.setMinutosTardanza(0);
+            det.setObservacion(observacionAutorizacionPapeleta(papeleta));
         } else {
             String motivo = dto.getPapeletaMotivoRechazo();
             if (motivo == null || motivo.isBlank()) {
@@ -433,6 +459,7 @@ public class AsistenciaService {
             det.setTipoDia("OBSERVADO");
             det.setPapeletaMotivoRechazo(motivoTrim);
         }
+        return autorizada;
     }
 
     private Optional<SolicitudRrhh> buscarPapeletaAprobada(Long empleadoId, LocalDate fecha) {
@@ -504,19 +531,35 @@ public class AsistenciaService {
         cabeceraRepository.save(cab);
     }
 
+    /** Código del tipo "Solicitud de Vacaciones" (INDECI_TIPO_SOLICITUD_RRHH). */
+    private static final String CODIGO_VACACIONES = "012";
+
     /**
-     * Al aprobar una papeleta con JUSTIFICA_ASISTENCIA=1, reconcilia los días ya importados
-     * dentro de [fechaInicio, fechaFin] que hubieran quedado en FALTA/OMISION_MARCACION porque
-     * la carga de asistencia ocurrió ANTES de que RR. HH. aprobara la papeleta. Sin esto el día
-     * queda congelado en FALTA para siempre, aunque la papeleta ya esté aprobada (bug real:
+     * Al aprobar una papeleta, reconcilia los días ya importados dentro de
+     * [fechaInicio, fechaFin] que hubieran quedado en FALTA/OMISION_MARCACION/LABORAL/TARDANZA
+     * porque la carga de asistencia ocurrió ANTES de que RR. HH. aprobara la papeleta. Sin esto
+     * el día queda congelado para siempre, aunque la papeleta ya esté aprobada (bug real:
      * solicitud Nº376, teletrabajo aprobado el 31/07 para el 24/07 ya importado).
      *
-     * <p>Tolerante: no reconcilia periodos con planilla CERRADA/APROBADA (LEY-05, inmutables)
-     * ni meses sin cabecera de asistencia cargada.
+     * <p>Tolerante: no reconcilia periodos con planilla CERRADA/APROBADA (LEY-05, inmutables).
+     * Para tipos distintos de Vacaciones, tampoco actúa sobre meses sin cabecera de asistencia
+     * cargada (nada que reconciliar). Vacaciones es la excepción (Fase A): si el mes no tiene
+     * cabecera, la crea desde cero — ver {@link #crearCabeceraVacaciones}.
      */
     @Transactional
     public void reconciliarPorPapeletaAprobada(SolicitudRrhh solicitud, TipoSolicitudRrhh tipo) {
-        if (tipo == null || !Integer.valueOf(1).equals(tipo.getJustificaAsistencia())) {
+        if (tipo == null) {
+            return;
+        }
+        boolean esVacaciones = CODIGO_VACACIONES.equals(tipo.getCodigo());
+        boolean justificaFalta = Integer.valueOf(1).equals(tipo.getJustificaAsistencia());
+        // Punto 2 (decisión RR.HH.): una papeleta de tipo "permiso" (el mismo set que habilita
+        // la autorización manual en Consulta diaria, p.ej. "006" Comisión de Servicio) ya
+        // aprobada por RR.HH. autoriza automáticamente la TARDANZA que cubre, sin exigir que
+        // RR.HH. repita la decisión día por día en otra pantalla.
+        boolean autorizaTardanza = tipo.getCodigo() != null
+                && CODIGOS_PERMISO_ASISTENCIA.contains(tipo.getCodigo());
+        if (!justificaFalta && !autorizaTardanza && !esVacaciones) {
             return;
         }
         Long empleadoId = solicitud.getEmpleadoId();
@@ -525,19 +568,247 @@ public class AsistenciaService {
         if (empleadoId == null || ini == null) {
             return;
         }
-        List<SolicitudRrhh> justificantes =
-                papeletaJustificacionResolver.cargarJustificantes(empleadoId, fin);
-        if (justificantes.isEmpty()) {
+        // Vacaciones también necesita justificantes (para justificar() en FALTA y
+        // justificarVacacionSobreMarcacion() en LABORAL/TARDANZA) aunque su tipo nunca tenga
+        // JUSTIFICA_ASISTENCIA=1 — tiene su propio código reconocido por el resolver.
+        List<SolicitudRrhh> justificantes = (justificaFalta || esVacaciones)
+                ? papeletaJustificacionResolver.cargarJustificantes(empleadoId, fin)
+                : List.of();
+        SolicitudRrhh papeletaAutorizacion = autorizaTardanza ? solicitud : null;
+        if (justificantes.isEmpty() && papeletaAutorizacion == null && !esVacaciones) {
             return;
         }
         for (String periodo : periodosEntre(ini, fin)) {
-            cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
-                    .ifPresent(cab -> reconciliarDetalleCabecera(cab, ini, fin, justificantes));
+            Optional<AsistenciaCabecera> cab =
+                    cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1);
+            if (cab.isPresent()) {
+                reconciliarDetalleCabecera(cab.get(), ini, fin, justificantes, papeletaAutorizacion);
+            } else if (esVacaciones) {
+                // Fase A (decisión RR.HH.): la vacación no depende de que exista una marcación
+                // física para "existir" en el calendario. Si nunca se importó un marcador para
+                // este período (nada que reconciliar), se crea la cabecera desde cero con los
+                // días de la papeleta ya en VACACIONES — así Mis Asistencias, Asistencia por
+                // empleado y Consulta por rango leen el MISMO dato real en vez de cada una
+                // improvisar (Sin registro / Presente por defecto / Sin registros).
+                crearCabeceraVacaciones(empleadoId, periodo, ini, fin, solicitud);
+            }
+        }
+    }
+
+    /**
+     * Crea la cabecera + detalle de un período que aún no tiene ninguna carga de asistencia, a
+     * partir de una papeleta de VACACIONES ya APROBADA que lo cubre. Solo genera detalle para
+     * los días de {@code [ini,fin] ∩ período}: laborables → VACACIONES, fin de semana →
+     * DESCANSO, feriado → FERIADO. El resto del período (fuera del rango de la papeleta) queda
+     * SIN REGISTRO, igual que antes — no se inventa dato para lo que no se sabe.
+     *
+     * <p>Si más adelante se importa un marcador real para el mismo período,
+     * {@link #guardarImportacion} versiona esta cabecera normalmente (ACTIVO=0) y
+     * {@code sobrescribirVacacionesSobreMarcacion} vuelve a aplicar la reclasificación sobre la
+     * nueva — esta cabecera "de origen papeleta" nunca es un obstáculo para una importación real
+     * posterior.
+     */
+    private void crearCabeceraVacaciones(
+            Long empleadoId, String periodo, LocalDate ini, LocalDate fin, SolicitudRrhh solicitud) {
+        boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(periodo, 1)
+                .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                .orElse(false);
+        if (periodoBloqueado) {
+            return;
+        }
+
+        YearMonth ym = YearMonth.parse(periodo);
+        LocalDate desdePeriodo = ym.atDay(1);
+        LocalDate hastaPeriodo = ym.atEndOfMonth();
+        LocalDate desde = ini.isAfter(desdePeriodo) ? ini : desdePeriodo;
+        LocalDate hasta = fin.isBefore(hastaPeriodo) ? fin : hastaPeriodo;
+        if (desde.isAfter(hasta)) {
+            return;
+        }
+
+        Long regimenId = empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
+                .map(EmpleadoPlanilla::getRegimenLaboralId)
+                .orElse(null);
+        CalendarioLaboralService.Calendario calendario = calendarioLaboralService.paraPeriodo(desde, hasta);
+        String observacion = observacionVacacionRegistrada(solicitud);
+
+        List<AsistenciaDiaDto> dias = new ArrayList<>();
+        for (LocalDate dia = desde; !dia.isAfter(hasta); dia = dia.plusDays(1)) {
+            AsistenciaDiaDto dto = new AsistenciaDiaDto();
+            dto.setDia(dia);
+            if (calendario.esFeriado(dia)) {
+                dto.setTipoDia("FERIADO");
+            } else if (calendario.esDescanso(dia, regimenId)) {
+                dto.setTipoDia("DESCANSO");
+            } else {
+                dto.setTipoDia("VACACIONES");
+                dto.setObservacion(observacion);
+                dto.setOrigen("PAPELETA");
+            }
+            dto.setMinutosTardanza(0);
+            dias.add(dto);
+        }
+        if (dias.isEmpty()) {
+            return;
+        }
+
+        double remun = baseResolver.resolver(empleadoId).getRemuneracionBase();
+        AsistenciaResumenCalculator.Resumen agregados = AsistenciaResumenCalculator.calcular(dias, remun);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setEmpleadoId(empleadoId);
+        cab.setPeriodo(periodo);
+        cab.setActivo(1);
+        cab.setVersion(1);
+        cab.setCreatedAt(LocalDateTime.now());
+        cab.setRemuneracionBase(remun);
+        cab.setDiasLaborados(agregados.getDiasLaborados());
+        cab.setDiasFalta(agregados.getDiasFalta());
+        cab.setTotalMinTardanza(agregados.getTotalMinTardanza());
+        cab.setDescuentoTardanza(agregados.getDescuentoTardanza());
+        cab.setDescuentoFalta(agregados.getDescuentoFalta());
+        cab.setMinutosSalidaAnticipada(agregados.getMinutosSalidaAnticipada());
+        cab.setMarcasIncompletas(agregados.getMarcasIncompletas());
+        cab.setEstado("BORRADOR");
+        cab.setObservacion("Generada automáticamente por papeleta de Vacaciones N°" + solicitud.getId() + " aprobada.");
+
+        AsistenciaCabecera guardada = cabeceraRepository.save(cab);
+        detalleJdbcWriter.insertarLote(mapearDetalles(guardada.getId(), dias));
+    }
+
+    private String observacionVacacionRegistrada(SolicitudRrhh solicitud) {
+        StringBuilder sb = new StringBuilder("Vacaciones registradas por papeleta aprobada");
+        if (solicitud.getId() != null) {
+            sb.append(" N°").append(solicitud.getId());
+        }
+        if (solicitud.getFechaAprobacion() != null) {
+            sb.append(" (aprobada ")
+                    .append(solicitud.getFechaAprobacion().toLocalDate().format(FECHA_CORTA))
+                    .append(")");
+        }
+        return sb.append('.').toString();
+    }
+
+    /**
+     * Backfill ÚNICO — NO se ejecuta automáticamente. Reconcilia TODAS las papeletas
+     * (cualquier tipo que JUSTIFICA la asistencia o que autoriza tardanza, flag/código
+     * dinámico — REGLA-02) ya APROBADAS contra las cabeceras de asistencia activas actuales,
+     * con la misma regla de {@link #reconciliarPorPapeletaAprobada} (incluye el override
+     * LABORAL/TARDANZA → VACACIONES sobre marcación física real, solo para Vacaciones, y la
+     * autorización automática de TARDANZA para papeletas tipo "permiso" — decisión RR.HH.).
+     * Sanea el histórico que quedó desincronizado antes de este fix (casos reales: AGUILAR
+     * MORENO EDER AARON, CASTILLO BENAVENTE PERSIBAL JESUS, BALTAZAR FLORES MELINA JHESENIA,
+     * TINEO PONGO PERCY).
+     *
+     * <p>Idempotente: cada papeleta pasa por el mismo camino que al aprobarse, así que
+     * correrlo dos veces no produce cambios adicionales tras la primera pasada exitosa —
+     * seguro de reintentar si se corta a la mitad.
+     */
+    @Transactional
+    public int backfillReconciliarVacacionesAprobadas() {
+        List<SolicitudRrhh> aprobadas = new ArrayList<>(solicitudRrhhRepository
+                .findAprobadasQueJustificanAsistencia(ESTADO_SOLICITUD_APROBADA));
+        Set<Long> ids = aprobadas.stream().map(SolicitudRrhh::getId).collect(Collectors.toSet());
+        for (SolicitudRrhh s : solicitudRrhhRepository.findAprobadasPorTipoCodigoIn(
+                ESTADO_SOLICITUD_APROBADA, new ArrayList<>(CODIGOS_PERMISO_ASISTENCIA))) {
+            if (ids.add(s.getId())) {
+                aprobadas.add(s);
+            }
+        }
+        int procesadas = 0;
+        for (SolicitudRrhh s : aprobadas) {
+            reconciliarPorPapeletaAprobada(s, s.getTipoSolicitud());
+            procesadas++;
+        }
+        return procesadas;
+    }
+
+    /**
+     * Backfill ÚNICO (independiente del de papeletas) — NO se ejecuta automáticamente. Corrige
+     * días ya persistidos que quedaron mal clasificados como {@code LABORAL}/{@code OBSERVADO}
+     * pero que en realidad son {@code FERIADO} según el catálogo oficial ({@code INDECI_FERIADO})
+     * y no tienen marcación real (no es "feriado trabajado"). Causa: antes de este fix,
+     * {@code AsistenciaMarcadorMapper} solo reconocía "jueves/viernes santo" por texto del
+     * marcador — Fiestas Patrias, Día de la Fuerza Aérea, etc. caían al LABORAL por defecto.
+     *
+     * <p>Solo toca cabeceras ACTIVAS y respeta periodos CERRADO/APROBADO (inmutables, LEY-05).
+     * Idempotente: un día ya corregido a FERIADO no vuelve a matchear la condición.
+     */
+    @Transactional
+    public int backfillFeriadosMalClasificados() {
+        List<AsistenciaCabecera> activas = cabeceraRepository.findByActivo(1);
+        if (activas.isEmpty()) {
+            return 0;
+        }
+
+        Set<Integer> anios = new java.util.HashSet<>();
+        for (AsistenciaCabecera cab : activas) {
+            Integer anio = anioDePeriodo(cab.getPeriodo());
+            if (anio != null) {
+                anios.add(anio);
+            }
+        }
+        if (anios.isEmpty()) {
+            return 0;
+        }
+
+        Set<LocalDate> feriados = new java.util.HashSet<>();
+        for (Feriado f : feriadoRepository.findByAnioInAndActivo(anios, 1)) {
+            if (f.getFecha() != null) {
+                feriados.add(f.getFecha());
+            }
+        }
+        if (feriados.isEmpty()) {
+            return 0;
+        }
+
+        int corregidos = 0;
+        for (AsistenciaCabecera cab : activas) {
+            boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                    .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                    .orElse(false);
+            if (periodoBloqueado) {
+                continue;
+            }
+
+            boolean huboCambios = false;
+            for (AsistenciaDetalle det : detalleRepository.findByCabeceraIdOrderByDia(cab.getId())) {
+                if (det.getDia() == null || !feriados.contains(det.getDia())) {
+                    continue;
+                }
+                boolean tipoCorregible =
+                        "LABORAL".equals(det.getTipoDia()) || "OBSERVADO".equals(det.getTipoDia());
+                boolean sinMarcacionReal = !AsistenciaTiempoUtil.tieneMarca(det.getMarcaEntrada())
+                        && !AsistenciaTiempoUtil.tieneMarca(det.getMarcaSalida());
+                if (tipoCorregible && sinMarcacionReal) {
+                    det.setTipoDia("FERIADO");
+                    detalleRepository.save(det);
+                    corregidos++;
+                    huboCambios = true;
+                }
+            }
+            if (huboCambios) {
+                recalcularCabeceraDesdeDetalle(cab);
+            }
+        }
+        return corregidos;
+    }
+
+    /** Año (yyyy) del período "yyyy-MM"; null si el formato no es el esperado. */
+    private Integer anioDePeriodo(String periodo) {
+        if (periodo == null || periodo.length() < 4) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(periodo.substring(0, 4));
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 
     private void reconciliarDetalleCabecera(
-            AsistenciaCabecera cab, LocalDate ini, LocalDate fin, List<SolicitudRrhh> justificantes) {
+            AsistenciaCabecera cab, LocalDate ini, LocalDate fin,
+            List<SolicitudRrhh> justificantes, SolicitudRrhh papeletaAutorizacion) {
         boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
                 .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
                 .orElse(false);
@@ -550,28 +821,88 @@ public class AsistenciaService {
             if (dia == null || dia.isBefore(ini) || dia.isAfter(fin)) {
                 continue;
             }
+            String tipoActual = det.getTipoDia();
             Optional<AsistenciaDiaDto> justificado;
-            if ("OMISION_MARCACION".equals(det.getTipoDia())) {
+            if ("OMISION_MARCACION".equals(tipoActual)) {
                 justificado = papeletaJustificacionResolver.justificarOmision(dia, justificantes);
-            } else if ("FALTA".equals(det.getTipoDia())) {
+            } else if ("FALTA".equals(tipoActual)) {
                 justificado = papeletaJustificacionResolver.justificar(dia, justificantes);
+            } else if ("LABORAL".equals(tipoActual) || "TARDANZA".equals(tipoActual)) {
+                // Decisión RR.HH.: una papeleta de VACACIONES aprobada manda sobre una marcación
+                // física real (el trabajador no debía estar laborando ese día). No aplica a
+                // Teletrabajo/Permiso, que no tienen definida esta regla de sobrescritura.
+                justificado = papeletaJustificacionResolver.justificarVacacionSobreMarcacion(dia, justificantes);
             } else {
                 justificado = Optional.empty();
             }
-            if (justificado.isEmpty()) {
+            if (justificado.isPresent()) {
+                AsistenciaDiaDto dto = justificado.get();
+                det.setTipoDia(dto.getTipoDia());
+                det.setMinutosTardanza(dto.getMinutosTardanza());
+                det.setObservacion(dto.getObservacion());
+                det.setOrigen(dto.getOrigen());
+                detalleRepository.save(det);
+                huboCambios = true;
                 continue;
             }
-            AsistenciaDiaDto dto = justificado.get();
-            det.setTipoDia(dto.getTipoDia());
-            det.setMinutosTardanza(dto.getMinutosTardanza());
-            det.setObservacion(dto.getObservacion());
-            det.setOrigen(dto.getOrigen());
-            detalleRepository.save(det);
-            huboCambios = true;
+            // Punto 2: TARDANZA cubierta por la papeleta recién aprobada (tipo "permiso"),
+            // aún sin decisión RR.HH. registrada → se autoriza automáticamente. También repara
+            // el caso histórico (Punto 1) de días YA autorizados manualmente ANTES de este fix,
+            // que quedaron con PAPELETA_AUTORIZADA=1 pero MINUTOS_TARDANZA/OBSERVACION viejos
+            // (ej. "289 min" / "NO AUTORIZADO" arrastrado) — sin esta segunda condición el
+            // backfill los saltaba por considerarlos "ya resueltos". Idempotente: reaplicar sobre
+            // un registro ya limpio no cambia nada.
+            boolean yaAutorizadoPeroSucio = Integer.valueOf(1).equals(det.getPapeletaAutorizada())
+                    && det.getMinutosTardanza() != null && det.getMinutosTardanza() > 0;
+            if (papeletaAutorizacion != null && cubreFecha(papeletaAutorizacion, dia)
+                    && ("TARDANZA".equals(tipoActual) || yaAutorizadoPeroSucio)) {
+                autorizarPapeletaAutomaticamente(det, papeletaAutorizacion);
+                detalleRepository.save(det);
+                huboCambios = true;
+            }
         }
         if (huboCambios) {
             recalcularCabeceraDesdeDetalle(cab);
         }
+    }
+
+    /**
+     * Autoriza automáticamente una TARDANZA cubierta por una papeleta ya APROBADA por RR.HH.
+     * (Punto 2 — decisión RR.HH.: no exigir que RR.HH. repita en "Consulta diaria" una decisión
+     * que ya tomó al aprobar la papeleta). Aplica la misma limpieza que la autorización manual
+     * (Punto 1): MINUTOS_TARDANZA y OBSERVACION quedan al día, no arrastran el valor de la
+     * marcación física original.
+     */
+    private void autorizarPapeletaAutomaticamente(AsistenciaDetalle det, SolicitudRrhh papeleta) {
+        det.setPapeletaAutorizada(1);
+        det.setPapeletaDecisionUsuario("SISTEMA");
+        det.setPapeletaDecisionFecha(LocalDateTime.now());
+        det.setPapeletaMotivoRechazo(null);
+        det.setTipoDia("LABORAL");
+        det.setMinutosTardanza(0);
+        det.setObservacion(observacionAutorizacionPapeleta(papeleta, true));
+    }
+
+    private String observacionAutorizacionPapeleta(SolicitudRrhh papeleta) {
+        return observacionAutorizacionPapeleta(papeleta, false);
+    }
+
+    private String observacionAutorizacionPapeleta(SolicitudRrhh papeleta, boolean automatica) {
+        StringBuilder sb = new StringBuilder(
+                automatica ? "Papeleta autorizada automáticamente al aprobarse" : "Papeleta autorizada");
+        TipoSolicitudRrhh tipo = papeleta.getTipoSolicitud();
+        if (tipo != null && tipo.getNombre() != null) {
+            sb.append(": ").append(tipo.getNombre());
+        }
+        if (papeleta.getId() != null) {
+            sb.append(" N°").append(papeleta.getId());
+        }
+        if (papeleta.getFechaAprobacion() != null) {
+            sb.append(" (aprobada ")
+                    .append(papeleta.getFechaAprobacion().toLocalDate().format(FECHA_CORTA))
+                    .append(")");
+        }
+        return sb.append('.').toString();
     }
 
     /**

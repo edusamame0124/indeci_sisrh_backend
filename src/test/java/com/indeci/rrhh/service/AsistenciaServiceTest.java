@@ -7,12 +7,21 @@ import com.indeci.rrhh.dto.AsistenciaGuardarDto;
 import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
+import com.indeci.rrhh.entity.EmpleadoPlanilla;
+import com.indeci.rrhh.entity.Feriado;
+import com.indeci.rrhh.entity.SolicitudRrhh;
+import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
+import com.indeci.rrhh.repository.FeriadoRepository;
 import com.indeci.rrhh.repository.JornadaRegimenRepository;
+import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
+import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
+import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
+import com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,7 +31,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,6 +65,11 @@ class AsistenciaServiceTest {
     @Mock private BaseAsistenciaResolver baseResolver;
     @Mock private JornadaRegimenRepository jornadaRegimenRepository;
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
+    @Mock private PeriodoPlanillaRepository periodoPlanillaRepository;
+    @Mock private PapeletaJustificacionResolver papeletaJustificacionResolver;
+    @Mock private SolicitudRrhhRepository solicitudRrhhRepository;
+    @Mock private FeriadoRepository feriadoRepository;
+    @Mock private com.indeci.rrhh.service.asistencia.CalendarioLaboralService calendarioLaboralService;
 
     @InjectMocks private AsistenciaService service;
 
@@ -298,5 +314,419 @@ class AsistenciaServiceTest {
         // Bordes: sin minutos/faltas o sin remuneración => 0
         assertThat(service.calcularDescuentoTardanza(3000.0, 0)).isZero();
         assertThat(service.calcularDescuentoFalta(0.0, 5)).isZero();
+    }
+
+    /**
+     * Decisión RR.HH.: una papeleta de Vacaciones aprobada manda sobre una marcación física
+     * real (LABORAL) — caso CASTILLO (papeleta N°270, 13-16/07/2026 aprobada, día 14 marcado
+     * LABORAL por el marcador). reconciliarPorPapeletaAprobada debe sobrescribirlo a VACACIONES.
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_vacaciones_sobrescribe_dia_laboral_a_vacaciones() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(270L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 13));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 16));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("012");
+        tipo.setJustificaAsistencia(1);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(999L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle det = new AsistenciaDetalle();
+        det.setDia(LocalDate.of(2026, 7, 14));
+        det.setTipoDia("LABORAL");
+
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.of(cab));
+        when(detalleRepository.findByCabeceraIdOrderByDia(999L))
+                .thenReturn(List.of(det));
+
+        List<SolicitudRrhh> justificantes = List.of(solicitud);
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 16)))
+                .thenReturn(justificantes);
+
+        AsistenciaDiaDto reconciliado = new AsistenciaDiaDto();
+        reconciliado.setDia(LocalDate.of(2026, 7, 14));
+        reconciliado.setTipoDia("VACACIONES");
+        reconciliado.setMinutosTardanza(0);
+        reconciliado.setObservacion(
+                "Se ignoró marcación física por papeleta de vacaciones aprobada N°270.");
+        reconciliado.setOrigen("PAPELETA");
+        when(papeletaJustificacionResolver.justificarVacacionSobreMarcacion(
+                LocalDate.of(2026, 7, 14), justificantes))
+                .thenReturn(Optional.of(reconciliado));
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        assertThat(det.getTipoDia()).isEqualTo("VACACIONES");
+        assertThat(det.getObservacion()).contains("Se ignoró marcación física");
+        verify(detalleRepository).save(det);
+    }
+
+    /**
+     * Fase A (decisión RR.HH.): si nunca se importó un marcador para el período, la vacación
+     * no puede depender de una marcación física para "existir" — se crea la cabecera desde
+     * cero con los días de la papeleta ya en VACACIONES (caso feliz).
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_vacaciones_sin_cabecera_crea_cabecera_con_detalle() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(500L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 6)); // lunes
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 10)); // viernes
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("012");
+        tipo.setNombre("Solicitud de Vacaciones");
+        tipo.setJustificaAsistencia(0);
+        solicitud.setTipoSolicitud(tipo);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 10)))
+                .thenReturn(List.of(solicitud));
+        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        when(calendarioLaboralService.paraPeriodo(any(), any()))
+                .thenReturn(new CalendarioLaboralService.Calendario(Set.of(), Set.of(6, 7), Map.of()));
+        BaseAsistenciaResult base = new BaseAsistenciaResult();
+        base.setRemuneracionBase(3000.0);
+        when(baseResolver.resolver(EMPLEADO_ID)).thenReturn(base);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        ArgumentCaptor<AsistenciaCabecera> cabCaptor = ArgumentCaptor.forClass(AsistenciaCabecera.class);
+        verify(cabeceraRepository).save(cabCaptor.capture());
+        AsistenciaCabecera guardada = cabCaptor.getValue();
+        assertThat(guardada.getEmpleadoId()).isEqualTo(EMPLEADO_ID);
+        assertThat(guardada.getPeriodo()).isEqualTo("2026-07");
+        assertThat(guardada.getActivo()).isEqualTo(1);
+        assertThat(guardada.getEstado()).isEqualTo("BORRADOR");
+        assertThat(guardada.getRemuneracionBase()).isEqualTo(3000.0);
+
+        ArgumentCaptor<List<AsistenciaDetalle>> detCaptor = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(detCaptor.capture());
+        List<AsistenciaDetalle> detalles = detCaptor.getValue();
+        assertThat(detalles).hasSize(5); // lunes a viernes, sin fin de semana en el rango
+        assertThat(detalles).extracting(AsistenciaDetalle::getTipoDia).containsOnly("VACACIONES");
+        assertThat(detalles.get(0).getObservacion()).contains("Vacaciones registradas por papeleta aprobada N°500");
+    }
+
+    /** Caso borde: el rango de la papeleta cruza el fin de semana → sábado/domingo quedan DESCANSO. */
+    @Test
+    void reconciliarPorPapeletaAprobada_vacaciones_sin_cabecera_marca_fin_de_semana_como_descanso() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(501L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 10)); // viernes
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 13)); // lunes
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("012");
+        tipo.setNombre("Solicitud de Vacaciones");
+        tipo.setJustificaAsistencia(0);
+        solicitud.setTipoSolicitud(tipo);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 13)))
+                .thenReturn(List.of(solicitud));
+        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(EMPLEADO_ID, 1))
+                .thenReturn(Optional.empty());
+        when(calendarioLaboralService.paraPeriodo(any(), any()))
+                .thenReturn(new CalendarioLaboralService.Calendario(Set.of(), Set.of(6, 7), Map.of()));
+        when(baseResolver.resolver(EMPLEADO_ID)).thenReturn(new BaseAsistenciaResult());
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        ArgumentCaptor<List<AsistenciaDetalle>> detCaptor = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(detCaptor.capture());
+        java.util.Map<LocalDate, String> porDia = detCaptor.getValue().stream()
+                .collect(java.util.stream.Collectors.toMap(AsistenciaDetalle::getDia, AsistenciaDetalle::getTipoDia));
+        assertThat(porDia.get(LocalDate.of(2026, 7, 10))).isEqualTo("VACACIONES"); // viernes
+        assertThat(porDia.get(LocalDate.of(2026, 7, 11))).isEqualTo("DESCANSO"); // sábado
+        assertThat(porDia.get(LocalDate.of(2026, 7, 12))).isEqualTo("DESCANSO"); // domingo
+        assertThat(porDia.get(LocalDate.of(2026, 7, 13))).isEqualTo("VACACIONES"); // lunes
+    }
+
+    /** Caso borde: período CERRADO/APROBADO (LEY-05, inmutable) → no crea nada. */
+    @Test
+    void reconciliarPorPapeletaAprobada_vacaciones_sin_cabecera_periodo_cerrado_no_crea_nada() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(502L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 6));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 10));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("012");
+        tipo.setJustificaAsistencia(0);
+        solicitud.setTipoSolicitud(tipo);
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoCerrado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoCerrado.setPeriodo("2026-07");
+        periodoCerrado.setEstado("CERRADO");
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoCerrado));
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 10)))
+                .thenReturn(List.of(solicitud));
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        verify(cabeceraRepository, never()).save(any());
+        verify(detalleJdbcWriter, never()).insertarLote(any());
+    }
+
+    @Test
+    void reconciliarPorPapeletaAprobada_tipo_sin_justificaAsistencia_ni_permiso_no_hace_nada() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(1L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 13));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        // "099" no está en CODIGOS_PERMISO_ASISTENCIA (001-006,008-012) ni tiene el flag —
+        // no debe disparar ni la reconciliación de FALTA ni la autorización de TARDANZA.
+        tipo.setCodigo("099");
+        tipo.setJustificaAsistencia(0);
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        org.mockito.Mockito.verifyNoInteractions(cabeceraRepository);
+    }
+
+    /**
+     * Punto 2 (decisión RR.HH.): una papeleta cuyo tipo está en CODIGOS_PERMISO_ASISTENCIA
+     * (p.ej. "006" Comisión de Servicio) pero SIN el flag JUSTIFICA_ASISTENCIA autoriza
+     * automáticamente la TARDANZA que cubre — no exige repetir la decisión en Consulta diaria.
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_tipo_permiso_sin_flag_autoriza_tardanza() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(348L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 17));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 17));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("006");
+        tipo.setNombre("Comisión de Servicio");
+        tipo.setJustificaAsistencia(0);
+        solicitud.setTipoSolicitud(tipo);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(9001L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo("2026-07");
+        cab.setActivo(1);
+
+        AsistenciaDetalle det = new AsistenciaDetalle();
+        det.setId(555L);
+        det.setCabeceraId(cab.getId());
+        det.setDia(LocalDate.of(2026, 7, 17));
+        det.setTipoDia("TARDANZA");
+        det.setMinutosTardanza(289);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(java.util.Optional.of(cab));
+        when(detalleRepository.findByCabeceraIdOrderByDia(cab.getId())).thenReturn(List.of(det));
+        when(papeletaJustificacionResolver.justificarVacacionSobreMarcacion(any(), any()))
+                .thenReturn(java.util.Optional.empty());
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        assertThat(det.getTipoDia()).isEqualTo("LABORAL");
+        assertThat(det.getMinutosTardanza()).isEqualTo(0);
+        assertThat(det.getPapeletaAutorizada()).isEqualTo(1);
+        assertThat(det.getObservacion()).contains("Comisión de Servicio");
+    }
+
+    /**
+     * Caso real reportado (TINEO PONGO PERCY, día 17): el día ya había sido autorizado
+     * MANUALMENTE antes de que existiera la limpieza de MINUTOS_TARDANZA/OBSERVACION (Punto 1
+     * del bug) — quedó con TIPO_DIA=LABORAL, PAPELETA_AUTORIZADA=1, pero 289 min y "NO
+     * AUTORIZADO" arrastrados. El backfill debe repararlo igual, no solo los que siguen en
+     * TARDANZA (si no, un registro "ya autorizado" queda sucio para siempre).
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_repara_dia_ya_autorizado_con_datos_viejos() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(348L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 17));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 17));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("006");
+        tipo.setNombre("Comisión de Servicio");
+        tipo.setJustificaAsistencia(0);
+        solicitud.setTipoSolicitud(tipo);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(9001L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo("2026-07");
+        cab.setActivo(1);
+
+        AsistenciaDetalle det = new AsistenciaDetalle();
+        det.setId(51849L);
+        det.setCabeceraId(cab.getId());
+        det.setDia(LocalDate.of(2026, 7, 17));
+        det.setTipoDia("LABORAL");
+        det.setMinutosTardanza(289);
+        det.setObservacion("NO AUTORIZADO");
+        det.setPapeletaAutorizada(1);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(java.util.Optional.of(cab));
+        when(detalleRepository.findByCabeceraIdOrderByDia(cab.getId())).thenReturn(List.of(det));
+        when(papeletaJustificacionResolver.justificarVacacionSobreMarcacion(any(), any()))
+                .thenReturn(java.util.Optional.empty());
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        assertThat(det.getTipoDia()).isEqualTo("LABORAL");
+        assertThat(det.getMinutosTardanza()).isEqualTo(0);
+        assertThat(det.getPapeletaAutorizada()).isEqualTo(1);
+        assertThat(det.getObservacion()).doesNotContain("NO AUTORIZADO");
+        assertThat(det.getObservacion()).contains("Comisión de Servicio");
+    }
+
+    /** Backfill (punto 5 de la directiva): reconcilia cada papeleta APROBADA de Vacaciones. */
+    @Test
+    void backfillReconciliarVacacionesAprobadas_reconcilia_cada_papeleta_encontrada() {
+        TipoSolicitudRrhh tipoVacaciones = new TipoSolicitudRrhh();
+        tipoVacaciones.setCodigo("012");
+        tipoVacaciones.setJustificaAsistencia(1);
+
+        SolicitudRrhh s1 = new SolicitudRrhh();
+        s1.setId(243L);
+        s1.setEmpleadoId(2021L);
+        s1.setFechaInicio(LocalDate.of(2026, 7, 10));
+        s1.setFechaFin(LocalDate.of(2026, 7, 15));
+        s1.setTipoSolicitud(tipoVacaciones);
+
+        SolicitudRrhh s2 = new SolicitudRrhh();
+        s2.setId(270L);
+        s2.setEmpleadoId(1767L);
+        s2.setFechaInicio(LocalDate.of(2026, 7, 13));
+        s2.setFechaFin(LocalDate.of(2026, 7, 16));
+        s2.setTipoSolicitud(tipoVacaciones);
+
+        when(solicitudRrhhRepository.findAprobadasQueJustificanAsistencia(9L))
+                .thenReturn(List.of(s1, s2));
+        when(solicitudRrhhRepository.findAprobadasPorTipoCodigoIn(anyLong(), any()))
+                .thenReturn(List.of());
+        // Sin cabeceras/justificantes configurados: cada llamada a reconciliar termina creando
+        // la cabecera de vacaciones desde cero (Fase A) — lo que importa aquí es que procese
+        // las 2 papeletas; los detalles de esa creación tienen sus propios tests dedicados.
+        when(papeletaJustificacionResolver.cargarJustificantes(any(), any())).thenReturn(List.of());
+        when(calendarioLaboralService.paraPeriodo(any(), any()))
+                .thenReturn(new CalendarioLaboralService.Calendario(Set.of(), Set.of(6, 7), Map.of()));
+        when(baseResolver.resolver(any())).thenReturn(new BaseAsistenciaResult());
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        int procesadas = service.backfillReconciliarVacacionesAprobadas();
+
+        assertThat(procesadas).isEqualTo(2);
+        verify(papeletaJustificacionResolver).cargarJustificantes(2021L, LocalDate.of(2026, 7, 15));
+        verify(papeletaJustificacionResolver).cargarJustificantes(1767L, LocalDate.of(2026, 7, 16));
+    }
+
+    private Feriado feriado(LocalDate fecha) {
+        Feriado f = new Feriado();
+        f.setAnio(fecha.getYear());
+        f.setFecha(fecha);
+        f.setNombre("Fiestas Patrias");
+        f.setTipo("NACIONAL");
+        f.setActivo(1);
+        return f;
+    }
+
+    /** Backfill de feriados (caso real: 23/28/29-jul-2026 quedaron como LABORAL sin marcación). */
+    @Test
+    void backfillFeriadosMalClasificados_corrige_LABORAL_sin_marcacion_a_FERIADO() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(2024L);
+        cab.setEmpleadoId(1767L);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle diaFeriadoSinMarcar = new AsistenciaDetalle();
+        diaFeriadoSinMarcar.setDia(LocalDate.of(2026, 7, 28));
+        diaFeriadoSinMarcar.setTipoDia("LABORAL");
+        diaFeriadoSinMarcar.setMarcaEntrada("");
+        diaFeriadoSinMarcar.setMarcaSalida("");
+
+        AsistenciaDetalle diaFeriadoTrabajado = new AsistenciaDetalle();
+        diaFeriadoTrabajado.setDia(LocalDate.of(2026, 7, 29));
+        diaFeriadoTrabajado.setTipoDia("LABORAL");
+        diaFeriadoTrabajado.setMarcaEntrada("08:00");
+        diaFeriadoTrabajado.setMarcaSalida("17:00");
+
+        AsistenciaDetalle diaNormal = new AsistenciaDetalle();
+        diaNormal.setDia(LocalDate.of(2026, 7, 14));
+        diaNormal.setTipoDia("LABORAL");
+        diaNormal.setMarcaEntrada("08:00");
+        diaNormal.setMarcaSalida("17:00");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(feriadoRepository.findByAnioInAndActivo(Set.of(2026), 1))
+                .thenReturn(List.of(feriado(LocalDate.of(2026, 7, 28))));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(detalleRepository.findByCabeceraIdOrderByDia(2024L))
+                .thenReturn(List.of(diaFeriadoSinMarcar, diaFeriadoTrabajado, diaNormal));
+
+        int corregidos = service.backfillFeriadosMalClasificados();
+
+        assertThat(corregidos).isEqualTo(1);
+        assertThat(diaFeriadoSinMarcar.getTipoDia()).isEqualTo("FERIADO");
+        // Feriado TRABAJADO (sí fichó) no se toca — sigue LABORAL.
+        assertThat(diaFeriadoTrabajado.getTipoDia()).isEqualTo("LABORAL");
+        // Día normal (no es feriado del catálogo) tampoco se toca.
+        assertThat(diaNormal.getTipoDia()).isEqualTo("LABORAL");
+        verify(detalleRepository).save(diaFeriadoSinMarcar);
+    }
+
+    @Test
+    void backfillFeriadosMalClasificados_periodo_bloqueado_no_se_toca() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(3000L);
+        cab.setEmpleadoId(500L);
+        cab.setPeriodo("2026-07");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(feriadoRepository.findByAnioInAndActivo(Set.of(2026), 1))
+                .thenReturn(List.of(feriado(LocalDate.of(2026, 7, 28))));
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoCerrado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoCerrado.setEstado("CERRADO");
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoCerrado));
+
+        int corregidos = service.backfillFeriadosMalClasificados();
+
+        assertThat(corregidos).isEqualTo(0);
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
     }
 }

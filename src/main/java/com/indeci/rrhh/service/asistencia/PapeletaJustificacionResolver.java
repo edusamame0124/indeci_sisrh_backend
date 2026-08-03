@@ -2,8 +2,10 @@ package com.indeci.rrhh.service.asistencia;
 
 import com.indeci.rrhh.dto.AsistenciaDiaDto;
 import com.indeci.rrhh.entity.SolicitudRrhh;
+import com.indeci.rrhh.entity.TipoLicencia;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
+import com.indeci.rrhh.repository.TipoLicenciaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -35,14 +37,31 @@ public class PapeletaJustificacionResolver {
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA (verificado en INDECI_ESTADO_SOLICITUD: 9=Aprobado por RRHH). */
     private static final long ESTADO_SOLICITUD_APROBADA = 9L;
     private static final String CODIGO_TELETRABAJO = "TELETRABAJO";
+    /** Código del tipo "Solicitud de Vacaciones" (INDECI_TIPO_SOLICITUD_RRHH). */
+    private static final String CODIGO_VACACIONES = "012";
+    /** Código del tipo "Licencia" (INDECI_TIPO_SOLICITUD_RRHH) — con/sin goce se distingue por TipoLicencia.esSinGoce. */
+    private static final String CODIGO_LICENCIA = "011";
     /** Código del tipo "Permiso de Justificación de Omisión de Registro de Asistencia". */
     private static final String CODIGO_JUSTIF_OMISION = "004";
     static final String TIPO_DIA_TELETRABAJO = "TELETRABAJO";
     static final String TIPO_DIA_PERMISO = "PERMISO";
+    static final String TIPO_DIA_VACACIONES = "VACACIONES";
+    static final String TIPO_DIA_LICENCIA = "LICENCIA";
     static final String TIPO_DIA_ASISTENCIA_JUSTIFICADA = "ASISTENCIA_JUSTIFICADA";
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+    /**
+     * Códigos que este resolver reconoce y reclasifica por su PROPIA regla específica
+     * (Vacaciones, Omisión), sin depender del flag genérico JUSTIFICA_ASISTENCIA — ese flag
+     * nunca está en 1 para ellos (V012_36: "tienen su propio tipo de día"). Deben incluirse
+     * siempre en la consulta o {@link #justificarVacacionSobreMarcacion} y
+     * {@link #justificarOmision} nunca reciben su propia papeleta en la lista.
+     */
+    private static final List<String> CODIGOS_SIEMPRE_INCLUIDOS =
+            List.of(CODIGO_VACACIONES, CODIGO_JUSTIF_OMISION);
+
     private final SolicitudRrhhRepository solicitudRrhhRepository;
+    private final TipoLicenciaRepository tipoLicenciaRepository;
 
     /**
      * Papeletas aprobadas y justificantes del empleado que podrían cubrir el período
@@ -53,7 +72,7 @@ public class PapeletaJustificacionResolver {
             return List.of();
         }
         return solicitudRrhhRepository.findJustificantesAsistencia(
-                empleadoId, ESTADO_SOLICITUD_APROBADA, finPeriodo);
+                empleadoId, ESTADO_SOLICITUD_APROBADA, finPeriodo, CODIGOS_SIEMPRE_INCLUIDOS);
     }
 
     /**
@@ -124,20 +143,95 @@ public class PapeletaJustificacionResolver {
     private AsistenciaDiaDto construir(LocalDate fecha, SolicitudRrhh s) {
         TipoSolicitudRrhh tipo = s.getTipoSolicitud();
         boolean esTeletrabajo = tipo != null && CODIGO_TELETRABAJO.equals(tipo.getCodigo());
+        boolean esVacaciones = tipo != null && CODIGO_VACACIONES.equals(tipo.getCodigo());
+        boolean esLicencia = tipo != null && CODIGO_LICENCIA.equals(tipo.getCodigo());
 
         AsistenciaDiaDto dia = new AsistenciaDiaDto();
         dia.setDia(fecha);
-        dia.setTipoDia(esTeletrabajo ? TIPO_DIA_TELETRABAJO : TIPO_DIA_PERMISO);
+        dia.setTipoDia(tipoDiaPara(esTeletrabajo, esVacaciones, esLicencia));
         dia.setMinutosTardanza(0);
-        dia.setObservacion(observacion(s, tipo, esTeletrabajo));
+        dia.setObservacion(observacion(s, tipo, esTeletrabajo, esLicencia));
         dia.setOrigen("PAPELETA");
         return dia;
     }
 
-    private String observacion(SolicitudRrhh s, TipoSolicitudRrhh tipo, boolean esTeletrabajo) {
+    private String tipoDiaPara(boolean esTeletrabajo, boolean esVacaciones, boolean esLicencia) {
+        if (esTeletrabajo) return TIPO_DIA_TELETRABAJO;
+        if (esVacaciones) return TIPO_DIA_VACACIONES;
+        if (esLicencia) return TIPO_DIA_LICENCIA;
+        return TIPO_DIA_PERMISO;
+    }
+
+    /**
+     * Decisión RR.HH.: la LICENCIA (código "011") no es un único tipo — hay que distinguir
+     * con/sin goce (TipoLicencia.esSinGoce), porque legalmente son categorías distintas (sin
+     * goce no es remunerada y es no computable para récord/tiempo de servicio en otros
+     * módulos). Ambas comparten {@code TIPO_DIA = LICENCIA} (única categoría válida del CHECK
+     * de BD para licencias), pero la observación deja explícito cuál de las dos es.
+     */
+    private boolean esLicenciaSinGoce(SolicitudRrhh s) {
+        if (s.getTipoLicenciaId() == null) {
+            return false;
+        }
+        return tipoLicenciaRepository.findById(s.getTipoLicenciaId())
+                .map(TipoLicencia::getEsSinGoce)
+                .map(v -> Integer.valueOf(1).equals(v))
+                .orElse(false);
+    }
+
+    /**
+     * Decisión RR.HH.: la papeleta de VACACIONES aprobada MANDA sobre una marcación física real
+     * (LABORAL/TARDANZA) — legal y remunerativamente el trabajador está de vacaciones, así que
+     * el día se reclasifica a VACACIONES aunque el marcador haya registrado su ingreso. No se
+     * hace en silencio: la observación deja explícito que se ignoró una marcación real, para que
+     * RR.HH. tenga rastro si necesita investigar el caso. Solo aplica a Vacaciones — Teletrabajo/
+     * Permiso no tienen definida esta regla de "manda sobre lo ya marcado".
+     */
+    public Optional<AsistenciaDiaDto> justificarVacacionSobreMarcacion(
+            LocalDate fecha, List<SolicitudRrhh> justificantes) {
+        if (fecha == null || justificantes == null) {
+            return Optional.empty();
+        }
+        for (SolicitudRrhh s : justificantes) {
+            TipoSolicitudRrhh tipo = s.getTipoSolicitud();
+            if (tipo != null && CODIGO_VACACIONES.equals(tipo.getCodigo()) && cubreFecha(s, fecha)) {
+                AsistenciaDiaDto dia = new AsistenciaDiaDto();
+                dia.setDia(fecha);
+                dia.setTipoDia(TIPO_DIA_VACACIONES);
+                dia.setMinutosTardanza(0);
+                dia.setObservacion(observacionSobrescritura(s, tipo));
+                dia.setOrigen("PAPELETA");
+                return Optional.of(dia);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String observacionSobrescritura(SolicitudRrhh s, TipoSolicitudRrhh tipo) {
         String nombreTipo = tipo != null && tipo.getNombre() != null
                 ? tipo.getNombre()
-                : (esTeletrabajo ? "Teletrabajo" : "Permiso con goce");
+                : "Solicitud de Vacaciones";
+        StringBuilder sb = new StringBuilder("Se ignoró marcación física por papeleta aprobada: ")
+                .append(nombreTipo);
+        if (s.getId() != null) {
+            sb.append(" N°").append(s.getId());
+        }
+        if (s.getFechaAprobacion() != null) {
+            sb.append(" (aprobada ").append(s.getFechaAprobacion().toLocalDate().format(FECHA)).append(")");
+        }
+        return sb.append('.').toString();
+    }
+
+    private String observacion(
+            SolicitudRrhh s, TipoSolicitudRrhh tipo, boolean esTeletrabajo, boolean esLicencia) {
+        String nombreTipo;
+        if (esLicencia) {
+            nombreTipo = esLicenciaSinGoce(s) ? "LICENCIA SIN GOCE" : "LICENCIA CON GOCE";
+        } else {
+            nombreTipo = tipo != null && tipo.getNombre() != null
+                    ? tipo.getNombre()
+                    : (esTeletrabajo ? "Teletrabajo" : "Permiso con goce");
+        }
         StringBuilder sb = new StringBuilder("Justificado por papeleta aprobada: ")
                 .append(nombreTipo);
         if (s.getId() != null) {
