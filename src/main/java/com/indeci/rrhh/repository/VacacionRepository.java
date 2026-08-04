@@ -33,4 +33,7 @@ public interface VacacionRepository extends JpaRepository<Vacacion, Long>{
 	        LocalDate periodoDesde,
 	        String estado);
 
+	/** Trazabilidad Visual — empleados (de un lote) con al menos un goce de un {@code origen} dado. */
+	List<Vacacion> findByEmpleadoIdInAndActivoAndOrigen(List<Long> empleadoIds, Integer activo, String origen);
+
 }

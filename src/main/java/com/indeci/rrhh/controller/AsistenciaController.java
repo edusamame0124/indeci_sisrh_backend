@@ -208,4 +208,18 @@ public class AsistenciaController {
         int corregidos = service.backfillFeriadosMalClasificados();
         return new ApiResponse<>("OK", "Días de feriado corregidos: " + corregidos, corregidos);
     }
+
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — corrige cabeceras activas
+     * que quedaron con cobertura incompleta por re-importaciones anteriores al fix de fusión
+     * de días (guardarImportacion), rescatando los días huérfanos de versiones inactivas del
+     * mismo empleado+periodo. No toca periodos CERRADO/APROBADO. Idempotente. Gateado a
+     * SUPER_ADMIN — quitar este endpoint una vez ejecutado en cada ambiente.
+     */
+    @PostMapping("/backfill-dias-huerfanos")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillDiasHuerfanos() {
+        int corregidas = service.backfillFusionarDiasHuerfanos();
+        return new ApiResponse<>("OK", "Cabeceras corregidas: " + corregidas, corregidas);
+    }
 }

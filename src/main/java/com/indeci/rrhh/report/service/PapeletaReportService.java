@@ -46,9 +46,6 @@ import net.sf.jasperreports.engine.util.JRLoader;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -511,7 +508,7 @@ private List<CompensacionReporteDto> cargarParametrosCompensacion(
     return data;
 }
 
-public String generarPdf(
+public byte[] generarPdf(
         Long solicitudId) {
 	 System.out.println("GENERANDO PAPELETA ID = " + solicitudId);
     try {
@@ -1029,35 +1026,12 @@ public String generarPdf(
                         dataSource);
 
         // ==========================================
-        // CREAR CARPETA
+        // EXPORTAR PDF (en memoria — sin tocar disco)
         // ==========================================
 
-        String carpeta =
-                "/opt/indeci/rrhh/solicitudes/";
-
-        Files.createDirectories(
-                Paths.get(carpeta));
-
-        // ==========================================
-        // RUTA PDF
-        // ==========================================
-
-        String rutaPdf =
-                carpeta
-                        + "SOL_"
-                        + solicitudId
-                        + "_V0.pdf";
-
-        // ==========================================
-        // EXPORTAR PDF
-        // ==========================================
-
-        JasperExportManager
-                .exportReportToPdfFile(
-                        jasperPrint,
-                        rutaPdf);
-
-        return rutaPdf;
+        return JasperExportManager
+                .exportReportToPdf(
+                        jasperPrint);
 
     } catch (Exception e) {
 

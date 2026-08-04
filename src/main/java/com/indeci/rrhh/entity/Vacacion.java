@@ -95,7 +95,9 @@ public class Vacacion {
 
 	@Column(name = "SOLICITUD_RRHH_ID")
 	private Long solicitudRrhhId;
-	
-	
-	
+
+	/** V012_55 — usuario que registró la fila (ej. Goce Directo/Override). NULL en filas previas. */
+	@Column(name = "USUARIO_REGISTRO")
+	private String usuarioRegistro;
+
 }

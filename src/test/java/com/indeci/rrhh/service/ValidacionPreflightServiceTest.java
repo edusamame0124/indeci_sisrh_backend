@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,6 +64,7 @@ class ValidacionPreflightServiceTest {
     @Mock private EmpleadoConceptoRepository empleadoConceptoRepository;
     @Mock private ConceptoPlanillaRepository conceptoRepository;
     @Mock private AsistenciaCabeceraRepository asistenciaRepository;
+    @Mock private com.indeci.rrhh.repository.AsistenciaDetalleRepository asistenciaDetalleRepository;
     @Mock private RegimenLaboralRepository regimenLaboralRepository;
     @Mock private EmpleadoEventoRepository empleadoEventoRepository;
     @Mock private TipoEventoRepository tipoEventoRepository;
@@ -167,6 +169,85 @@ class ValidacionPreflightServiceTest {
         assertThat(r.hallazgos())
                 .extracting(ValidacionHallazgoDto::codigo)
                 .contains("V3");
+    }
+
+    // ================== V20 ALERTA: asistencia parcial (rango real de detalle) ==================
+
+    private PeriodoPlanilla periodoConFechas(LocalDate ini, LocalDate fin) {
+        PeriodoPlanilla p = new PeriodoPlanilla();
+        p.setId(99L);
+        p.setPeriodo(PERIODO);
+        p.setActivo(1);
+        p.setEstado("ABIERTO");
+        p.setNroCertPresup("CERT-2026-05");
+        p.setFechaInicio(ini);
+        p.setFechaFin(fin);
+        return p;
+    }
+
+    @Test
+    void v20_cabecera_activa_con_span_completo_no_dispara_alerta() {
+        LocalDate ini = LocalDate.of(2026, 5, 1);
+        LocalDate fin = LocalDate.of(2026, 5, 31);
+        when(periodoRepository.findByPeriodoAndActivo(PERIODO, 1))
+                .thenReturn(Optional.of(periodoConFechas(ini, fin)));
+        configurarEmpleadoOk(1L, "728", "Pérez Juan");
+        AsistenciaCabecera cab = asistenciaValidada(1L);
+        cab.setId(10L);
+        when(asistenciaRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of(cab));
+        when(asistenciaDetalleRepository.rangoCubiertoPorCabecera(List.of(10L)))
+                .thenReturn(List.<Object[]>of(new Object[]{10L, ini, fin}));
+        cargarConceptos();
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(1L, 1)).thenReturn(List.of());
+        when(empleadoEventoRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of());
+
+        PreflightValidacionDto r = service.evaluar(PERIODO);
+
+        assertThat(r.hallazgos()).noneMatch(h -> "V20".equals(h.codigo()));
+    }
+
+    @Test
+    void v20_cabecera_activa_con_span_parcial_dispara_alerta() {
+        LocalDate ini = LocalDate.of(2026, 5, 1);
+        LocalDate fin = LocalDate.of(2026, 5, 31);
+        when(periodoRepository.findByPeriodoAndActivo(PERIODO, 1))
+                .thenReturn(Optional.of(periodoConFechas(ini, fin)));
+        configurarEmpleadoOk(1L, "728", "Pérez Juan");
+        AsistenciaCabecera cab = asistenciaValidada(1L);
+        cab.setId(10L);
+        when(asistenciaRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of(cab));
+        // El detalle activo solo cubre la segunda quincena — falta la primera.
+        when(asistenciaDetalleRepository.rangoCubiertoPorCabecera(List.of(10L)))
+                .thenReturn(List.<Object[]>of(new Object[]{10L, LocalDate.of(2026, 5, 16), fin}));
+        cargarConceptos();
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(1L, 1)).thenReturn(List.of());
+        when(empleadoEventoRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of());
+
+        PreflightValidacionDto r = service.evaluar(PERIODO);
+
+        assertThat(r.hallazgos())
+                .anyMatch(h -> "V20".equals(h.codigo()) && "ALERTA".equals(h.severidad()));
+    }
+
+    @Test
+    void v20_cabecera_sin_filas_de_detalle_dispara_alerta() {
+        LocalDate ini = LocalDate.of(2026, 5, 1);
+        LocalDate fin = LocalDate.of(2026, 5, 31);
+        when(periodoRepository.findByPeriodoAndActivo(PERIODO, 1))
+                .thenReturn(Optional.of(periodoConFechas(ini, fin)));
+        configurarEmpleadoOk(1L, "728", "Pérez Juan");
+        AsistenciaCabecera cab = asistenciaValidada(1L);
+        cab.setId(10L);
+        when(asistenciaRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of(cab));
+        when(asistenciaDetalleRepository.rangoCubiertoPorCabecera(List.of(10L))).thenReturn(List.of());
+        cargarConceptos();
+        when(empleadoConceptoRepository.findByEmpleadoIdAndActivo(1L, 1)).thenReturn(List.of());
+        when(empleadoEventoRepository.findByPeriodoAndActivo(PERIODO, 1)).thenReturn(List.of());
+
+        PreflightValidacionDto r = service.evaluar(PERIODO);
+
+        assertThat(r.hallazgos())
+                .anyMatch(h -> "V20".equals(h.codigo()) && "ALERTA".equals(h.severidad()));
     }
 
     // ================== V5 ALERTA: sin régimen pensionario ==================

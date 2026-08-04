@@ -3,6 +3,7 @@ package com.indeci.rrhh.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -84,6 +85,9 @@ public class VacacionService {
 
     /** Marca el registro histórico como un ajuste administrativo, no un goce físico real. */
     private static final String TIPO_GOCE_CORRECCION = "CORRECCION_MANUAL";
+
+    /** Botón "Registrar Goce Directo" del Padrón — goce insertado fuera del flujo de papeletas. */
+    public static final String ORIGEN_OVERRIDE_RRHH = "OVERRIDE_RRHH";
 	
 	/**
 	 * Obtenidos/Gozados/Saldo — SIEMPRE visible en toda papeleta (pedido RR.HH.).
@@ -674,6 +678,14 @@ public class VacacionService {
         }
     }
 
+    /**
+     * Botón "Registrar Goce Directo (Override)" del Padrón: inserta un goce fuera del flujo
+     * normal de papeletas, pudiendo ignorar el saldo (adelanto) y hacer bypass del pool de
+     * fraccionamiento normado (F9, D.S. 013-2019-PCM). Trazabilidad: usuario que lo registra
+     * ({@link SecurityUtil#getUsername()}) + registro en AUDITORIA (vía {@code @Auditable}),
+     * visibles en "Ver detalle" e "Historial" del Padrón (V012_55).
+     */
+    @Auditable(accion = "REGISTRAR_GOCE_DIRECTO_OVERRIDE")
     @Transactional
     public void registrarGoceDirecto(com.indeci.rrhh.dto.GoceDirectoDto dto) {
         if (dto.getFechaFin().isBefore(dto.getFechaInicio())) {
@@ -723,13 +735,36 @@ public class VacacionService {
         vacacion.setDias((double) diasTotales);
         vacacion.setEstado("GOZADO");
         vacacion.setEsAdelanto(Boolean.TRUE.equals(dto.getEsAdelanto()) ? 1 : 0);
-        vacacion.setOrigen("OVERRIDE_RRHH");
+        vacacion.setOrigen(ORIGEN_OVERRIDE_RRHH);
         vacacion.setDocumentoSustento(dto.getDocumentoSustento());
         vacacion.setMotivoExcepcion(dto.getMotivoExcepcion());
+        vacacion.setUsuarioRegistro(SecurityUtil.getUsername());
 
         vacacionRepository.save(vacacion);
 
         descontarSaldoVacacional(dto.getEmpleadoId(), diasTotales);
+
+        auditoriaContext.setDetalle(String.format(
+                "Goce directo (override) — empleado %d. Período %s a %s (%d d). Adelanto: %s. "
+                        + "Documento sustento: %s. Motivo: %s",
+                dto.getEmpleadoId(), dto.getFechaInicio(), dto.getFechaFin(), diasTotales,
+                Boolean.TRUE.equals(dto.getEsAdelanto()) ? "SÍ" : "NO",
+                dto.getDocumentoSustento() == null ? "—" : dto.getDocumentoSustento(),
+                dto.getMotivoExcepcion() == null ? "—" : dto.getMotivoExcepcion()));
+    }
+
+    /**
+     * Trazabilidad Visual (V012_55) — historial completo de goces (INDECI_VACACIONES) de un
+     * empleado, más recientes primero, con quién y cuándo registró cada uno. Alimenta la
+     * pestaña "Goces Directos" del modal Historial.
+     */
+    @Transactional(readOnly = true)
+    public List<com.indeci.rrhh.dto.GoceRegistradoDto> listarGoces(Long empleadoId) {
+        return vacacionRepository.findByEmpleadoIdAndActivo(empleadoId, 1).stream()
+                .sorted(Comparator.comparing(
+                        Vacacion::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(com.indeci.rrhh.dto.GoceRegistradoDto::from)
+                .toList();
     }
 
 }

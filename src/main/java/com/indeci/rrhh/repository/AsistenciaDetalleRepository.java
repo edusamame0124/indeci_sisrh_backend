@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface AsistenciaDetalleRepository
@@ -163,4 +164,19 @@ public interface AsistenciaDetalleRepository
             @Param("q") String q,
             @Param("tipoDia") String tipoDia,
             Pageable pageable);
+
+    /**
+     * Fix integridad asistencia (fusión de días en re-importación) — rango REAL cubierto
+     * por el detalle de cada cabecera (MIN/MAX de det.dia). Alimenta V20 del preflight
+     * ("Asistencia parcial"), que antes confiaba en el metadato declarado de la última
+     * importación (AsistenciaImportacion.periodoDetectadoIni/Fin) y quedaba desactualizado
+     * en cuanto una re-importación fusionaba días de una versión anterior.
+     */
+    @Query("""
+            SELECT det.cabeceraId, MIN(det.dia), MAX(det.dia)
+              FROM AsistenciaDetalle det
+             WHERE det.cabeceraId IN :cabeceraIds
+             GROUP BY det.cabeceraId
+            """)
+    List<Object[]> rangoCubiertoPorCabecera(@Param("cabeceraIds") Collection<Long> cabeceraIds);
 }

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -30,11 +31,14 @@ import com.indeci.rrhh.entity.Cargo;
 import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.EmpleadoPuesto;
+import com.indeci.rrhh.entity.Vacacion;
 import com.indeci.rrhh.entity.VacacionSaldo;
+import com.indeci.rrhh.dto.GoceRegistradoDto;
 import com.indeci.rrhh.repository.CargoRepository;
 import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
+import com.indeci.rrhh.repository.VacacionRepository;
 import com.indeci.rrhh.repository.VacacionSaldoRepository;
 import com.indeci.rrhh.service.support.Dias360;
 
@@ -73,6 +77,7 @@ public class PadronVacacionalService {
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final EmpleadoPuestoRepository empleadoPuestoRepository;
     private final VacacionSaldoRepository vacacionSaldoRepository;
+    private final VacacionRepository vacacionRepository;
     private final CargoRepository cargoRepository;
     private final DependenciaRepository dependenciaRepository;
     private final TiempoServicioService tiempoServicioService;
@@ -121,6 +126,13 @@ public class PadronVacacionalService {
                 .collect(Collectors.toMap(Map.Entry::getKey,
                         e -> VacacionService.contarPeriodosPendientes(e.getValue())));
 
+        // V012_55 — señal de Override para "Ver detalle"/"Historial" (una query por página).
+        final Set<Long> empsConOverride = empIds.isEmpty()
+                ? Set.of()
+                : vacacionRepository
+                        .findByEmpleadoIdInAndActivoAndOrigen(empIds, 1, VacacionService.ORIGEN_OVERRIDE_RRHH)
+                        .stream().map(Vacacion::getEmpleadoId).collect(Collectors.toSet());
+
         final Map<Long, String> cargoNombre = cargoRepository.findAll().stream()
                 .filter(c -> c.getId() != null)
                 .collect(Collectors.toMap(Cargo::getId, Cargo::getNombre, (a, b) -> a));
@@ -154,6 +166,8 @@ public class PadronVacacionalService {
             final Optional<TiempoServicioDto> tsOpt =
                     tiempoServicioService.calcularDesde(vinculos, empId, corte);
 
+            final boolean tieneOverride = empId != null && empsConOverride.contains(empId);
+
             if (tsOpt.isEmpty()) {
                 content.add(new PadronVacacionalRowDto(
                         empId, f.getDni(), f.getNombreCompleto(), f.getRegimenLaboral(),
@@ -162,7 +176,7 @@ public class PadronVacacionalService {
                         null, null, null, null, null,
                         0, gozados, -gozados,
                         "SIN_VINCULO", true,
-                        periodosPendientes, requiereDecision));
+                        periodosPendientes, requiereDecision, tieneOverride));
                 continue;
             }
 
@@ -226,7 +240,7 @@ public class PadronVacacionalService {
                     noComp.lsg(), noComp.faltas(), aniosEf, mesesEf, diasEf,
                     calc.diasCorresponden(), calc.diasGozados(), calc.saldo(),
                     estadoRecordFinal, false,
-                    periodosPendientes, requiereDecision));
+                    periodosPendientes, requiereDecision, tieneOverride));
         }
 
         return new PadronVacacionalPageDto(
@@ -258,6 +272,15 @@ public class PadronVacacionalService {
         // Nivel 1 — acumulado (mismo criterio que VacacionService.calcularTiempoServicioDetalle).
         final TiempoServicioDetalleDto acumulado = acumuladoCarrera(empleadoId);
 
+        // V012_55 — override más reciente (si existe), para el bloque "Trazabilidad del registro".
+        final GoceRegistradoDto ultimoOverride = vacacionRepository
+                .findByEmpleadoIdAndActivo(empleadoId, 1).stream()
+                .filter(v -> VacacionService.ORIGEN_OVERRIDE_RRHH.equals(v.getOrigen()))
+                .max(Comparator.comparing(
+                        Vacacion::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(GoceRegistradoDto::from)
+                .orElse(null);
+
         final List<EmpleadoPlanilla> vinculos =
                 empleadoPlanillaRepository.findByEmpleadoIdInAndActivo(List.of(empleadoId), 1);
         final LocalDate ingreso = vinculos.stream()
@@ -266,7 +289,7 @@ public class PadronVacacionalService {
                 .min(LocalDate::compareTo)
                 .orElse(null);
         if (ingreso == null) {
-            return new RecordVacacionalDetalleDto(true, acumulado, List.of());
+            return new RecordVacacionalDetalleDto(true, acumulado, List.of(), ultimoOverride);
         }
 
         final Map<Long, Integer> jornadaPorRegimen = jornadaRegimenRepository.findAll().stream()
@@ -303,7 +326,7 @@ public class PadronVacacionalService {
             periodos.add(new PeriodoRecordDto((int) n, desde, hasta,
                     noComp.lsg(), noComp.faltas(), noComp.suspensiones(), efectivo, ok, ok ? 30 : 0));
         }
-        return new RecordVacacionalDetalleDto(false, acumulado, periodos);
+        return new RecordVacacionalDetalleDto(false, acumulado, periodos, ultimoOverride);
     }
 
     /** Nivel 1 — réplica de VacacionService.calcularTiempoServicioDetalle (mismo origen que

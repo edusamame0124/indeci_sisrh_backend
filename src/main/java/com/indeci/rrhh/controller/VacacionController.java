@@ -373,4 +373,19 @@ public class VacacionController {
 				vacacionSaldoService.listarHistorialCompleto(empleadoId));
 	}
 
+	/**
+	 * Trazabilidad Visual (V012_55) — historial de goces (INDECI_VACACIONES) de un empleado, con
+	 * quién y cuándo registró cada uno. Alimenta la pestaña "Goces Directos" del modal Historial.
+	 */
+	@GetMapping("/padron/{empleadoId}/goces")
+	@PreAuthorize(SisrhSecurityExpressions.EMP_READ)
+	public ApiResponse<List<com.indeci.rrhh.dto.GoceRegistradoDto>> listarGoces(
+			@PathVariable Long empleadoId) {
+
+		return new ApiResponse<>(
+				"OK",
+				"Historial de goces vacacionales",
+				vacacionService.listarGoces(empleadoId));
+	}
+
 }

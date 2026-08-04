@@ -3,7 +3,9 @@ package com.indeci.rrhh.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -28,6 +30,7 @@ import com.indeci.rrhh.repository.CargoRepository;
 import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
+import com.indeci.rrhh.repository.VacacionRepository;
 import com.indeci.rrhh.repository.VacacionSaldoRepository;
 
 /**
@@ -42,6 +45,7 @@ class PadronVacacionalServiceTest {
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
     @Mock private EmpleadoPuestoRepository empleadoPuestoRepository;
     @Mock private VacacionSaldoRepository vacacionSaldoRepository;
+    @Mock private VacacionRepository vacacionRepository;
     @Mock private CargoRepository cargoRepository;
     @Mock private DependenciaRepository dependenciaRepository;
     @Mock private com.indeci.rrhh.repository.JornadaRegimenRepository jornadaRegimenRepository;
@@ -56,12 +60,18 @@ class PadronVacacionalServiceTest {
                 empleadoPlanillaRepository,
                 empleadoPuestoRepository,
                 vacacionSaldoRepository,
+                vacacionRepository,
                 cargoRepository,
                 dependenciaRepository,
                 new TiempoServicioService(empleadoPlanillaRepository), // F1 real (calcularDesde no toca repo)
                 new VacacionCalculoService((empId, desde, hasta) -> 0), // F3 real
                 jornadaRegimenRepository,
                 incidenciaLaboralCompuesta);
+
+        // V012_55 — señal de Override en consultar(); lenient porque no todos los tests
+        // ejercen la rama con empIds no vacío (ver consultar_pagina_vacia_no_falla).
+        lenient().when(vacacionRepository.findByEmpleadoIdInAndActivoAndOrigen(anyList(), eq(1), anyString()))
+                .thenReturn(List.of());
     }
 
     private PersonaResumenDto persona(long id, long empId, String nombre, String dni, String regimen) {

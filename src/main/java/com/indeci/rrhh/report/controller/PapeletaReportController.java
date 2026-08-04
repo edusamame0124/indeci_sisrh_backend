@@ -6,7 +6,7 @@ import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,13 +26,13 @@ public class PapeletaReportController {
     generar(
             @PathVariable Long solicitudId) {
 
-        String ruta =
+        byte[] pdf =
                 service.generarPdf(
                         solicitudId);
 
         Resource resource =
-                new FileSystemResource(
-                        ruta);
+                new ByteArrayResource(
+                        pdf);
 
         return ResponseEntity.ok()
                 .contentType(

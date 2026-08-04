@@ -30,10 +30,9 @@ public class SolicitudRrhhController {
      */
     @GetMapping("/{id}/papeleta/pdf")
     public org.springframework.http.ResponseEntity<byte[]> descargarPapeleta(
-            @PathVariable Long id) throws java.io.IOException {
+            @PathVariable Long id) {
 
-        String ruta = papeletaReportService.generarPdf(id);
-        byte[] pdf = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(ruta));
+        byte[] pdf = papeletaReportService.generarPdf(id);
 
         return org.springframework.http.ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)

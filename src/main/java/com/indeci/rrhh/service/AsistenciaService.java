@@ -45,6 +45,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -796,6 +797,58 @@ public class AsistenciaService {
         return corregidos;
     }
 
+    /**
+     * Backfill ÚNICO (independiente de los anteriores) — NO se ejecuta automáticamente.
+     * Corrige cabeceras ACTIVAS cuyo detalle no cubre todo lo que ya se había cargado porque
+     * una re-importación anterior a la fusión de días (fix F5/P4 en {@link #guardarImportacion})
+     * dejó días huérfanos en una versión inactiva anterior del mismo empleado+periodo. Inserta
+     * esos días faltantes en la cabecera activa actual y recalcula sus agregados con
+     * {@link #recalcularCabeceraDesdeDetalle} — misma fuente de verdad que usa el fix.
+     *
+     * <p>Respeta el mismo guard que {@link #backfillFeriadosMalClasificados}: no toca periodos
+     * CERRADO/APROBADO (inmutables, LEY-05) — esos casos quedan para revisión manual de RR.HH.
+     *
+     * <p>Idempotente: un día ya presente en el detalle activo no se duplica.
+     */
+    @Transactional
+    public int backfillFusionarDiasHuerfanos() {
+        List<AsistenciaCabecera> activas = cabeceraRepository.findByActivo(1);
+        int corregidas = 0;
+
+        for (AsistenciaCabecera cab : activas) {
+            boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                    .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                    .orElse(false);
+            if (periodoBloqueado) {
+                continue;
+            }
+
+            Set<LocalDate> diasActivos = detalleRepository.findByCabeceraIdOrderByDia(cab.getId()).stream()
+                    .map(AsistenciaDetalle::getDia)
+                    .collect(Collectors.toSet());
+
+            List<AsistenciaDetalle> faltantes = new ArrayList<>();
+            for (AsistenciaCabecera version : cabeceraRepository
+                    .findByEmpleadoIdAndPeriodoOrderByVersionDesc(cab.getEmpleadoId(), cab.getPeriodo())) {
+                if (version.getId().equals(cab.getId()) || version.getActivo() == 1) {
+                    continue; // solo versiones inactivas anteriores
+                }
+                for (AsistenciaDetalle det : detalleRepository.findByCabeceraIdOrderByDia(version.getId())) {
+                    if (det.getDia() != null && diasActivos.add(det.getDia())) {
+                        faltantes.add(mapearDetalles(cab.getId(), List.of(aDiaDto(det))).get(0));
+                    }
+                }
+            }
+
+            if (!faltantes.isEmpty()) {
+                detalleJdbcWriter.insertarLote(faltantes);
+                recalcularCabeceraDesdeDetalle(cab);
+                corregidas++;
+            }
+        }
+        return corregidas;
+    }
+
     /** Año (yyyy) del período "yyyy-MM"; null si el formato no es el esperado. */
     private Integer anioDePeriodo(String periodo) {
         if (periodo == null || periodo.length() < 4) {
@@ -1172,13 +1225,19 @@ public class AsistenciaService {
             String autorizadoPor) {
 
         validarTiposDia(dias);
-        AsistenciaResumenCalculator.Resumen agregados =
-                AsistenciaResumenCalculator.calcular(dias, remuneracionBase);
 
         AsistenciaCabecera anterior = cabeceraRepository
                 .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
                 .orElse(null);
         boolean esRectificacion = anterior != null;
+
+        // Fix integridad — fusiona los días del archivo nuevo con los días de la versión
+        // activa anterior que caen FUERA del rango de esta carga, para que la cabecera
+        // nueva (única fuente que lee el motor M05) no pierda cobertura ya cargada.
+        List<AsistenciaDiaDto> diasFinal = fusionarConAnterior(dias, anterior);
+        AsistenciaResumenCalculator.Resumen agregados =
+                AsistenciaResumenCalculator.calcular(diasFinal, remuneracionBase);
+
         if (esRectificacion) {
             // Conserva la versión anterior como histórico (NO se borra su detalle).
             // saveAndFlush garantiza que el UPDATE a ACTIVO=0 ocurra ANTES del INSERT
@@ -1218,7 +1277,30 @@ public class AsistenciaService {
 
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
         // Detalle nuevo sobre la cabecera nueva: no se borra detalle de versiones previas.
-        detalleJdbcWriter.insertarLote(mapearDetalles(guardada.getId(), dias));
+        detalleJdbcWriter.insertarLote(mapearDetalles(guardada.getId(), diasFinal));
+    }
+
+    /**
+     * Fix integridad de asistencia — une los días del archivo recién importado con los
+     * días de la versión ACTIVA anterior que caen FUERA del rango del archivo nuevo, para
+     * que la cabecera nueva (única fuente que lee el motor M05) siga cubriendo todo lo
+     * que ya se había cargado. Gana el archivo nuevo cuando ambos traen el mismo día.
+     */
+    private List<AsistenciaDiaDto> fusionarConAnterior(
+            List<AsistenciaDiaDto> dias, AsistenciaCabecera anterior) {
+        if (anterior == null) {
+            return dias; // primera carga del período: nada que fusionar
+        }
+        Set<LocalDate> diasNuevos = dias.stream()
+                .map(AsistenciaDiaDto::getDia)
+                .collect(Collectors.toSet());
+        List<AsistenciaDiaDto> diasFinal = new ArrayList<>(dias);
+        detalleRepository.findByCabeceraIdOrderByDia(anterior.getId()).stream()
+                .filter(det -> det.getDia() != null && !diasNuevos.contains(det.getDia()))
+                .map(this::aDiaDto)
+                .forEach(diasFinal::add);
+        diasFinal.sort(Comparator.comparing(AsistenciaDiaDto::getDia));
+        return diasFinal;
     }
 
     void validarTiposDia(List<AsistenciaDiaDto> dias) {

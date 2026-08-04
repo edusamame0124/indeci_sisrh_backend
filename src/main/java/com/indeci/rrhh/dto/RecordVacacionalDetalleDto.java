@@ -13,9 +13,14 @@ import java.util.List;
  *       (aniversario a aniversario) con SUS incidencias y si cumplió récord (+30). Explica de
  *       dónde salen los "Días que corresponden".</li>
  * </ul>
+ *
+ * @param ultimoOverride V012_55 — el goce por "Registro Directo (Override)" más reciente del
+ *        empleado (origen=OVERRIDE_RRHH), o {@code null} si nunca se le registró uno. Alimenta
+ *        el bloque "Trazabilidad del registro" del modal.
  */
 public record RecordVacacionalDetalleDto(
         boolean sinVinculo,
         TiempoServicioDetalleDto acumulado,
-        List<PeriodoRecordDto> periodos) {
+        List<PeriodoRecordDto> periodos,
+        GoceRegistradoDto ultimoOverride) {
 }

@@ -84,6 +84,22 @@ class AsistenciaServiceTest {
         return d;
     }
 
+    private AsistenciaDetalle detalle(String tipo, int diaMes) {
+        AsistenciaDetalle d = new AsistenciaDetalle();
+        d.setDia(LocalDate.of(2026, 5, diaMes));
+        d.setTipoDia(tipo);
+        d.setMinutosTardanza(0);
+        return d;
+    }
+
+    private AsistenciaDetalle detalleEnFecha(String tipo, LocalDate dia) {
+        AsistenciaDetalle d = new AsistenciaDetalle();
+        d.setDia(dia);
+        d.setTipoDia(tipo);
+        d.setMinutosTardanza(0);
+        return d;
+    }
+
     private AsistenciaGuardarDto dtoBase() {
         AsistenciaGuardarDto dto = new AsistenciaGuardarDto();
         dto.setEmpleadoId(EMPLEADO_ID);
@@ -191,6 +207,8 @@ class AsistenciaServiceTest {
         verify(detalleJdbcWriter).insertarLote(any());
         // NO se borra detalle histórico (req 5)
         verify(detalleRepository, never()).deleteByCabeceraId(anyLong());
+        // Fix integridad — sin versión anterior no hay nada que fusionar: no se consulta detalle previo.
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(anyLong());
     }
 
     @Test
@@ -225,6 +243,107 @@ class AsistenciaServiceTest {
         assertThat(nueva.getAutorizadoPor()).isEqualTo("jefe");
         // NO se borra detalle de versiones previas (req 5)
         verify(detalleRepository, never()).deleteByCabeceraId(anyLong());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void guardarImportacion_rectificacion_fusiona_dias_fuera_de_rango_de_version_anterior() {
+        // Simula el bug real: quincena 1 (días 1-15, con una FALTA el día 5) ya está activa
+        // cuando llega la carga de la quincena 2 (días 16-31, con otra FALTA el día 16).
+        AsistenciaCabecera anterior = new AsistenciaCabecera();
+        anterior.setId(10L);
+        anterior.setActivo(1);
+
+        List<AsistenciaDetalle> detallePrevio = new java.util.ArrayList<>();
+        for (int d = 1; d <= 15; d++) {
+            detallePrevio.add(detalle(d == 5 ? "FALTA" : "LABORAL", d));
+        }
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(anterior));
+        when(detalleRepository.findByCabeceraIdOrderByDia(10L)).thenReturn(detallePrevio);
+        when(cabeceraRepository.maxVersion(EMPLEADO_ID, PERIODO)).thenReturn(1);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class))).thenAnswer(inv -> {
+            AsistenciaCabecera c = inv.getArgument(0);
+            c.setId(11L);
+            return c;
+        });
+
+        List<AsistenciaDiaDto> diasNuevoArchivo = new java.util.ArrayList<>();
+        for (int d = 16; d <= 31; d++) {
+            diasNuevoArchivo.add(dia(d == 16 ? "FALTA" : "LABORAL", 0, d));
+        }
+
+        service.guardarImportacion(EMPLEADO_ID, PERIODO, 3000.0, "FALLBACK", "PREVALIDADA", 5L,
+                diasNuevoArchivo, "Carga segunda quincena", "rrhh", "jefe");
+
+        // El detalle insertado cubre TODO el mes (31 días), sin duplicar fechas.
+        ArgumentCaptor<List<AsistenciaDetalle>> detalleCapt = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(detalleCapt.capture());
+        List<AsistenciaDetalle> insertado = detalleCapt.getValue();
+        assertThat(insertado).hasSize(31);
+        assertThat(insertado.stream().map(AsistenciaDetalle::getDia).distinct().count()).isEqualTo(31L);
+
+        // Los agregados de la cabecera activa nueva reflejan el TOTAL fusionado (2 faltas, no 1) —
+        // equivalente a haber subido el mes completo de una sola vez.
+        ArgumentCaptor<AsistenciaCabecera> cabCapt = ArgumentCaptor.forClass(AsistenciaCabecera.class);
+        verify(cabeceraRepository).save(cabCapt.capture());
+        assertThat(cabCapt.getValue().getDiasFalta()).isEqualTo(2);
+        assertThat(cabCapt.getValue().getDiasLaborados()).isEqualTo(29);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void guardarImportacion_rectificacion_dia_nuevo_pisa_dia_previo_del_mismo_dia() {
+        AsistenciaCabecera anterior = new AsistenciaCabecera();
+        anterior.setId(10L);
+        anterior.setActivo(1);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(anterior));
+        when(detalleRepository.findByCabeceraIdOrderByDia(10L)).thenReturn(List.of(detalle("FALTA", 10)));
+        when(cabeceraRepository.maxVersion(EMPLEADO_ID, PERIODO)).thenReturn(1);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class))).thenAnswer(inv -> {
+            AsistenciaCabecera c = inv.getArgument(0);
+            c.setId(11L);
+            return c;
+        });
+
+        // El archivo nuevo trae el MISMO día (10) con otro tipo — la rectificación debe ganar.
+        service.guardarImportacion(EMPLEADO_ID, PERIODO, 3000.0, "FALLBACK", "PREVALIDADA", 5L,
+                List.of(dia("TARDANZA", 20, 10)), "Corrección de marcación", "rrhh", "jefe");
+
+        ArgumentCaptor<List<AsistenciaDetalle>> capt = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(capt.capture());
+        List<AsistenciaDetalle> insertado = capt.getValue();
+        assertThat(insertado).hasSize(1);
+        assertThat(insertado.get(0).getTipoDia()).isEqualTo("TARDANZA");
+        assertThat(insertado.get(0).getMinutosTardanza()).isEqualTo(20);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void guardarImportacion_rectificacion_version_anterior_con_detalle_vacio_no_agrega_dias() {
+        AsistenciaCabecera anterior = new AsistenciaCabecera();
+        anterior.setId(10L);
+        anterior.setActivo(1);
+
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, PERIODO, 1))
+                .thenReturn(Optional.of(anterior));
+        when(detalleRepository.findByCabeceraIdOrderByDia(10L)).thenReturn(List.of());
+        when(cabeceraRepository.maxVersion(EMPLEADO_ID, PERIODO)).thenReturn(1);
+        when(cabeceraRepository.save(any(AsistenciaCabecera.class))).thenAnswer(inv -> {
+            AsistenciaCabecera c = inv.getArgument(0);
+            c.setId(11L);
+            return c;
+        });
+
+        service.guardarImportacion(EMPLEADO_ID, PERIODO, 3000.0, "FALLBACK", "PREVALIDADA", 5L,
+                List.of(dia("LABORAL", 0, 4), dia("FALTA", 0, 5)), "Rectificación", "rrhh", "jefe");
+
+        ArgumentCaptor<List<AsistenciaDetalle>> capt = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(capt.capture());
+        assertThat(capt.getValue()).hasSize(2);
     }
 
     @Test
@@ -728,5 +847,116 @@ class AsistenciaServiceTest {
 
         assertThat(corregidos).isEqualTo(0);
         verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
+    }
+
+    /** Backfill de días huérfanos (caso real que motiva el fix de fusión en guardarImportacion). */
+    @Test
+    @SuppressWarnings("unchecked")
+    void backfillFusionarDiasHuerfanos_inserta_dias_faltantes_de_version_inactiva_y_recalcula() {
+        AsistenciaCabecera activa = new AsistenciaCabecera();
+        activa.setId(2024L);
+        activa.setEmpleadoId(1767L);
+        activa.setPeriodo("2026-07");
+        activa.setActivo(1);
+        activa.setVersion(2);
+        activa.setRemuneracionBase(3000.0);
+
+        AsistenciaCabecera inactiva = new AsistenciaCabecera();
+        inactiva.setId(2023L);
+        inactiva.setEmpleadoId(1767L);
+        inactiva.setPeriodo("2026-07");
+        inactiva.setActivo(0);
+        inactiva.setVersion(1);
+
+        List<AsistenciaDetalle> detalleActivoInicial = new java.util.ArrayList<>();
+        for (int d = 16; d <= 31; d++) {
+            detalleActivoInicial.add(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, d)));
+        }
+        List<AsistenciaDetalle> detalleInactivo = new java.util.ArrayList<>();
+        for (int d = 1; d <= 15; d++) {
+            detalleInactivo.add(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, d)));
+        }
+        // Segunda invocación (dentro de recalcularCabeceraDesdeDetalle): simula el detalle YA
+        // fusionado tras el insertarLote, con los 31 días del mes.
+        List<AsistenciaDetalle> detalleActivoFusionado = new java.util.ArrayList<>();
+        detalleActivoFusionado.addAll(detalleInactivo);
+        detalleActivoFusionado.addAll(detalleActivoInicial);
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(activa));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoOrderByVersionDesc(1767L, "2026-07"))
+                .thenReturn(List.of(activa, inactiva));
+        when(detalleRepository.findByCabeceraIdOrderByDia(2024L))
+                .thenReturn(detalleActivoInicial, detalleActivoFusionado);
+        when(detalleRepository.findByCabeceraIdOrderByDia(2023L)).thenReturn(detalleInactivo);
+
+        int corregidas = service.backfillFusionarDiasHuerfanos();
+
+        assertThat(corregidas).isEqualTo(1);
+
+        ArgumentCaptor<List<AsistenciaDetalle>> capt = ArgumentCaptor.forClass(List.class);
+        verify(detalleJdbcWriter).insertarLote(capt.capture());
+        assertThat(capt.getValue()).hasSize(15);
+        assertThat(capt.getValue().stream().map(AsistenciaDetalle::getDia).distinct().count()).isEqualTo(15L);
+
+        // recalcularCabeceraDesdeDetalle recalcula sobre el detalle YA fusionado (31 días).
+        verify(cabeceraRepository).save(argThat(c ->
+                c.getId().equals(2024L) && c.getDiasLaborados() == 31));
+    }
+
+    @Test
+    void backfillFusionarDiasHuerfanos_excluye_periodo_cerrado_o_aprobado() {
+        AsistenciaCabecera activa = new AsistenciaCabecera();
+        activa.setId(3000L);
+        activa.setEmpleadoId(500L);
+        activa.setPeriodo("2026-07");
+        activa.setActivo(1);
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(activa));
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoCerrado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoCerrado.setEstado("CERRADO");
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoCerrado));
+
+        int corregidas = service.backfillFusionarDiasHuerfanos();
+
+        assertThat(corregidas).isEqualTo(0);
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
+        verify(detalleJdbcWriter, never()).insertarLote(any());
+    }
+
+    @Test
+    void backfillFusionarDiasHuerfanos_es_idempotente_no_duplica_dias_ya_presentes() {
+        AsistenciaCabecera activa = new AsistenciaCabecera();
+        activa.setId(2024L);
+        activa.setEmpleadoId(1767L);
+        activa.setPeriodo("2026-07");
+        activa.setActivo(1);
+
+        AsistenciaCabecera inactiva = new AsistenciaCabecera();
+        inactiva.setId(2023L);
+        inactiva.setEmpleadoId(1767L);
+        inactiva.setPeriodo("2026-07");
+        inactiva.setActivo(0);
+
+        // El detalle activo YA tiene el mes completo — nada que arrastrar de la versión inactiva.
+        List<AsistenciaDetalle> detalleActivoCompleto = new java.util.ArrayList<>();
+        for (int d = 1; d <= 31; d++) {
+            detalleActivoCompleto.add(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, d)));
+        }
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(activa));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoOrderByVersionDesc(1767L, "2026-07"))
+                .thenReturn(List.of(activa, inactiva));
+        when(detalleRepository.findByCabeceraIdOrderByDia(2024L)).thenReturn(detalleActivoCompleto);
+        when(detalleRepository.findByCabeceraIdOrderByDia(2023L))
+                .thenReturn(List.of(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 5))));
+
+        int corregidas = service.backfillFusionarDiasHuerfanos();
+
+        assertThat(corregidas).isEqualTo(0);
+        verify(detalleJdbcWriter, never()).insertarLote(any());
+        verify(cabeceraRepository, never()).save(any());
     }
 }

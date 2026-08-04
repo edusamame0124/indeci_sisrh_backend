@@ -16,7 +16,6 @@ import com.indeci.rrhh.dto.PreflightValidacionDto;
 import com.indeci.rrhh.dto.Suspension4taVigenteDto;
 import com.indeci.rrhh.dto.ValidacionHallazgoDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
-import com.indeci.rrhh.entity.AsistenciaImportacion;
 import com.indeci.rrhh.entity.ConceptoPlanilla;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.EmpleadoConcepto;
@@ -27,7 +26,7 @@ import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.entity.RegimenLaboral;
 import com.indeci.rrhh.entity.TipoEvento;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
-import com.indeci.rrhh.repository.AsistenciaImportacionRepository;
+import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.ConceptoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoConceptoRepository;
 import com.indeci.rrhh.repository.EmpleadoEventoRepository;
@@ -80,7 +79,6 @@ public class ValidacionPreflightService {
 
     private static final String EMP_ACTIVO = "ACTIVO";
     private static final String ASIST_VALIDADA = "VALIDADA";
-    private static final String IMPORT_CONFIRMADA = "CONFIRMADA";
     private static final String EN_TRANSICION = "EN_TRANSICION";
 
     private final PeriodoPlanillaRepository periodoRepository;
@@ -91,7 +89,7 @@ public class ValidacionPreflightService {
     private final EmpleadoConceptoRepository empleadoConceptoRepository;
     private final ConceptoPlanillaRepository conceptoRepository;
     private final AsistenciaCabeceraRepository asistenciaRepository;
-    private final AsistenciaImportacionRepository importacionRepository;
+    private final AsistenciaDetalleRepository asistenciaDetalleRepository;
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final EmpleadoEventoRepository empleadoEventoRepository;
     private final EventoDistribucionMesRepository eventoDistribucionMesRepository;
@@ -231,28 +229,34 @@ public class ValidacionPreflightService {
                     null, null, null));
         }
 
-        // V20 — ASISTENCIA PARCIAL (Fase 2): la carga cubre MENOS días que el período completo.
-        //   El rango cubierto se lee de la importación (PERIODO_DETECTADO_INI/FIN, declarado por
-        //   RR.HH. al confirmar). Previene planillas con datos incompletos (pagos/descuentos
-        //   erróneos). ALERTA (no BLOQUEO): RR.HH. decide si completa la carga o continúa.
+        // V20 — ASISTENCIA PARCIAL (Fase 2, corregido tras fix de fusión de días F5/P4):
+        //   la carga cubre MENOS días que el período completo. La cobertura se lee del
+        //   RANGO REAL del detalle (MIN/MAX de AsistenciaDetalle.dia) de la cabecera ACTIVA,
+        //   no del metadato declarado por la última importación — ese metadato queda
+        //   desactualizado en cuanto una re-importación fusiona días de una versión anterior
+        //   (AsistenciaService.guardarImportacion). Previene planillas con datos incompletos
+        //   (pagos/descuentos erróneos). ALERTA (no BLOQUEO): RR.HH. decide si completa la
+        //   carga o continúa. Limitación conocida: chequeo de "span" (min/max), no detecta
+        //   huecos internos dentro del rango cubierto.
         if (!asistencias.isEmpty() && per.getFechaInicio() != null && per.getFechaFin() != null) {
-            Map<Long, AsistenciaImportacion> impPorId = new HashMap<>();
-            for (AsistenciaImportacion imp :
-                    importacionRepository.findByPeriodoAndEstado(periodo, IMPORT_CONFIRMADA)) {
-                impPorId.put(imp.getId(), imp);
+            List<Long> cabeceraIdsValidadas = new ArrayList<>();
+            for (AsistenciaCabecera cab : asistencias) {
+                if (ASIST_VALIDADA.equalsIgnoreCase(cab.getEstado())) {
+                    cabeceraIdsValidadas.add(cab.getId());
+                }
+            }
+            Map<Long, LocalDate[]> rangoPorCabecera = new HashMap<>();
+            if (!cabeceraIdsValidadas.isEmpty()) {
+                for (Object[] fila : asistenciaDetalleRepository.rangoCubiertoPorCabecera(cabeceraIdsValidadas)) {
+                    rangoPorCabecera.put((Long) fila[0], new LocalDate[]{(LocalDate) fila[1], (LocalDate) fila[2]});
+                }
             }
             int parciales = 0;
-            for (AsistenciaCabecera cab : asistencias) {
-                if (!ASIST_VALIDADA.equalsIgnoreCase(cab.getEstado())) {
-                    continue;
-                }
-                AsistenciaImportacion imp = cab.getImportacionId() != null
-                        ? impPorId.get(cab.getImportacionId()) : null;
-                LocalDate cubIni = imp != null ? imp.getPeriodoDetectadoIni() : null;
-                LocalDate cubFin = imp != null ? imp.getPeriodoDetectadoFin() : null;
-                boolean parcial = cubIni == null || cubFin == null
-                        || cubIni.isAfter(per.getFechaInicio())
-                        || cubFin.isBefore(per.getFechaFin());
+            for (Long cabId : cabeceraIdsValidadas) {
+                LocalDate[] rango = rangoPorCabecera.get(cabId);
+                boolean parcial = rango == null
+                        || rango[0].isAfter(per.getFechaInicio())
+                        || rango[1].isBefore(per.getFechaFin());
                 if (parcial) {
                     parciales++;
                 }

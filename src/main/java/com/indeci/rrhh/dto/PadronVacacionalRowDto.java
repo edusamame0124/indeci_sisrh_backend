@@ -14,6 +14,8 @@ package com.indeci.rrhh.dto;
  * @param periodosAcumuladosSinGozar F9.3 — cantidad de períodos (años) con saldo pendiente de gozar
  * @param requiereDecisionAcumulacion F9.3 — true cuando supera el tope de 2 períodos acumulados
  *        (D.S. 013-2019-PCM); NO bloquea nada, solo marca que RR.HH. debe evaluar y registrar sustento
+ * @param tieneOverride V012_55 — true si el empleado tiene al menos un goce registrado por
+ *        "Registro Directo (Override)" (origen=OVERRIDE_RRHH). Señal para "Ver detalle"/"Historial".
  */
 public record PadronVacacionalRowDto(
         Long empleadoId,
@@ -36,5 +38,6 @@ public record PadronVacacionalRowDto(
         String estadoRecord,
         boolean sinVinculo,
         int periodosAcumuladosSinGozar,
-        boolean requiereDecisionAcumulacion) {
+        boolean requiereDecisionAcumulacion,
+        boolean tieneOverride) {
 }
