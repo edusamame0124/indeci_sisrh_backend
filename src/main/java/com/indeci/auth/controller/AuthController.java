@@ -43,13 +43,18 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResponse login(
             @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
 
         String ip = clientInfoUtil.obtenerIpReal(httpRequest);
         String userAgent = clientInfoUtil.obtenerUserAgent(httpRequest);
 
-        return authService.login(request, ip, userAgent);
+        LoginResponse response = authService.login(request, ip, userAgent);
+        // Doble factor deshabilitado: /login ahora puede devolver sesión
+        // completa (con refreshToken) directamente, igual que /otp/confirm.
+        emitirCookieRefresh(response, httpRequest, httpResponse);
+        return response;
     }
 
 

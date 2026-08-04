@@ -124,8 +124,13 @@ public class AuthService {
         }
 
         // ============================
-        // OTP FLOW
+        // OTP FLOW — DESHABILITADO (solo usuario + contraseña)
         // ============================
+        // Doble factor comentado a pedido de negocio: el login ya no exige
+        // código OTP ni QR de enrolamiento, solo usuario y contraseña.
+        // Los endpoints /otp/enroll, /otp/confirm y /otp/validar quedan
+        // intactos por si se reactiva el 2FA más adelante.
+        /*
      // ============================
      // OTP FLOW (CORREGIDO)
      // ============================
@@ -148,6 +153,36 @@ public class AuthService {
      response.setRequiereOtp(false);
 
      return response;
+        */
+
+        Map<String, List<String>> sistemas = usuarioSistemaService.obtenerSistemasDe(user, roles);
+        Map<String, String> areas = usuarioSistemaService.obtenerAreasDe(user);
+        Persona persona = personaRepository.findByUserId(user.getId()).orElse(null);
+        String dni = persona != null ? persona.getDni() : null;
+        String nombre = persona != null ? persona.getNombreCompleto() : null;
+
+        String accessToken = jwtProvider.generarTokenDefinitivo(user, roles, permisos, sistemas, areas, dni, nombre);
+        String refreshToken = jwtProvider.generarRefreshToken(user);
+
+        AuthRefreshToken refreshEntity = new AuthRefreshToken();
+        refreshEntity.setUsuario(user.getUsername());
+        refreshEntity.setToken(refreshToken);
+        refreshEntity.setActivo("S");
+        refreshEntity.setFechaCreacion(LocalDateTime.now());
+        refreshEntity.setFechaExpiracion(LocalDateTime.now().plusHours(24));
+        refreshEntity.setIp(ip);
+        refreshEntity.setUserAgent(userAgent);
+        authRefreshTokenRepository.save(refreshEntity);
+
+        response.setToken(accessToken);
+        response.setRefreshToken(refreshToken);
+        response.setRoles(roles);
+        response.setPermisos(permisos);
+        response.setEmpleadoId(user.getEmpleadoId());
+        response.setRequiereOtp(false);
+        response.setRequiereEnroll(false);
+
+        return response;
     }
 
     // ============================
