@@ -1,8 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Created with Jaspersoft Studio -->
-<jasperReport name="lbs_cas" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="lbs-cas-report-uuid">
+<!-- Created with Jaspersoft Studio version 7.0.6.final using JasperReports Library version 7.0.6-5d2a603fdc6b3db8f842a83383e594f41891534d  -->
+<jasperReport name="lbs_cas" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="a49da577-0f6d-4635-8f40-ff9ab0665fbe">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
-	
 	<parameter name="EMPRESA_NOMBRE" class="java.lang.String"/>
 	<parameter name="EMPLEADO_NOMBRE" class="java.lang.String"/>
 	<parameter name="DNI" class="java.lang.String"/>
@@ -17,7 +15,6 @@
 	<parameter name="NUMERO_CUENTA" class="java.lang.String"/>
 	<parameter name="TIEMPO_SERVICIOS" class="java.lang.String"/>
 	<parameter name="VACACIONES_NO_GOZADAS" class="java.lang.String"/>
-	
 	<parameter name="COMPENSACION_VACACIONAL_TOTAL" class="java.lang.String"/>
 	<parameter name="VAC_PENDIENTES_DIAS" class="java.lang.String"/>
 	<parameter name="VAC_PENDIENTES_MONTO" class="java.lang.String"/>
@@ -25,114 +22,160 @@
 	<parameter name="VAC_TRUNCAS_MESES_MONTO" class="java.lang.String"/>
 	<parameter name="VAC_TRUNCAS_DIAS" class="java.lang.String"/>
 	<parameter name="VAC_TRUNCAS_DIAS_MONTO" class="java.lang.String"/>
-	
 	<parameter name="TOTAL_OTROS_INGRESOS" class="java.lang.String"/>
 	<parameter name="AGUINALDO_TRUNCO_MONTO" class="java.lang.String"/>
 	<parameter name="DIAS_LABORADOS_MONTO" class="java.lang.String"/>
 	<parameter name="REINTEGROS_MONTO" class="java.lang.String"/>
-	
 	<parameter name="TOTAL_INGRESOS" class="java.lang.String"/>
 	<parameter name="DESCUENTOS_DEDUCIBLES" class="java.lang.String"/>
 	<parameter name="BASE_IMPONIBLE" class="java.lang.String"/>
 	<parameter name="DESCUENTOS_NO_DEDUCIBLES" class="java.lang.String"/>
-	
 	<parameter name="MONTO_NETO_PAGAR" class="java.lang.String"/>
 	<parameter name="APORTES_EMPLEADOR_TOTAL" class="java.lang.String"/>
 	<parameter name="ESSALUD_9" class="java.lang.String"/>
-	
 	<detail>
 		<band height="700" splitType="Stretch">
-			<staticText>
-				<reportElement x="0" y="0" width="555" height="20" uuid="t1"/>
-				<textElement textAlignment="Center" verticalAlignment="Middle">
-					<font size="12" isBold="true"/>
-				</textElement>
+			<element kind="staticText" uuid="9c989eb0-c52c-4898-92d5-39c6512f7e45" x="0" y="0" width="555" height="20" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<text><![CDATA[LIQUIDACIÓN DE VACACIONES NO GOZADAS Y/O TRUNCAS N° 085-2026-CAS]]></text>
-			</staticText>
-			
-			<staticText>
-				<reportElement x="0" y="30" width="555" height="15" uuid="t2"/>
-				<textElement textAlignment="Center" verticalAlignment="Middle">
-					<font isBold="true"/>
-				</textElement>
+			</element>
+			<element kind="staticText" uuid="bec8d1c0-7dd0-4ae0-bc47-c4cf6b3ebb68" x="0" y="30" width="555" height="15" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<text><![CDATA[DATOS DEL TRABAJADOR]]></text>
-			</staticText>
-			
-			<textField><reportElement x="0" y="50" width="200" height="15" uuid="d1"/><textFieldExpression><![CDATA["APELLIDOS Y NOMBRES:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="50" width="355" height="15" uuid="d2"/><textFieldExpression><![CDATA[$P{EMPLEADO_NOMBRE}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="65" width="200" height="15" uuid="d3"/><textFieldExpression><![CDATA["DNI:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="65" width="355" height="15" uuid="d4"/><textFieldExpression><![CDATA[$P{DNI}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="80" width="200" height="15" uuid="d5"/><textFieldExpression><![CDATA["CARGO:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="80" width="355" height="15" uuid="d6"/><textFieldExpression><![CDATA[$P{CARGO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="95" width="200" height="15" uuid="d7"/><textFieldExpression><![CDATA["FECHA DE INICIO:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="95" width="355" height="15" uuid="d8"/><textFieldExpression><![CDATA[$P{FECHA_INICIO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="110" width="200" height="15" uuid="d9"/><textFieldExpression><![CDATA["FECHA DE CESE:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="110" width="355" height="15" uuid="d10"/><textFieldExpression><![CDATA[$P{FECHA_CESE}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="125" width="200" height="15" uuid="d11"/><textFieldExpression><![CDATA["TIEMPO DE SERVICIOS EFECTIVO:"]]></textFieldExpression></textField>
-			<textField><reportElement x="200" y="125" width="355" height="15" uuid="d12"/><textFieldExpression><![CDATA[$P{TIEMPO_SERVICIOS}]]></textFieldExpression></textField>
-			
-			<line><reportElement x="0" y="145" width="555" height="1" uuid="l1"/></line>
-			
-			<textField><reportElement x="0" y="150" width="455" height="15" uuid="a1"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["A. TOTAL DE VACACIONES NO GOZADAS Y/O TRUNCAS"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="150" width="100" height="15" uuid="a2"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{COMPENSACION_VACACIONAL_TOTAL}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="165" width="250" height="15" uuid="a3"/><textFieldExpression><![CDATA["VACACIONES NO GOZADAS (AÑO)"]]></textFieldExpression></textField>
-			<textField><reportElement x="270" y="165" width="80" height="15" uuid="a4"/><textFieldExpression><![CDATA[$P{VAC_PENDIENTES_DIAS}]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="165" width="100" height="15" uuid="a5"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{VAC_PENDIENTES_MONTO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="180" width="250" height="15" uuid="a6"/><textFieldExpression><![CDATA["VACACIONES TRUNCAS (MESES)"]]></textFieldExpression></textField>
-			<textField><reportElement x="270" y="180" width="80" height="15" uuid="a7"/><textFieldExpression><![CDATA[$P{VAC_TRUNCAS_MESES}]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="180" width="100" height="15" uuid="a8"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{VAC_TRUNCAS_MESES_MONTO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="195" width="250" height="15" uuid="a9"/><textFieldExpression><![CDATA["VACACIONES TRUNCAS (DÍAS)"]]></textFieldExpression></textField>
-			<textField><reportElement x="270" y="195" width="80" height="15" uuid="a10"/><textFieldExpression><![CDATA[$P{VAC_TRUNCAS_DIAS}]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="195" width="100" height="15" uuid="a11"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{VAC_TRUNCAS_DIAS_MONTO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="225" width="455" height="15" uuid="b1"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["B. TOTAL OTROS INGRESOS"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="225" width="100" height="15" uuid="b2"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{TOTAL_OTROS_INGRESOS}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="240" width="250" height="15" uuid="b3"/><textFieldExpression><![CDATA["AGUINALDO TRUNCO"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="240" width="100" height="15" uuid="b4"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{AGUINALDO_TRUNCO_MONTO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="255" width="250" height="15" uuid="b5"/><textFieldExpression><![CDATA["DÍAS LABORADOS"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="255" width="100" height="15" uuid="b6"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{DIAS_LABORADOS_MONTO}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="20" y="270" width="250" height="15" uuid="b7"/><textFieldExpression><![CDATA["REINTEGRO POR DÍAS EFECTIVAMENTE LABORADOS"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="270" width="100" height="15" uuid="b8"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{REINTEGROS_MONTO}]]></textFieldExpression></textField>
-			
-			<line><reportElement x="0" y="295" width="555" height="1" uuid="l2"/></line>
-			
-			<textField><reportElement x="0" y="300" width="455" height="15" uuid="t3"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA["TOTAL INGRESOS (A + B): "]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="300" width="100" height="15" uuid="t4"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{TOTAL_INGRESOS}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="320" width="455" height="15" uuid="t5"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["DESCUENTOS DEDUCIBLES DE BASE IMPONIBLE"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="320" width="100" height="15" uuid="t6"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{DESCUENTOS_DEDUCIBLES}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="340" width="455" height="15" uuid="t7"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA["BASE IMPONIBLE: "]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="340" width="100" height="15" uuid="t8"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{BASE_IMPONIBLE}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="360" width="455" height="15" uuid="t9"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["DESCUENTOS NO DEDUCIBLES DE BASE IMPONIBLE"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="360" width="100" height="15" uuid="t10"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{DESCUENTOS_NO_DEDUCIBLES}]]></textFieldExpression></textField>
-			
-			<line><reportElement x="0" y="385" width="555" height="1" uuid="l3"/></line>
-			
-			<textField><reportElement x="0" y="390" width="455" height="15" uuid="e1"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["C. MONTO NETO A PAGAR"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="390" width="100" height="15" uuid="e2"/><textElement textAlignment="Right"><font isBold="true"/></textElement><textFieldExpression><![CDATA[$P{MONTO_NETO_PAGAR}]]></textFieldExpression></textField>
-			
-			<textField><reportElement x="0" y="410" width="455" height="15" uuid="f1"/><textElement><font isBold="true"/></textElement><textFieldExpression><![CDATA["D. APORTES DE EMPLEADOR"]]></textFieldExpression></textField>
-			<textField><reportElement x="455" y="410" width="100" height="15" uuid="f2"/><textElement textAlignment="Right"/><textFieldExpression><![CDATA[$P{APORTES_EMPLEADOR_TOTAL}]]></textFieldExpression></textField>
-			
-			<staticText>
-				<reportElement x="0" y="450" width="555" height="30" uuid="obs1"/>
-				<textElement><font size="8"/></textElement>
+			</element>
+			<element kind="textField" uuid="7afdd316-ec91-4e81-bf41-04875e059114" x="0" y="50" width="200" height="15">
+				<expression><![CDATA["APELLIDOS Y NOMBRES:"]]></expression>
+			</element>
+			<element kind="textField" uuid="c3f67b4b-7f9e-43cf-8d40-bcecb10d533f" x="200" y="50" width="355" height="15">
+				<expression><![CDATA[$P{EMPLEADO_NOMBRE}]]></expression>
+			</element>
+			<element kind="textField" uuid="14b5fd36-0390-4f1c-91bf-8b61c87e931e" x="0" y="65" width="200" height="15">
+				<expression><![CDATA["DNI:"]]></expression>
+			</element>
+			<element kind="textField" uuid="ec2ff052-57ad-4280-bffe-4cfb1b6ffa12" x="200" y="65" width="355" height="15">
+				<expression><![CDATA[$P{DNI}]]></expression>
+			</element>
+			<element kind="textField" uuid="ab5e52c3-fe5d-4fbc-bb25-06c3448cc40c" x="0" y="80" width="200" height="15">
+				<expression><![CDATA["CARGO:"]]></expression>
+			</element>
+			<element kind="textField" uuid="af551307-38f4-4d18-afb2-9a72172db7cd" x="200" y="80" width="355" height="15">
+				<expression><![CDATA[$P{CARGO}]]></expression>
+			</element>
+			<element kind="textField" uuid="fdcc7c11-8082-43ef-b755-e2672c8c43d1" x="0" y="95" width="200" height="15">
+				<expression><![CDATA["FECHA DE INICIO:"]]></expression>
+			</element>
+			<element kind="textField" uuid="8d5c7633-af5c-48c0-a80d-88a49d1ef28c" x="200" y="95" width="355" height="15">
+				<expression><![CDATA[$P{FECHA_INICIO}]]></expression>
+			</element>
+			<element kind="textField" uuid="7df233a8-9915-4852-9148-c3a0050186b0" x="0" y="110" width="200" height="15">
+				<expression><![CDATA["FECHA DE CESE:"]]></expression>
+			</element>
+			<element kind="textField" uuid="41a5f0be-e39f-4acb-922b-81b4f7b69253" x="200" y="110" width="355" height="15">
+				<expression><![CDATA[$P{FECHA_CESE}]]></expression>
+			</element>
+			<element kind="textField" uuid="07d7cc2f-5584-478d-977e-cfbb82790275" x="0" y="125" width="200" height="15">
+				<expression><![CDATA["TIEMPO DE SERVICIOS EFECTIVO:"]]></expression>
+			</element>
+			<element kind="textField" uuid="2c1a3e33-7a7b-4f8e-b424-dbc5d015e361" x="200" y="125" width="355" height="15">
+				<expression><![CDATA[$P{TIEMPO_SERVICIOS}]]></expression>
+			</element>
+			<element kind="line" uuid="fe57af5d-e8e3-4b48-adfe-db1331ce0a6f" x="0" y="145" width="555" height="1"/>
+			<element kind="textField" uuid="f65999cc-eba0-4784-b648-34aaaa42d001" x="0" y="150" width="455" height="15" bold="true">
+				<expression><![CDATA["A. TOTAL DE VACACIONES NO GOZADAS Y/O TRUNCAS"]]></expression>
+			</element>
+			<element kind="textField" uuid="826f6eb7-37c0-427c-bb82-1ef29a5603e2" x="455" y="150" width="100" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$P{COMPENSACION_VACACIONAL_TOTAL}]]></expression>
+			</element>
+			<element kind="textField" uuid="f4eac71c-366d-41eb-bfae-8409a3037d3e" x="20" y="165" width="250" height="15">
+				<expression><![CDATA["VACACIONES NO GOZADAS (AÑO)"]]></expression>
+			</element>
+			<element kind="textField" uuid="0bc18e07-29c4-428c-a193-3b336ff55c3c" x="270" y="165" width="80" height="15">
+				<expression><![CDATA[$P{VAC_PENDIENTES_DIAS}]]></expression>
+			</element>
+			<element kind="textField" uuid="70301ced-0913-4e26-b71a-7e584e9bbae8" x="455" y="165" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{VAC_PENDIENTES_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="d6e8eafc-2d89-4489-827d-03307aceb551" x="20" y="180" width="250" height="15">
+				<expression><![CDATA["VACACIONES TRUNCAS (MESES)"]]></expression>
+			</element>
+			<element kind="textField" uuid="8412e106-c95a-4cc4-8c8e-a0ce80063d4d" x="270" y="180" width="80" height="15">
+				<expression><![CDATA[$P{VAC_TRUNCAS_MESES}]]></expression>
+			</element>
+			<element kind="textField" uuid="0f5aa46c-7f0d-49b9-978e-d4f5320a3330" x="455" y="180" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{VAC_TRUNCAS_MESES_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="731b9d00-c8d7-4f83-8d44-5ef941e93390" x="20" y="195" width="250" height="15">
+				<expression><![CDATA["VACACIONES TRUNCAS (DÍAS)"]]></expression>
+			</element>
+			<element kind="textField" uuid="53721b01-1a14-4372-b31b-a2c6d7cb9654" x="270" y="195" width="80" height="15">
+				<expression><![CDATA[$P{VAC_TRUNCAS_DIAS}]]></expression>
+			</element>
+			<element kind="textField" uuid="e8fb1b11-222a-4273-9e15-1ef2bee571bf" x="455" y="195" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{VAC_TRUNCAS_DIAS_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="e69661e5-ff2a-4df2-8282-dd026ca10dfd" x="0" y="225" width="455" height="15" bold="true">
+				<expression><![CDATA["B. TOTAL OTROS INGRESOS"]]></expression>
+			</element>
+			<element kind="textField" uuid="35c12805-4236-4acb-aa4b-f31add4d7f07" x="455" y="225" width="100" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$P{TOTAL_OTROS_INGRESOS}]]></expression>
+			</element>
+			<element kind="textField" uuid="610bad9f-9716-4d0d-986b-b2c832a56daf" x="20" y="240" width="250" height="15">
+				<expression><![CDATA["AGUINALDO TRUNCO"]]></expression>
+			</element>
+			<element kind="textField" uuid="316d16f3-43ba-4405-b989-bb6d33df10a6" x="455" y="240" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{AGUINALDO_TRUNCO_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="82f1fea1-071a-4ac3-808c-648a59f1752d" x="20" y="255" width="250" height="15">
+				<expression><![CDATA["DÍAS LABORADOS"]]></expression>
+			</element>
+			<element kind="textField" uuid="7379b47a-4395-4d8b-bde0-d6b8b1dccb43" x="455" y="255" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{DIAS_LABORADOS_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="54275de3-40e5-4b03-8411-b94d5fccf5d5" x="20" y="270" width="250" height="15">
+				<expression><![CDATA["REINTEGRO POR DÍAS EFECTIVAMENTE LABORADOS"]]></expression>
+			</element>
+			<element kind="textField" uuid="7a24ecf4-85f6-4097-b865-854a6a542b4b" x="455" y="270" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{REINTEGROS_MONTO}]]></expression>
+			</element>
+			<element kind="line" uuid="5a0a1f33-f5df-4f68-b108-2f856c0ddf52" x="0" y="295" width="555" height="1"/>
+			<element kind="textField" uuid="2652bc7b-f367-4898-9fba-9774c62d6063" x="0" y="300" width="455" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA["TOTAL INGRESOS (A + B): "]]></expression>
+			</element>
+			<element kind="textField" uuid="0055653b-c40d-4c8b-adde-6f2d6a1ac002" x="455" y="300" width="100" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$P{TOTAL_INGRESOS}]]></expression>
+			</element>
+			<element kind="textField" uuid="aed89c1a-aa4b-4b25-888b-08192ecb07d4" x="0" y="320" width="455" height="15" bold="true">
+				<expression><![CDATA["DESCUENTOS DEDUCIBLES DE BASE IMPONIBLE"]]></expression>
+			</element>
+			<element kind="textField" uuid="bade0a3c-b615-437e-8376-4ba1d3883a6e" x="455" y="320" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{DESCUENTOS_DEDUCIBLES}]]></expression>
+			</element>
+			<element kind="textField" uuid="34590620-0bc2-41c2-abff-72c221fadb18" x="0" y="340" width="455" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA["BASE IMPONIBLE: "]]></expression>
+			</element>
+			<element kind="textField" uuid="28c3d25f-57ba-40d9-9ef9-8997e3c1aaf4" x="455" y="340" width="100" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$P{BASE_IMPONIBLE}]]></expression>
+			</element>
+			<element kind="textField" uuid="4cc0de58-4d3b-446b-b861-e4a2df26ac78" x="0" y="360" width="455" height="15" bold="true">
+				<expression><![CDATA["DESCUENTOS NO DEDUCIBLES DE BASE IMPONIBLE"]]></expression>
+			</element>
+			<element kind="textField" uuid="38789d12-5022-4db8-abf9-b7d18f9141ed" x="455" y="360" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{DESCUENTOS_NO_DEDUCIBLES}]]></expression>
+			</element>
+			<element kind="line" uuid="cc610c8d-f0b4-4463-b467-f612c705cd84" x="0" y="385" width="555" height="1"/>
+			<element kind="textField" uuid="dfbea54e-1421-47ec-8425-38b66596bcf6" x="0" y="390" width="455" height="15" bold="true">
+				<expression><![CDATA["C. MONTO NETO A PAGAR"]]></expression>
+			</element>
+			<element kind="textField" uuid="c2db36c3-8bee-4e3b-ae6c-c4977c8a5ab4" x="455" y="390" width="100" height="15" bold="true" hTextAlign="Right">
+				<expression><![CDATA[$P{MONTO_NETO_PAGAR}]]></expression>
+			</element>
+			<element kind="textField" uuid="0427fcd9-2d4b-4d8c-841d-64205dc640ad" x="0" y="410" width="455" height="15" bold="true">
+				<expression><![CDATA["D. APORTES DE EMPLEADOR"]]></expression>
+			</element>
+			<element kind="textField" uuid="be8a4e35-7052-4362-9672-a7bec574663e" x="455" y="410" width="100" height="15" hTextAlign="Right">
+				<expression><![CDATA[$P{APORTES_EMPLEADOR_TOTAL}]]></expression>
+			</element>
+			<element kind="staticText" uuid="9d37ec9d-0b0b-4802-bc11-e72b0dd7f64b" x="0" y="450" width="555" height="30" fontSize="8.0">
 				<text><![CDATA[OBSERVACIÓN: LA PRESENTE LIQUIDACIÓN DEJA CONSTANCIA QUE, EL INDECI NO ADEUDA MONTO EN SOLES POR CONCEPTO DE VACACIONES NO GOZADAS Y/O TRUNCAS, AL PRODUCIRSE LA EXTINCIÓN DEL CONTRATO ADMINISTRATIVO DE SERVICIOS.]]></text>
-			</staticText>
-			
+			</element>
 		</band>
 	</detail>
 </jasperReport>
