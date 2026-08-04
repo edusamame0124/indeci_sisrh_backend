@@ -1,6 +1,8 @@
 package com.indeci.rrhh.controller;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import com.indeci.common.dto.ApiResponse;
@@ -59,5 +61,26 @@ public class SolicitudRrhhDocController {
                 "Documentos solicitud",
                 service.listar(
                         solicitudId));
+    }
+
+    /**
+     * Remediación: agrega el PDF real como nueva versión del documento de la etapa JEFE/RRHH,
+     * sin reabrir ni cambiar el estado de la solicitud. Restringido a PAP_APROBAR_RRHH: el mismo
+     * rol que da la aprobación final, ya que reescribe el expediente documental de aprobaciones.
+     */
+    @PutMapping(value = "/subsanar/{solicitudId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('PAP_APROBAR_RRHH')")
+    public ApiResponse<Void> subsanar(
+            @PathVariable Long solicitudId,
+            @RequestParam("etapa") String etapa,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "observacion", required = false) String observacion) {
+
+        service.subsanar(solicitudId, etapa, file, observacion);
+
+        return new ApiResponse<>(
+                "OK",
+                "Documento subsanado",
+                null);
     }
 }

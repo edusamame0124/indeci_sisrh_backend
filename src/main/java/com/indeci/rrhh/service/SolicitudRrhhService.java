@@ -13,7 +13,6 @@ import com.indeci.rrhh.entity.*;
 
 import com.indeci.rrhh.repository.*;
 import com.indeci.security.util.SecurityUtil;
-import com.itextpdf.text.Document;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
@@ -39,8 +37,6 @@ import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import java.util.Set;
 import java.util.stream.Collectors;
-import com.itextpdf.text.Paragraph;
-import com.itextpdf.text.pdf.PdfWriter;
 
 @Service
 @RequiredArgsConstructor
@@ -1036,6 +1032,11 @@ public class SolicitudRrhhService {
                 tipo,
                 sustento);
 
+        validarSustentoObligatorio(
+                dto,
+                tipo,
+                sustento);
+
         validarLugar(
                 dto,
                 tipo);
@@ -1425,7 +1426,39 @@ public class SolicitudRrhhService {
             // }
         }
     }
-    
+
+    /**
+     * Guard NUEVO y acotado (RR.HH., 2026-08-04): a diferencia de
+     * {@link #validarSustento}, aquí SÍ se exige el adjunto — pero solo para
+     * 'COMISION_DIA' y Licencia con goce (código '011', {@code esSinGoce=0}).
+     * Deliberadamente no se reactiva la validación genérica de arriba (afecta
+     * a los demás 11+ tipos de papeleta con un valor de flag desconocido en
+     * producción); este método es aditivo y no cambia el comportamiento de
+     * ningún otro tipo. Licencia SIN GOCE no aplica: usa su propio flujo de
+     * papeleta firmada (PENDIENTE_FIRMA), ajeno a este adjunto de creación.
+     */
+    void validarSustentoObligatorio(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo,
+            MultipartFile sustento) {
+
+        boolean esComisionDia =
+                "COMISION_DIA".equals(tipo.getCodigo());
+
+        boolean esLicenciaConGoce =
+                "011".equals(tipo.getCodigo())
+                && !esLicenciaSinGoce(dto.getTipoLicenciaId());
+
+        if(!esComisionDia && !esLicenciaConGoce) {
+            return;
+        }
+
+        if(sustento == null || sustento.isEmpty()) {
+            throw new NegocioException(
+                    "Debe adjuntar el documento de sustento.");
+        }
+    }
+
     private void validarLugar(
             SolicitudRrhhDto dto,
             TipoSolicitudRrhh tipo) {
@@ -2650,68 +2683,30 @@ public class SolicitudRrhhService {
                     "Solo solicitudes en borrador o pendientes de firma pueden enviarse");
         }
 
-        // SPEC_VACACIONES F9.1-bis: la licencia sin goce exige la PAPELETA FIRMADA al enviar.
-        if ("PENDIENTE_FIRMA".equals(codEstado)
-                && esLicenciaSinGoce(solicitud.getTipoLicenciaId())
-                && (file == null || file.isEmpty())) {
-            throw new NegocioException(
-                    "Debe adjuntar la papeleta firmada antes de enviar la licencia sin goce.");
-        }
-
         // ==========================================
-        // VALIDAR ARCHIVO
+        // VALIDAR ARCHIVO — obligatoria la papeleta firmada en PDF para
+        // enviar cualquier tipo de solicitud.
         // ==========================================
-
-        MultipartFile archivoFinal = file;
-
-        String rutaArchivo;
-        String nombreArchivo;
-        String mimeType;
-        Long tamanioBytes;
 
         if (file == null || file.isEmpty()) {
-
-            byte[] pdf =
-                    generarPdfSinFirma(
-                            "SOLICITUD NO REQUIERE FIRMA");
-
-            rutaArchivo =
-                    ftpService.subirPdfGenerado(
-                            pdf,
-                            "papeletas",
-                            "solicitud_no_requiere_firma.pdf");
-
-            nombreArchivo =
-                    "solicitud_no_requiere_firma.pdf";
-
-            mimeType =
-                    "application/pdf";
-
-            tamanioBytes =
-                    (long) pdf.length;
-
-        } else {
-
-            rutaArchivo =
-                    ftpService.subirArchivo(
-                            file,
-                            "papeletas",
-                            file.getOriginalFilename());
-
-            nombreArchivo =
-                    file.getOriginalFilename();
-
-            mimeType =
-                    file.getContentType();
-
-            tamanioBytes =
-                    file.getSize();
+            throw new NegocioException(
+                    "Debe adjuntar la papeleta firmada en PDF antes de enviar.");
         }
-        // ==========================================
-        // SUBIR FTP
-        // ==========================================
 
-       
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
+
+        String nombreArchivo =
+                file.getOriginalFilename();
+
+        String mimeType =
+                file.getContentType();
+
+        Long tamanioBytes =
+                file.getSize();
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -2822,57 +2817,25 @@ public class SolicitudRrhhService {
         // VALIDAR ARCHIVO
         // ==========================================
 
-   
-
-        String rutaArchivo;
-        String nombreArchivo;
-        String mimeType;
-        Long tamanioBytes;
-
         if (file == null || file.isEmpty()) {
-
-            byte[] pdf =
-                    generarPdfSinFirma(
-                            "SOLICITUD NO REQUIERE FIRMA");
-
-            rutaArchivo =
-                    ftpService.subirPdfGenerado(
-                            pdf,
-                            "papeletas",
-                            "solicitud_no_requiere_firma.pdf");
-
-            nombreArchivo =
-                    "solicitud_no_requiere_firma.pdf";
-
-            mimeType =
-                    "application/pdf";
-
-            tamanioBytes =
-                    (long) pdf.length;
-
-        } else {
-
-            rutaArchivo =
-                    ftpService.subirArchivo(
-                            file,
-                            "papeletas",
-                            file.getOriginalFilename());
-
-            nombreArchivo =
-                    file.getOriginalFilename();
-
-            mimeType =
-                    file.getContentType();
-
-            tamanioBytes =
-                    file.getSize();
+            throw new NegocioException(
+                    "Debe adjuntar la papeleta firmada en PDF antes de aprobar.");
         }
 
-        // ==========================================
-        // SUBIR FTP
-        // ==========================================
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
 
-       
+        String nombreArchivo =
+                file.getOriginalFilename();
+
+        String mimeType =
+                file.getContentType();
+
+        Long tamanioBytes =
+                file.getSize();
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -3077,57 +3040,25 @@ public class SolicitudRrhhService {
         // VALIDAR ARCHIVO
         // ==========================================
 
-       
-
-        String rutaArchivo;
-        String nombreArchivo;
-        String mimeType;
-        Long tamanioBytes;
-
         if (file == null || file.isEmpty()) {
-
-            byte[] pdf =
-                    generarPdfSinFirma(
-                            "SOLICITUD NO REQUIERE FIRMA");
-
-            rutaArchivo =
-                    ftpService.subirPdfGenerado(
-                            pdf,
-                            "papeletas",
-                            "solicitud_no_requiere_firma.pdf");
-
-            nombreArchivo =
-                    "solicitud_no_requiere_firma.pdf";
-
-            mimeType =
-                    "application/pdf";
-
-            tamanioBytes =
-                    (long) pdf.length;
-
-        } else {
-
-            rutaArchivo =
-                    ftpService.subirArchivo(
-                            file,
-                            "papeletas",
-                            file.getOriginalFilename());
-
-            nombreArchivo =
-                    file.getOriginalFilename();
-
-            mimeType =
-                    file.getContentType();
-
-            tamanioBytes =
-                    file.getSize();
+            throw new NegocioException(
+                    "Debe adjuntar la papeleta firmada en PDF antes de aprobar.");
         }
 
-        // ==========================================
-        // SUBIR FTP
-        // ==========================================
+        String rutaArchivo =
+                ftpService.subirArchivo(
+                        file,
+                        "papeletas",
+                        file.getOriginalFilename());
 
-       
+        String nombreArchivo =
+                file.getOriginalFilename();
+
+        String mimeType =
+                file.getContentType();
+
+        Long tamanioBytes =
+                file.getSize();
 
         // ==========================================
         // GUARDAR DOCUMENTO
@@ -3871,39 +3802,5 @@ public class SolicitudRrhhService {
                 .map(this::convertir)
                 .toList();
     }
-    
-    private byte[] generarPdfSinFirma(
-            String mensaje) {
-
-        try {
-
-            ByteArrayOutputStream baos =
-                    new ByteArrayOutputStream();
-
-            Document document =
-                    new Document();
-
-            PdfWriter.getInstance(
-                    document,
-                    baos);
-
-            document.open();
-
-            document.add(
-                    new Paragraph(
-                            mensaje));
-
-            document.close();
-
-            return baos.toByteArray();
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Error generando PDF",
-                    e);
-        }
-    }
-   
     
 }
