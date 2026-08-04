@@ -406,6 +406,11 @@ public class VinculacionUpsertService {
         sesion.nivel(fila.texto(VinculacionColumna.NIVEL)).id(puesto::setNivelId);
         sesion.sede(fila.texto(VinculacionColumna.SEDE)).id(puesto::setSedeId);
         sesion.oficina(fila.texto(VinculacionColumna.OFICINA)).id(puesto::setOficinaId);
+        // Bug corregido 2026-08-04 (ver memoria bug-dependencia-vacia-papeletas): la columna
+        // OFICINA ("Oficina / dependencia") nunca se usaba para resolver Dependencia — solo
+        // Oficina. 654 puestos quedaron con DEPENDENCIA_ID nulo (backfill V012_51). Catálogo
+        // CERRADO (V012_50): si no hay match no se inventa, el puesto queda sin Dependencia.
+        sesion.dependencia(fila.texto(VinculacionColumna.OFICINA)).id(puesto::setDependenciaId);
         resolverJefe(fila).ifPresent(puesto::setJefeId);
         if (puesto.getFechaInicio() == null) {
             puesto.setFechaInicio(fila.fecha(VinculacionColumna.FECHA_INICIO_CONTRATO));

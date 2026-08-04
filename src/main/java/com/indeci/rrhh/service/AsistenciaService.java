@@ -89,7 +89,9 @@ public class AsistenciaService {
 
     /** Códigos de tipo de solicitud que cuentan como permiso/papeleta en asistencia. */
     private static final Set<String> CODIGOS_PERMISO_ASISTENCIA = Set.of(
-            "001", "002", "003", "004", "005", "006", "008", "009", "010", "011", "012");
+            "001", "002", "003", "004", "005", "006", "008", "009", "010", "011", "012",
+            // Comisión de servicio por día (V012_53) — mismo tratamiento que "006" (por horas).
+            "COMISION_DIA");
 
     /** Tipos de día válidos (espejo del CHECK INDECI_ASIST_DET_TIPO_CK). */
     private static final Set<String> TIPOS_DIA = Set.of(

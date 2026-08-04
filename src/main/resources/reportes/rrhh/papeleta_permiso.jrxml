@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Papeleta de Permiso (INDECI) — formato institucional (mismo lenguaje visual que
+     papeleta_vacaciones.jrxml / papeleta_teletrabajo.jrxml). Cubre los 7 motivos de permiso
+     (códigos 001-007): un único checkbox queda marcado según el tipo de solicitud, con
+     líneas opcionales para Lugar (Comisión de Servicio) y Descripción (Otros). Sin tabla de
+     detalle repetible — un permiso es un solo día/rango horario, ajustado a UNA sola hoja A4. -->
+<jasperReport name="papeleta_permiso" language="java" pageWidth="595" pageHeight="842" columnWidth="531" leftMargin="32" rightMargin="32" topMargin="20" bottomMargin="20" uuid="d4000000-0000-0000-0000-000000000000">
+	<parameter name="P_HEADER" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRE_TRABAJADOR" class="java.lang.String"/>
+	<parameter name="P_DEPENDENCIA" class="java.lang.String"/>
+	<parameter name="P_REGIMEN_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
+	<parameter name="P_PERMISO_ASUNTOS" class="java.lang.Boolean"/>
+	<parameter name="P_CITA_MEDICA" class="java.lang.Boolean"/>
+	<parameter name="P_CITACION" class="java.lang.Boolean"/>
+	<parameter name="P_OMISION_REGISTRO" class="java.lang.Boolean"/>
+	<parameter name="P_TARDANZA" class="java.lang.Boolean"/>
+	<parameter name="P_COMISION_SERVICIO" class="java.lang.Boolean"/>
+	<parameter name="P_OTROS" class="java.lang.Boolean"/>
+	<parameter name="P_LUGAR" class="java.lang.String"/>
+	<parameter name="P_DESCRIPCION_OTROS" class="java.lang.String"/>
+	<parameter name="P_FECHA_PERMISO" class="java.lang.String"/>
+	<parameter name="P_HORAS_DIARIAS" class="java.lang.String"/>
+	<parameter name="P_HORA_SALIDA" class="java.lang.String"/>
+	<parameter name="P_HORA_INGRESO" class="java.lang.String"/>
+	<parameter name="P_FECHA_EMISION" class="java.lang.String"/>
+	<query language="sql"><![CDATA[]]></query>
+	<background splitType="Stretch"/>
+	<title height="134" splitType="Stretch">
+		<!-- HEADER institucional -->
+		<element kind="image" uuid="d4000000-0000-0000-0000-000000000001" x="0" y="0" width="531" height="50" scaleImage="RetainShape" hImageAlign="Left" onErrorType="Blank">
+			<expression><![CDATA[$P{P_HEADER}]]></expression>
+		</element>
+		<!-- TÍTULO -->
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000002" x="0" y="54" width="531" height="24" fontSize="18.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE PERMISO]]></text>
+		</element>
+		<element kind="line" uuid="d4000000-0000-0000-0000-000000000003" x="215" y="80" width="101" height="1">
+			<pen lineWidth="1.0" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000004" x="0" y="84" width="531" height="13" fontSize="9.5" hTextAlign="Center" forecolor="#555555">
+			<text><![CDATA[Instituto Nacional de Defensa Civil – INDECI]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000005" x="0" y="104" width="531" height="16" fontSize="10.0" bold="true">
+			<text><![CDATA[SEÑOR/A JEFE/A DE LA UNIDAD DE RECURSOS HUMANOS DEL INDECI]]></text>
+		</element>
+	</title>
+
+	<detail>
+		<band height="430" splitType="Stretch">
+
+			<!-- ================= DATOS DEL SERVIDOR ================= -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000010" x="0" y="0" width="531" height="108" radius="2" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000011" x="0" y="0" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+				<pen lineWidth="0.0" lineColor="#ECECEC"/>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000012" x="14" y="3" width="400" height="16" fontSize="10.5" bold="true" forecolor="#333333">
+				<text><![CDATA[DATOS DEL SERVIDOR]]></text>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000013" x="16" y="28" width="150" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Servidor:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000014" x="170" y="28" width="345" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000015" x="0" y="44" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000016" x="16" y="48" width="150" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Dependencia:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000017" x="170" y="48" width="345" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_DEPENDENCIA}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000018" x="0" y="64" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000019" x="16" y="68" width="150" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Régimen laboral:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000001a" x="170" y="68" width="345" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_REGIMEN_NOMBRE}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-00000000001b" x="0" y="84" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-00000000001c" x="16" y="88" width="150" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Cargo:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000001d" x="170" y="88" width="345" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_CARGO}]]></expression>
+			</element>
+
+			<!-- Párrafo -->
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000020" x="0" y="114" width="531" height="14" fontSize="10.0">
+				<text><![CDATA[Ante usted, con el debido respeto me presento y solicito:]]></text>
+			</element>
+
+			<!-- ================= TIPO DE PERMISO ================= -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000030" x="0" y="132" width="531" height="210" radius="2" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000031" x="0" y="132" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+				<pen lineWidth="0.0" lineColor="#ECECEC"/>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000032" x="14" y="135" width="400" height="16" fontSize="10.5" bold="true" forecolor="#333333">
+				<text><![CDATA[TIPO DE PERMISO]]></text>
+			</element>
+
+			<!-- Fila 1: Asuntos particulares -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000040" x="16" y="157" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000041" x="16" y="156" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_PERMISO_ASUNTOS}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000042" x="38" y="156" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Permiso por Asuntos Particulares]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000043" x="0" y="174" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 2: Cita médica -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000044" x="16" y="178" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000045" x="16" y="177" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_CITA_MEDICA}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000046" x="38" y="177" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Cita Médica]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000047" x="0" y="195" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 3: Citación -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000048" x="16" y="199" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000049" x="16" y="198" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_CITACION}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-00000000004a" x="38" y="198" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Citación (Judicial / Policial / Fiscal)]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-00000000004b" x="0" y="216" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 4: Omisión de registro -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-00000000004c" x="16" y="220" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000004d" x="16" y="219" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_OMISION_REGISTRO}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-00000000004e" x="38" y="219" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Omisión de Registro de Asistencia]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-00000000004f" x="0" y="237" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 5: Tardanza -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000050" x="16" y="241" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000051" x="16" y="240" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_TARDANZA}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000052" x="38" y="240" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Tardanza]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000053" x="0" y="258" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 6: Comisión de servicio -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000054" x="16" y="262" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000055" x="16" y="261" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_COMISION_SERVICIO}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000056" x="38" y="261" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Comisión de Servicio]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000057" x="0" y="279" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Fila 7: Otros -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000058" x="16" y="283" width="13" height="13" mode="Transparent">
+				<pen lineWidth="0.9" lineColor="#555555"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000059" x="16" y="282" width="13" height="14" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[Boolean.TRUE.equals($P{P_OTROS}) ? "X" : ""]]></expression>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-00000000005a" x="38" y="282" width="480" height="14" fontSize="9.5">
+				<text><![CDATA[Otros]]></text>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-00000000005b" x="0" y="300" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<!-- Líneas opcionales: Lugar (Comisión de Servicio) / Descripción (Otros) -->
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000005c" x="16" y="304" width="509" height="14" fontSize="9.0" forecolor="#333333">
+				<expression><![CDATA["Lugar (Comisión de Servicio): " + ($P{P_LUGAR} != null ? $P{P_LUGAR} : "")]]></expression>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000005d" x="16" y="320" width="509" height="14" fontSize="9.0" forecolor="#333333">
+				<expression><![CDATA["Descripción (Otros): " + ($P{P_DESCRIPCION_OTROS} != null ? $P{P_DESCRIPCION_OTROS} : "")]]></expression>
+			</element>
+
+			<!-- ================= DETALLE DE LA SOLICITUD ================= -->
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000060" x="0" y="348" width="531" height="70" radius="2" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="rectangle" uuid="d4000000-0000-0000-0000-000000000061" x="0" y="348" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+				<pen lineWidth="0.0" lineColor="#ECECEC"/>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000062" x="14" y="351" width="400" height="16" fontSize="10.5" bold="true" forecolor="#333333">
+				<text><![CDATA[DETALLE DE LA SOLICITUD]]></text>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000063" x="16" y="374" width="60" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Fecha:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000064" x="80" y="374" width="180" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_FECHA_PERMISO}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000065" x="260" y="370" width="1" height="22">
+				<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000066" x="276" y="374" width="116" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Horas solicitadas:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000067" x="392" y="374" width="123" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_HORAS_DIARIAS}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-000000000068" x="0" y="394" width="531" height="1">
+				<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+			</element>
+
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000069" x="16" y="398" width="110" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Hora de salida:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000006a" x="130" y="398" width="130" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_HORA_SALIDA}]]></expression>
+			</element>
+			<element kind="line" uuid="d4000000-0000-0000-0000-00000000006b" x="260" y="394" width="1" height="22">
+				<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="staticText" uuid="d4000000-0000-0000-0000-00000000006c" x="276" y="398" width="116" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[Hora de ingreso:]]></text>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-00000000006d" x="392" y="398" width="123" height="14" fontSize="10.0">
+				<expression><![CDATA[$P{P_HORA_INGRESO}]]></expression>
+			</element>
+		</band>
+	</detail>
+
+	<!-- Cierre + firmas -->
+	<summary height="170" splitType="Stretch">
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000090" x="0" y="12" width="531" height="16" fontSize="10.5">
+			<text><![CDATA[Por lo tanto, agradeceré disponer se me conceda lo solicitado.]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000091" x="250" y="44" width="120" height="16" fontSize="10.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[FECHA DE EMISIÓN:]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000092" x="374" y="44" width="157" height="16" fontSize="10.0">
+			<expression><![CDATA[$P{P_FECHA_EMISION}]]></expression>
+		</element>
+		<!-- Firmas -->
+		<element kind="line" uuid="d4000000-0000-0000-0000-000000000093" x="40" y="126" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000094" x="40" y="130" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[JEFE INMEDIATO]]></text>
+		</element>
+		<element kind="line" uuid="d4000000-0000-0000-0000-000000000095" x="311" y="126" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000096" x="311" y="130" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[SERVIDOR]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000097" x="311" y="146" width="180" height="16" fontSize="9.5" hTextAlign="Center">
+			<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+		</element>
+	</summary>
+
+	<pageFooter height="28" splitType="Stretch">
+		<element kind="line" uuid="d4000000-0000-0000-0000-000000000100" x="0" y="6" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000101" x="0" y="11" width="531" height="14" fontSize="8.0" italic="true" forecolor="#888888">
+			<text><![CDATA[Documento generado para uso interno de la entidad.]]></text>
+		</element>
+	</pageFooter>
+</jasperReport>

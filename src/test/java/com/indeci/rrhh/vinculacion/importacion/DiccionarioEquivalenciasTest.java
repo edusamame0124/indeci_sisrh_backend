@@ -80,6 +80,49 @@ class DiccionarioEquivalenciasTest {
     }
 
     @Test
+    @DisplayName("Dependencia: 'DD' y 'DDI' son la misma Dirección Desconcentrada regional")
+    void dependenciaFusionaDdYDdi() {
+        // Moquegua y Piura aparecen en el Excel real con AMBOS prefijos para la misma
+        // región (confirmado en INFORME/bug-dependencia-vacia-papeletas) — no son dos
+        // oficinas distintas, es inconsistencia de tipeo de RR.HH.
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "DIRECCION DESCONCENTRADA - DD MOQUEGUA"))
+                .isEqualTo("DD-MOQUEGUA");
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "DIRECCION DESCONCENTRADA - DDI MOQUEGUA"))
+                .isEqualTo("DD-MOQUEGUA");
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "DIRECCION DESCONCENTRADA - DD PIURA"))
+                .isEqualTo("DD-PIURA");
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "DIRECCION DESCONCENTRADA - DDI PIURA"))
+                .isEqualTo("DD-PIURA");
+        // Tercera variante de redacción para la misma región (sin "DD"/"DDI").
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "DIRECCION DESCONCENTRADA DE PIURA"))
+                .isEqualTo("DD-PIURA");
+    }
+
+    @Test
+    @DisplayName("CRÍTICO: el texto con error de tipeo (76 filas reales) resuelve a COEN")
+    void dependenciaCoenConErrorDeTipeoResuelve() {
+        // "...BANCO DE LA NACIONAL" es basura de copy-paste del Excel real, pero es el
+        // texto más frecuente de la columna (76/663 filas) — decisión RR.HH. 2026-08-04.
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA,
+                "CENTRO DE OPERACIONES DE EMERGENCIA BANCO DE LA NACIONAL"))
+                .isEqualTo("COEN");
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA,
+                "CENTRO DE OPERACIONES DE EMERGENCIA NACIONAL"))
+                .isEqualTo("COEN");
+    }
+
+    @Test
+    @DisplayName("Dependencia: texto sin equivalencia registrada no inventa nada (catálogo CERRADO)")
+    void dependenciaSinEquivalenciaDevuelveClaveTalCual() {
+        // Sin entrada en el diccionario, canonico() devuelve la clave normalizada tal cual
+        // (comportamiento genérico de DiccionarioEquivalencias); es CatalogoTexto.resolver
+        // quien decide no inventar una Dependencia nueva cuando esa clave no matchea
+        // ninguna SIGLA/NOMBRE real — eso se prueba en CatalogoTextResolver, no aquí.
+        assertThat(diccionario.canonico(Catalogo.DEPENDENCIA, "OFICINA QUE NO EXISTE EN NINGUN CATALOGO"))
+                .isEqualTo("OFICINA QUE NO EXISTE EN NINGUN CATALOGO");
+    }
+
+    @Test
     @DisplayName("La normalización sola ya colapsa tildes, NBSP y espacios")
     void normalizacionColapsaRuido() {
         // ' TÉCNICO' (NBSP + tilde) y 'TECNICO ' llegan como la misma clave.

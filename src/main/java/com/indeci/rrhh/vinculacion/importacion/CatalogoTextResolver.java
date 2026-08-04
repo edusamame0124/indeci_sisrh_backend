@@ -6,6 +6,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 import com.indeci.rrhh.entity.Cargo;
+import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.entity.EstadoCivil;
 import com.indeci.rrhh.entity.GradoAcademico;
 import com.indeci.rrhh.entity.Nivel;
@@ -15,6 +16,7 @@ import com.indeci.rrhh.entity.Profesion;
 import com.indeci.rrhh.entity.Sede;
 import com.indeci.rrhh.repository.BankRepository;
 import com.indeci.rrhh.repository.CargoRepository;
+import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.DistrictRepository;
 import com.indeci.rrhh.repository.EstadoCivilRepository;
 import com.indeci.rrhh.repository.GradoAcademicoRepository;
@@ -70,6 +72,7 @@ public class CatalogoTextResolver {
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final RegimenPensionarioRepository regimenPensionarioRepository;
     private final DistrictRepository districtRepository;
+    private final DependenciaRepository dependenciaRepository;
     /** Da de alta los catálogos abiertos en transacción propia (evita ids fantasma). */
     private final CatalogoAltaService altaService;
 
@@ -91,6 +94,7 @@ public class CatalogoTextResolver {
             RegimenLaboralRepository regimenLaboralRepository,
             RegimenPensionarioRepository regimenPensionarioRepository,
             DistrictRepository districtRepository,
+            DependenciaRepository dependenciaRepository,
             CatalogoAltaService altaService) {
         this.diccionario = diccionario;
         this.profesionRepository = profesionRepository;
@@ -109,6 +113,7 @@ public class CatalogoTextResolver {
         this.regimenLaboralRepository = regimenLaboralRepository;
         this.regimenPensionarioRepository = regimenPensionarioRepository;
         this.districtRepository = districtRepository;
+        this.dependenciaRepository = dependenciaRepository;
     }
 
     /**
@@ -206,6 +211,22 @@ public class CatalogoTextResolver {
                                 new Object[] {r.getNombre(), r.getId()}))
                         .toList());
 
+        /**
+         * Dependencia (unidad orgánica, catálogo CERRADO — V012_50, 45 filas). Se indexa por
+         * SIGLA y por NOMBRE porque el diccionario de equivalencias canoniza a la sigla, pero
+         * un re-import futuro con el Excel ya corregido por RR.HH. podría traer el nombre
+         * completo directo. Nunca se inventa una Dependencia nueva: si no hay match, el puesto
+         * queda sin DEPENDENCIA_ID y se reporta como excepción (ver
+         * {@code bug-dependencia-vacia-papeletas} — así se originaron los 654 puestos vacíos
+         * que corrigió V012_51).
+         */
+        private final CatalogoTexto dependencia = cerrado("Dependencia",
+                () -> dependenciaRepository.findAll().stream()
+                        .flatMap(d -> java.util.stream.Stream.of(
+                                new Object[] {d.getSigla(), d.getId()},
+                                new Object[] {d.getNombre(), d.getId()}))
+                        .toList());
+
         public Resolucion profesion(String texto) {
             return profesion.resolver(texto);
         }
@@ -277,6 +298,16 @@ public class CatalogoTextResolver {
         /** Para AFP y ONP/CPMP: el sistema los guarda en el mismo catálogo. */
         public Resolucion regimenPensionario(String texto) {
             return regimenPensionario.resolver(texto);
+        }
+
+        /**
+         * Resuelve la Dependencia (unidad orgánica) desde el MISMO texto libre de la columna
+         * {@code VinculacionColumna.OFICINA} ("Oficina / dependencia") — el Excel no trae una
+         * columna separada. Aplica primero el diccionario de equivalencias (77→45 variantes
+         * reales normalizadas a sigla).
+         */
+        public Resolucion dependencia(String texto) {
+            return dependencia.resolver(diccionario.canonico(Catalogo.DEPENDENCIA, texto));
         }
 
         /**

@@ -30,7 +30,8 @@ public class DiccionarioEquivalencias {
         GRADO_ACADEMICO,
         NIVEL_POSGRADO,
         CONDICION_GRADO,
-        BANCO
+        BANCO,
+        DEPENDENCIA
     }
 
     private static final String SIN_DATO = "";
@@ -132,7 +133,88 @@ public class DiccionarioEquivalencias {
                     Map.entry("INTERBANK", "INTERBANK"),
                     // En BD el nombre real es 'SCOTIABANK PERU'; el Excel escribe 'SCOTIABANK'.
                     Map.entry("SCOTIABANK", "SCOTIABANK PERU"),
-                    Map.entry("SCOTIABANK PERU", "SCOTIABANK PERU"))));
+                    Map.entry("SCOTIABANK PERU", "SCOTIABANK PERU"))),
+
+            /*
+             * CRÍTICO (bug real, ver memoria bug-dependencia-vacia-papeletas). El Excel solo
+             * trae UNA columna "Oficina / dependencia" (VinculacionColumna.OFICINA) con texto
+             * libre; el import histórico solo la usaba para OFICINA_ID y nunca resolvía
+             * DEPENDENCIA_ID — 654 puestos quedaron sin Dependencia (backfill V012_51,
+             * 2026-08-04). Este diccionario resuelve la MISMA celda contra el catálogo
+             * CERRADO de 45 Dependencias (V012_50): el canónico es la SIGLA. Generado a
+             * partir de las 71 variantes reales del Excel oficial (663 filas). "DD" y "DDI"
+             * son la MISMA Dirección Desconcentrada regional (Moquegua y Piura aparecen con
+             * ambos prefijos para la misma región) — se fusionan a una sola sigla DD-<REGIÓN>.
+             */
+            Map.entry(Catalogo.DEPENDENCIA, Map.ofEntries(
+                    Map.entry("CENTRO DE OPERACIONES DE EMERGENCIA BANCO DE LA NACIONAL", "COEN"),
+                    Map.entry("CENTRO DE OPERACIONES DE EMERGENCIA NACIONAL", "COEN"),
+                    Map.entry("DIRECCION DE POLITICAS, PLANES Y EVALUACION", "DIPPE"),
+                    Map.entry("DIRECCION DE POLITICAS, PLANES, EVALUACION Y ESTADISTICA", "DIPPE"),
+                    Map.entry("DIRECCION DE PREPARACION", "DIPRE"),
+                    Map.entry("DIRECCION DE REHABILITACION", "DIREH"),
+                    Map.entry("DIRECCION DE REHABILITACION - SUB DIRECCION DE NORMALIZACION DE MEDIOS DE VIDA", "DIREH"),
+                    Map.entry("DIRECCION DE REHABILITACION - SUB DIRECCION DE RESTABLECIMIENTO DE SERVICIOS PUBLICOS BASICOS E INFRAESTRUCTURA", "DIREH"),
+                    Map.entry("DIRECCION DE RESPUESTA", "DIRES"),
+                    Map.entry("DIRECCION DE RESPUESTA - ALMACEN LIMA", "DIRES"),
+                    Map.entry("DIRECCION DE RESPUESTA - ALMACENES", "DIRES"),
+                    Map.entry("DIRECCION DE RESPUESTA - SUB DIRECCION DE ASISTENCIA HUMANITARIA Y MOVILIZACION", "DIRES"),
+                    Map.entry("DIRECCION DE RESPUESTA - SUB DIRECCION DE GESTION OPERATIVA", "DIRES"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD AYACUCHO", "DD-AYACUCHO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD CAJAMARCA", "DD-CAJAMARCA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD CALLAO", "DD-CALLAO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD HUANUCO", "DD-HUANUCO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD LA LIBERTAD", "DD-LA_LIBERTAD"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD LAMBAYEQUE", "DD-LAMBAYEQUE"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD LIMA - HUACHO", "DD-LIMA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD LORETO", "DD-LORETO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD MOQUEGUA", "DD-MOQUEGUA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD PIURA", "DD-PIURA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD PUNO", "DD-PUNO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DD TUMBES", "DD-TUMBES"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI AMAZONAS", "DD-AMAZONAS"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI ANCASH", "DD-ANCASH"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI APURIMAC", "DD-APURIMAC"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI AREQUIPA", "DD-AREQUIPA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI CUSCO", "DD-CUSCO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI HUANCAVELICA", "DD-HUANCAVELICA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI ICA", "DD-ICA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI JUNIN", "DD-JUNIN"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI MADRE DE DIOS", "DD-MADRE_DE_DIOS"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI MOQUEGUA", "DD-MOQUEGUA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI PASCO", "DD-PASCO"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI PIURA", "DD-PIURA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI SAN MARTIN", "DD-SAN_MARTIN"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI TACNA", "DD-TACNA"),
+                    Map.entry("DIRECCION DESCONCENTRADA - DDI UCAYALI", "DD-UCAYALI"),
+                    Map.entry("DIRECCION DESCONCENTRADA DE AREQUIPA", "DD-AREQUIPA"),
+                    Map.entry("DIRECCION DESCONCENTRADA DE CALLAO", "DD-CALLAO"),
+                    Map.entry("DIRECCION DESCONCENTRADA DE LORETO", "DD-LORETO"),
+                    Map.entry("DIRECCION DESCONCENTRADA DE PIURA", "DD-PIURA"),
+                    Map.entry("DIRECCION DESCONCENTRADA DE TACNA", "DD-TACNA"),
+                    Map.entry("DIRES - ALMACEN FAUCETT", "DIRES"),
+                    Map.entry("DIRES - ALMACEN PUNTA HERMOSA", "DIRES"),
+                    Map.entry("GERENCIA GENERAL", "GG"),
+                    Map.entry("GERENCIA GENERAL- FONDES", "GG"),
+                    Map.entry("JEFATURA", "JEFATURA"),
+                    Map.entry("OFICINA DE ADMINISTRACION", "OAD"),
+                    Map.entry("OFICINA DE ASESORIA JURIDICA", "OAJ"),
+                    Map.entry("OFICINA DE COMUNICACION SOCIAL", "OCS"),
+                    Map.entry("OFICINA DE COOPERACION Y ASUNTOS INTERBANCO DE LA NACIONALES", "OCAI"),
+                    Map.entry("OFICINA DE COOPERACION Y ASUNTOS INTERNACIONALES", "OCAI"),
+                    Map.entry("OFICINA DE PLANEAMIENTO Y PRESUPUESTO", "OPP"),
+                    Map.entry("OFICINA DE PLANIFICACION Y PRESUPUESTO", "OPP"),
+                    Map.entry("OFICINA DE TECNOLOGIAS DE LA INFORMACION Y COMUNICACIONES", "OTIC"),
+                    Map.entry("ORGANO DE CONTROL INSTITUCIONAL", "OCI"),
+                    Map.entry("UNIDAD DE ABASTECIMIENTO", "UAB"),
+                    Map.entry("UNIDAD DE ABASTECIMIENTO - ALMACEN SEDE ARGENTINA", "UAB"),
+                    Map.entry("UNIDAD DE ABASTECIMIENTO - ALMACEN SEDE PUNTA HERMOSA", "UAB"),
+                    Map.entry("UNIDAD DE ABASTECIMIENTO ALMACEN - SEDE FAUCETT", "UAB"),
+                    Map.entry("UNIDAD DE CONTABILIDAD", "UCO"),
+                    Map.entry("UNIDAD DE RECURSOS HUMANOS", "URH"),
+                    Map.entry("UNIDAD DE SERVICIOS GENERALES", "USG"),
+                    Map.entry("UNIDAD DE TESORERIA", "UTE"),
+                    Map.entry("UNIDAD RECURSOS HUMANOS", "URH"))));
 
     /**
      * Traduce un texto del Excel al valor canónico del catálogo.

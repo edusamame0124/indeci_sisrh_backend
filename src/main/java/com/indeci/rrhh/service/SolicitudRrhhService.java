@@ -1050,6 +1050,7 @@ public class SolicitudRrhhService {
 
         validarDuplicidad(
                 dto,
+                tipo,
                 empleadoId);
 
         validarHoras(
@@ -1488,8 +1489,10 @@ public class SolicitudRrhhService {
         }
     }
     
-    private void validarDuplicidad(
+    // Package-private para probar el guard de exclusión de comisión de servicio.
+    void validarDuplicidad(
             SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo,
             Long empleadoId) {
 
         boolean existe =
@@ -1505,6 +1508,72 @@ public class SolicitudRrhhService {
 
             throw new NegocioException(
                     "El empleado ya tiene una solicitud de este tipo en esas fechas");
+        }
+
+        validarDuplicidadComisionCruzada(
+                dto,
+                tipo,
+                empleadoId,
+                null);
+    }
+
+    /**
+     * Comisión de servicio por horas ('006') y por día ('COMISION_DIA') son mutuamente
+     * excluyentes: RR.HH. (2026-08-04) exige que un empleado solo pueda tener registrada
+     * UNA de las dos papeletas en un mismo rango de fechas. No afecta la duplicidad
+     * normal (mismo tipo) de los demás tipos de solicitud.
+     */
+    private static final Map<String, String> CODIGOS_COMISION_EXCLUYENTES = Map.of(
+            "006", "COMISION_DIA",
+            "COMISION_DIA", "006");
+
+    private void validarDuplicidadComisionCruzada(
+            SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo,
+            Long empleadoId,
+            Long solicitudIdExcluir) {
+
+        String codigoContrario =
+                CODIGOS_COMISION_EXCLUYENTES.get(tipo.getCodigo());
+
+        if(codigoContrario == null) {
+            return;
+        }
+
+        Long tipoContrarioId =
+                tipoSolicitudRepository
+                        .findByCodigo(codigoContrario)
+                        .map(TipoSolicitudRrhh::getId)
+                        .orElse(null);
+
+        if(tipoContrarioId == null) {
+            return;
+        }
+
+        boolean existe =
+                solicitudIdExcluir == null
+                        ? repository
+                                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                                        empleadoId,
+                                        tipoContrarioId,
+                                        1,
+                                        dto.getFechaFin(),
+                                        dto.getFechaInicio())
+                        : repository
+                                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                                        solicitudIdExcluir,
+                                        empleadoId,
+                                        tipoContrarioId,
+                                        1,
+                                        dto.getFechaFin(),
+                                        dto.getFechaInicio());
+
+        if(existe) {
+
+            throw new NegocioException(
+                    "El empleado ya tiene una solicitud de Comisión de Servicio "
+                    + "(por horas o por día) registrada en esas fechas. "
+                    + "Solo se permite una de las dos.");
         }
     }
 
@@ -3377,6 +3446,7 @@ public class SolicitudRrhhService {
         validarDuplicidadEditar(
                 solicitudId,
                 dto,
+                tipo,
                 empleadoId);
 
         validarHoras(
@@ -3484,9 +3554,11 @@ public class SolicitudRrhhService {
                 dto);
     }
     
-    private void validarDuplicidadEditar(
+    // Package-private para probar el guard de exclusión de comisión de servicio.
+    void validarDuplicidadEditar(
             Long solicitudId,
             SolicitudRrhhDto dto,
+            TipoSolicitudRrhh tipo,
             Long empleadoId) {
 
         boolean existe =
@@ -3504,6 +3576,12 @@ public class SolicitudRrhhService {
             throw new NegocioException(
                     "El empleado ya tiene una solicitud de este tipo en esas fechas");
         }
+
+        validarDuplicidadComisionCruzada(
+                dto,
+                tipo,
+                empleadoId,
+                solicitudId);
     }
     
     private void actualizarSolicitud(

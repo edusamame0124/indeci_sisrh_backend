@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Papeleta de Comisión de Servicio por Día (código 'COMISION_DIA', V012_53).
+     Diseño nuevo e independiente — no deriva de formato_1 (compartido por 001-007,
+     sin espacio para un 8vo tipo) ni de formato_4 (fuente .jrxml no recuperable,
+     solo binario .jasper legado). Alimentado por PapeletaReportService.cargarParametrosComisionDia(). -->
+<jasperReport name="comision_dia" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="7b2b7a0a-3a41-4e3a-9f7f-6c1d1a5e9a10">
+	<parameter name="INSTITUCION" class="java.lang.String"/>
+	<parameter name="P_LOGO_PERU" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRE_TRABAJADOR" class="java.lang.String"/>
+	<parameter name="P_DEPENDENCIA" class="java.lang.String"/>
+	<parameter name="P_REGIMEN_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_FECHA_INICIO" class="java.lang.String"/>
+	<parameter name="P_FECHA_FIN" class="java.lang.String"/>
+	<parameter name="P_DIAS" class="java.lang.String"/>
+	<parameter name="P_LUGAR" class="java.lang.String"/>
+	<parameter name="P_MOTIVO" class="java.lang.String"/>
+	<parameter name="P_FECHA_EMISION" class="java.lang.String"/>
+	<query language="sql"><![CDATA[]]></query>
+	<background splitType="Stretch"/>
+	<title height="110" splitType="Stretch">
+		<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111111" x="90" y="4" width="380" height="30" fontSize="18.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE COMISIÓN DE SERVICIO POR DÍA]]></text>
+		</element>
+		<element kind="textField" uuid="1b111111-1111-1111-1111-111111111112" x="90" y="34" width="380" height="24" fontSize="12.0" hTextAlign="Center">
+			<expression><![CDATA["SERVIDOR DE " + String.valueOf($P{INSTITUCION})]]></expression>
+		</element>
+		<element kind="image" uuid="1b111111-1111-1111-1111-111111111113" x="470" y="0" width="65" height="85" onErrorType="Blank">
+			<expression><![CDATA[$P{P_LOGO_PERU}]]></expression>
+		</element>
+		<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111114" x="22" y="88" width="510" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[Datos del Empleado]]></text>
+		</element>
+	</title>
+	<detail>
+		<band height="420" splitType="Stretch">
+			<element kind="rectangle" uuid="1b111111-1111-1111-1111-111111111120" x="22" y="2" width="510" height="90" radius="14"/>
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111121" x="40" y="16" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Nombres]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111122" x="140" y="16" width="360" height="20">
+				<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+			</element>
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111123" x="40" y="42" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Dependencia]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111124" x="140" y="42" width="360" height="20">
+				<expression><![CDATA[$P{P_DEPENDENCIA}]]></expression>
+			</element>
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111125" x="40" y="66" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Régimen]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111126" x="140" y="66" width="360" height="20">
+				<expression><![CDATA[$P{P_REGIMEN_NOMBRE}]]></expression>
+			</element>
+
+			<element kind="rectangle" uuid="1b111111-1111-1111-1111-111111111130" x="22" y="104" width="510" height="180" radius="14"/>
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111131" x="24" y="112" width="506" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+				<text><![CDATA[Detalle de la Comisión]]></text>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111132" x="40" y="142" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Fecha inicio]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111133" x="140" y="142" width="150" height="20">
+				<expression><![CDATA[$P{P_FECHA_INICIO}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111134" x="300" y="142" width="80" height="20" fontSize="11.0">
+				<text><![CDATA[Fecha fin]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111135" x="380" y="142" width="120" height="20">
+				<expression><![CDATA[$P{P_FECHA_FIN}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111136" x="40" y="168" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Cantidad de días]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111137" x="140" y="168" width="150" height="20">
+				<expression><![CDATA[$P{P_DIAS}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111138" x="40" y="194" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Lugar de comisión]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-111111111139" x="140" y="194" width="360" height="20">
+				<expression><![CDATA[$P{P_LUGAR}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-11111111113a" x="40" y="222" width="99" height="20" fontSize="11.0">
+				<text><![CDATA[Motivo / sustento]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-11111111113b" x="140" y="222" width="360" height="55">
+				<expression><![CDATA[$P{P_MOTIVO}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-11111111113c" x="40" y="292" width="200" height="18" fontSize="9.0" italic="true">
+				<text><![CDATA[Documento de sustento: ver adjuntos de la solicitud (opcional).]]></text>
+			</element>
+
+			<element kind="staticText" uuid="1b111111-1111-1111-1111-11111111113d" x="40" y="330" width="200" height="18" fontSize="10.0">
+				<text><![CDATA[Fecha de emisión]]></text>
+			</element>
+			<element kind="textField" uuid="1b111111-1111-1111-1111-11111111113e" x="140" y="330" width="150" height="18" fontSize="10.0">
+				<expression><![CDATA[$P{P_FECHA_EMISION}]]></expression>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="64" splitType="Stretch">
+		<element kind="line" uuid="1b111111-1111-1111-1111-111111111140" x="50" y="31" width="177" height="1">
+			<pen lineStyle="Solid"/>
+		</element>
+		<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111141" x="50" y="40" width="176" height="19">
+			<text><![CDATA[Firma del Jefe Inmediato Superior]]></text>
+		</element>
+		<element kind="line" uuid="1b111111-1111-1111-1111-111111111142" x="350" y="31" width="177" height="1">
+			<pen lineStyle="Solid"/>
+		</element>
+		<element kind="staticText" uuid="1b111111-1111-1111-1111-111111111143" x="350" y="40" width="176" height="19" hTextAlign="Center">
+			<text><![CDATA[Firma del Servidor]]></text>
+		</element>
+	</pageFooter>
+</jasperReport>

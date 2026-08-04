@@ -24,8 +24,10 @@ import com.indeci.rrhh.entity.Sexo;
 import com.indeci.rrhh.entity.TipoCargo;
 import com.indeci.rrhh.dto.IncrementosDsResponseDto;
 import com.indeci.rrhh.service.IncrementosDsCalculoService;
+import com.indeci.rrhh.entity.Dependencia;
 import com.indeci.rrhh.repository.BankRepository;
 import com.indeci.rrhh.repository.CargoRepository;
+import com.indeci.rrhh.repository.DependenciaRepository;
 import com.indeci.rrhh.repository.DistrictRepository;
 import com.indeci.rrhh.repository.EmpleadoBancoRepository;
 import com.indeci.rrhh.repository.EmpleadoPensionRepository;
@@ -90,6 +92,7 @@ class VinculacionUpsertIT {
     @Autowired private RegimenPensionarioRepository regimenPensionarioRepository;
     @Autowired private DistrictRepository districtRepository;
     @Autowired private TipoCargoRepository tipoCargoRepository;
+    @Autowired private DependenciaRepository dependenciaRepository;
 
     private VinculacionUpsertService upsertService;
     private CatalogoTextResolver catalogoResolver;
@@ -110,7 +113,7 @@ class VinculacionUpsertIT {
                 gradoAcademicoRepository, estadoCivilRepository, bankRepository,
                 sexoRepository, modalidadCasRepository, tipoContratoRepository,
                 regimenLaboralRepository, regimenPensionarioRepository, districtRepository,
-                altaService);
+                dependenciaRepository, altaService);
 
         // El cálculo de incrementos D.S. depende de parámetros remunerativos (pesado de
         // sembrar en H2); se stubbea para devolver remuneración = monto contrato. Aquí solo
@@ -169,6 +172,15 @@ class VinculacionUpsertIT {
         tipoCargo.setNombre("GENERICO");
         tipoCargo.setActivo(1);
         tipoCargoRepository.save(tipoCargo);
+
+        // Dependencia (catálogo CERRADO, V012_50): sin @GeneratedValue, id manual — mismo
+        // patrón que Sexo arriba (la columna real es GENERATED ALWAYS, pero H2 de test no
+        // impone esa restricción).
+        final Dependencia oad = new Dependencia();
+        oad.setId(1L);
+        oad.setSigla("OAD");
+        oad.setNombre("OFICINA GENERAL DE ADMINISTRACION"); // coincide con filaCas().OFICINA
+        dependenciaRepository.save(oad);
     }
 
     /** Fila CAS mínima válida; los pares (columna, valor) permiten variarla. */
@@ -233,8 +245,11 @@ class VinculacionUpsertIT {
 
         assertThat(empleadoPensionRepository.findByEmpleadoIdAndActivo(empleado.getId(), 1))
                 .isNotEmpty();
-        assertThat(empleadoPuestoRepository.findFirstByEmpleadoIdAndActivo(empleado.getId(), 1))
-                .isPresent();
+        final var puesto = empleadoPuestoRepository
+                .findFirstByEmpleadoIdAndActivo(empleado.getId(), 1).orElseThrow();
+        // Fix bug-dependencia-vacia-papeletas: la MISMA columna OFICINA ahora también
+        // resuelve DEPENDENCIA_ID (catálogo CERRADO, V012_50) — antes quedaba siempre null.
+        assertThat(puesto.getDependenciaId()).isEqualTo(1L);
         assertThat(empleadoBancoRepository.findByEmpleadoId(empleado.getId())).hasSize(1);
 
         // Cobertura de salud: se crea con la fecha de inicio del Excel y el tipo derivado
@@ -260,6 +275,29 @@ class VinculacionUpsertIT {
         // Regresión: Nivel y EstadoCivil no declaraban @GeneratedValue y rompían el alta.
         assertThat(nivelRepository.findAll()).extracting(n -> n.getNombre()).contains("ESPECIALISTA");
         assertThat(estadoCivilRepository.findAll()).isNotEmpty();
+        // Dependencia es CERRADO (a diferencia de Oficina, arriba): nunca se autocrea.
+        assertThat(dependenciaRepository.findAll()).hasSize(1); // solo la sembrada en setUp
+    }
+
+    @Test
+    @DisplayName("Dependencia sin match no se inventa (catálogo CERRADO) — el puesto queda sin ella")
+    void dependenciaSinMatchNoSeInventa() {
+        final var fila = filaCas("24485494", "052-2008");
+        // Ninguna Dependencia sembrada tiene este nombre/sigla.
+        fila.put(VinculacionColumna.OFICINA, "OFICINA QUE NO EXISTE EN NINGUN CATALOGO");
+
+        upsertService.importar(fila, catalogoResolver.nuevaSesion());
+
+        final var empleado = empleadoRepository.findByPersonaId(
+                personaRepository.findByDni("24485494").orElseThrow().getId()).orElseThrow();
+        final var puesto = empleadoPuestoRepository
+                .findFirstByEmpleadoIdAndActivo(empleado.getId(), 1).orElseThrow();
+
+        // La Oficina SÍ se autocrea (catálogo ABIERTO)...
+        assertThat(puesto.getOficinaId()).isNotNull();
+        // ...pero la Dependencia CERRADA nunca se inventa: queda null, no un id falso.
+        assertThat(puesto.getDependenciaId()).isNull();
+        assertThat(dependenciaRepository.findAll()).hasSize(1); // solo la sembrada en setUp
     }
 
     @Test

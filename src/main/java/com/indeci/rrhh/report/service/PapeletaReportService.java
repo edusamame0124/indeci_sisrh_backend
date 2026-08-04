@@ -330,16 +330,7 @@ private void cargarParametrosVacacion(
  */
 private List<VacacionDetReporteDto> prepararPapeletaVacaciones(
         Map<String, Object> params,
-        SolicitudRrhh solicitud,
-        EmpleadoPuesto puesto) {
-
-    String cargoNombre = "";
-    if (puesto.getCargoId() != null) {
-        cargoNombre = cargoRepository.findById(puesto.getCargoId())
-                .map(Cargo::getNombre)
-                .orElse("");
-    }
-    params.put("P_CARGO", cargoNombre);
+        SolicitudRrhh solicitud) {
 
     List<SolicitudVacacionDet> detalles =
             solicitudVacacionDetRepository.findBySolicitudIdAndActivo(solicitud.getId(), 1);
@@ -415,18 +406,10 @@ private List<VacacionDetReporteDto> prepararPapeletaVacaciones(
 private List<TeletrabajoActividadReporteDto> prepararPapeletaTeletrabajo(
         Map<String, Object> params,
         SolicitudRrhh solicitud,
-        EmpleadoPuesto puesto,
         Persona persona) {
 
     params.put("P_DNI", valor(persona.getDni()));
 
-    String cargoNombre = "";
-    if (puesto.getCargoId() != null) {
-        cargoNombre = cargoRepository.findById(puesto.getCargoId())
-                .map(Cargo::getNombre)
-                .orElse("");
-    }
-    params.put("P_CARGO", cargoNombre);
     params.put("P_MODALIDAD",
             solicitud.getModalidadTeletrabajo() != null ? solicitud.getModalidadTeletrabajo() : "PARCIAL");
     params.put("P_FECHA_REPORTE", formatearFecha(solicitud.getFechaInicio()));
@@ -478,7 +461,7 @@ private String formatearDias(Double dias) {
     return java.math.BigDecimal.valueOf(dias).stripTrailingZeros().toPlainString();
 }
 
-private void cargarParametrosCompensacion(
+private List<CompensacionReporteDto> cargarParametrosCompensacion(
         Map<String,Object> params,
         SolicitudRrhh solicitud){
 
@@ -525,10 +508,7 @@ private void cargarParametrosCompensacion(
                                             d.getHoraFin())))
                     .toList();
 
-    params.put(
-            "DS_COMPENSACIONES",
-            new JRBeanCollectionDataSource(
-                    data));
+    return data;
 }
 
 public String generarPdf(
@@ -667,6 +647,27 @@ public String generarPdf(
 
             nombreReporte = "papeleta_teletrabajo.jasper";
         }
+
+        if("COMISION_DIA".equals(tipo.getCodigo())) {
+
+            nombreReporte = "comision_dia.jasper";
+        }
+
+        // Formato institucional "sutil" (mismo lenguaje visual que vacaciones/teletrabajo/licencia).
+        boolean esPermiso = java.util.List.of("001", "002", "003", "004", "005", "006", "007")
+                .contains(tipo.getCodigo());
+        boolean esDescansoMedico = "010".equals(tipo.getCodigo());
+        boolean esCompensable = "013".equals(tipo.getCodigo());
+
+        if (esPermiso) {
+            nombreReporte = "papeleta_permiso.jasper";
+        }
+        if (esDescansoMedico) {
+            nombreReporte = "papeleta_descanso_medico.jasper";
+        }
+        if (esCompensable) {
+            nombreReporte = "papeleta_permiso_compensable.jasper";
+        }
         InputStream jasperStream =
                 getClass()
                         .getResourceAsStream(
@@ -714,6 +715,8 @@ public String generarPdf(
         List<VacacionDetReporteDto> detalleVacacionRows = null;
         // Papeleta de Teletrabajo — filas de ACTIVIDADES DEL DÍA (una por actividad).
         List<TeletrabajoActividadReporteDto> actividadTeletrabajoRows = null;
+        // Papeleta de Permiso Compensable — filas del bloque DETALLE DE COMPENSACIONES.
+        List<CompensacionReporteDto> filasCompensacion = null;
 
         // Insumos de la plantilla de licencia unificada (con/sin goce).
         if (esLicencia) {
@@ -722,8 +725,9 @@ public String generarPdf(
             params.put("P_CODIGO_FIRMA", "SOL-" + solicitud.getId());
         }
 
-        // Papeletas de Vacaciones/Teletrabajo — mismo header institucional (Perú/MinDef/INDECI).
-        if (esVacaciones || esTeletrabajo) {
+        // Papeletas de Vacaciones/Teletrabajo/Permiso/Descanso Médico/Compensable — mismo
+        // header institucional (Perú/MinDef/INDECI).
+        if (esVacaciones || esTeletrabajo || esPermiso || esDescansoMedico || esCompensable) {
             params.put("P_HEADER",
                     getClass().getResourceAsStream("/reportes/img/header_formato.jpg"));
         }
@@ -756,9 +760,25 @@ public String generarPdf(
         params.put(
                 "P_DEPENDENCIA",
                 nombreDependencia);
-        
-       
-       //INICIO REGIMEN LABORAL 
+
+        String nombreCargo = "";
+
+        if (puesto.getCargoId() != null) {
+
+            nombreCargo =
+                    cargoRepository
+                            .findById(
+                                    puesto.getCargoId())
+                            .map(Cargo::getNombre)
+                            .orElse("");
+        }
+
+        params.put(
+                "P_CARGO",
+                nombreCargo);
+
+
+       //INICIO REGIMEN LABORAL
         
         RegimenLaboral reg =
                 regimenLaboralRepository
@@ -792,21 +812,24 @@ public String generarPdf(
 
             cargarParametrosLicencia(
                     params,
-                    solicitud,
-                    puesto);
+                    solicitud);
         }
         
         
         if(esVacaciones) {
             detalleVacacionRows =
-                    prepararPapeletaVacaciones(params, solicitud, puesto);
+                    prepararPapeletaVacaciones(params, solicitud);
         }
         if(esTeletrabajo) {
             actividadTeletrabajoRows =
-                    prepararPapeletaTeletrabajo(params, solicitud, puesto, persona);
+                    prepararPapeletaTeletrabajo(params, solicitud, persona);
         }
-        if("013".equals(tipo.getCodigo())) {
-            cargarParametrosCompensacion(
+        if(esCompensable) {
+            filasCompensacion =
+                    cargarParametrosCompensacion(params, solicitud);
+        }
+        if("COMISION_DIA".equals(tipo.getCodigo())) {
+            cargarParametrosComisionDia(
                     params,
                     solicitud);
         }
@@ -993,6 +1016,8 @@ public String generarPdf(
             dataSource = new JRBeanCollectionDataSource(detalleVacacionRows);
         } else if (esTeletrabajo && actividadTeletrabajoRows != null) {
             dataSource = new JRBeanCollectionDataSource(actividadTeletrabajoRows);
+        } else if (esCompensable && filasCompensacion != null) {
+            dataSource = new JRBeanCollectionDataSource(filasCompensacion);
         } else {
             dataSource = new JREmptyDataSource();
         }
@@ -1141,10 +1166,46 @@ private void cargarParametrosDescansoMedico(
     params.put(
             "P_DOC_COMPROBANTE_TRATAMIENTO",
             comprobanteTratamiento);
-    
-    
+
+
 }
-    
+
+/**
+ * Papeleta de Comisión de Servicio por Día (código 'COMISION_DIA', V012_53) —
+ * mismo patrón de {@link #cargarParametrosDescansoMedico}: rango de fechas +
+ * cantidad de días, sin horas. Reutiliza P_LUGAR (mismo nombre que usa '006'
+ * por horas) y agrega P_MOTIVO como sustento/observación libre opcional.
+ */
+private void cargarParametrosComisionDia(
+        Map<String, Object> params,
+        SolicitudRrhh solicitud) {
+
+    params.put(
+            "P_FECHA_INICIO",
+            formatearFecha(
+                    solicitud.getFechaInicio()));
+
+    params.put(
+            "P_FECHA_FIN",
+            formatearFecha(
+                    solicitud.getFechaFin()));
+
+    params.put(
+            "P_DIAS",
+            valor(
+                    solicitud.getCantidadDias()));
+
+    params.put(
+            "P_LUGAR",
+            valor(
+                    solicitud.getLugarComision()));
+
+    params.put(
+            "P_MOTIVO",
+            valor(
+                    solicitud.getMotivo()));
+}
+
 private Double calcularDias(
         LocalDate fechaInicio,
         LocalDate fechaFin) {
@@ -1187,17 +1248,7 @@ private Double calcularDias(
     }
     private void cargarParametrosLicencia(
             Map<String, Object> params,
-            SolicitudRrhh solicitud,
-            EmpleadoPuesto puesto) {
-
-        // 1. Mapear P_CARGO
-        String cargoNombre = "";
-        if (puesto.getCargoId() != null) {
-            cargoNombre = cargoRepository.findById(puesto.getCargoId())
-                    .map(Cargo::getNombre)
-                    .orElse("");
-        }
-        params.put("P_CARGO", cargoNombre);
+            SolicitudRrhh solicitud) {
 
         TipoLicencia licencia =
                 tipoLicenciaRepository

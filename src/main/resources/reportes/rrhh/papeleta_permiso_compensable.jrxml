@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Papeleta de Permiso Compensable (INDECI) — formato institucional (mismo lenguaje visual
+     que papeleta_vacaciones.jrxml). DETALLE DE COMPENSACIONES por banda detail: una fila por
+     compensación registrada (fecha/hora inicio/hora fin/horas), usando CompensacionReporteDto
+     como data source principal del reporte. -->
+<jasperReport name="papeleta_permiso_compensable" language="java" pageWidth="595" pageHeight="842" columnWidth="531" leftMargin="32" rightMargin="32" topMargin="20" bottomMargin="20" uuid="f6000000-0000-0000-0000-000000000000">
+	<parameter name="P_HEADER" class="java.io.InputStream"/>
+	<parameter name="P_NOMBRE_TRABAJADOR" class="java.lang.String"/>
+	<parameter name="P_DEPENDENCIA" class="java.lang.String"/>
+	<parameter name="P_REGIMEN_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
+	<parameter name="P_FECHA_PERMISO" class="java.lang.String"/>
+	<parameter name="P_HORAS_PERMISO" class="java.lang.String"/>
+	<parameter name="P_HORA_INICIO" class="java.lang.String"/>
+	<parameter name="P_HORA_FIN" class="java.lang.String"/>
+	<parameter name="P_FECHA_EMISION" class="java.lang.String"/>
+	<field name="fecha" class="java.lang.String"/>
+	<field name="horaInicio" class="java.lang.String"/>
+	<field name="horaFin" class="java.lang.String"/>
+	<field name="horas" class="java.lang.String"/>
+	<query language="sql"><![CDATA[]]></query>
+	<background splitType="Stretch"/>
+	<title height="364" splitType="Stretch">
+		<!-- HEADER institucional -->
+		<element kind="image" uuid="f6000000-0000-0000-0000-000000000001" x="0" y="0" width="531" height="50" scaleImage="RetainShape" hImageAlign="Left" onErrorType="Blank">
+			<expression><![CDATA[$P{P_HEADER}]]></expression>
+		</element>
+		<!-- TÍTULO -->
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000002" x="0" y="54" width="531" height="24" fontSize="18.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[PAPELETA DE PERMISO COMPENSABLE]]></text>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000003" x="215" y="80" width="101" height="1">
+			<pen lineWidth="1.0" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000004" x="0" y="84" width="531" height="13" fontSize="9.5" hTextAlign="Center" forecolor="#555555">
+			<text><![CDATA[Instituto Nacional de Defensa Civil – INDECI]]></text>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000005" x="0" y="104" width="531" height="16" fontSize="10.0" bold="true">
+			<text><![CDATA[SEÑOR/A JEFE/A DE LA UNIDAD DE RECURSOS HUMANOS DEL INDECI]]></text>
+		</element>
+
+		<!-- ================= DATOS DEL SERVIDOR ================= -->
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000010" x="0" y="132" width="531" height="108" radius="2" mode="Transparent">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000011" x="0" y="132" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.0" lineColor="#ECECEC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000012" x="14" y="135" width="400" height="16" fontSize="10.5" bold="true" forecolor="#333333">
+			<text><![CDATA[DATOS DEL SERVIDOR]]></text>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000013" x="16" y="160" width="150" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Servidor:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000014" x="170" y="160" width="345" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000015" x="0" y="176" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000016" x="16" y="180" width="150" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Dependencia:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000017" x="170" y="180" width="345" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_DEPENDENCIA}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000018" x="0" y="196" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000019" x="16" y="200" width="150" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Régimen laboral:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-00000000001a" x="170" y="200" width="345" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_REGIMEN_NOMBRE}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-00000000001b" x="0" y="216" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-00000000001c" x="16" y="220" width="150" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Cargo:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-00000000001d" x="170" y="220" width="345" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_CARGO}]]></expression>
+		</element>
+
+		<!-- Párrafo -->
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000020" x="0" y="246" width="531" height="14" fontSize="10.0">
+			<text><![CDATA[Ante usted, con el debido respeto me presento y solicito:]]></text>
+		</element>
+
+		<!-- ================= PERMISO SOLICITADO ================= -->
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000030" x="0" y="264" width="531" height="70" radius="2" mode="Transparent">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000031" x="0" y="264" width="531" height="22" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.0" lineColor="#ECECEC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000032" x="14" y="267" width="400" height="16" fontSize="10.5" bold="true" forecolor="#333333">
+			<text><![CDATA[PERMISO SOLICITADO]]></text>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000033" x="16" y="292" width="60" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Fecha:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000034" x="80" y="292" width="180" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_FECHA_PERMISO}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000035" x="260" y="288" width="1" height="22">
+			<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000036" x="276" y="292" width="130" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Horas de permiso:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000037" x="406" y="292" width="109" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_HORAS_PERMISO}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000038" x="0" y="308" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#E5E5E5"/>
+		</element>
+
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000039" x="16" y="312" width="80" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Hora inicio:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-00000000003a" x="96" y="312" width="160" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_HORA_INICIO}]]></expression>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-00000000003b" x="260" y="308" width="1" height="22">
+			<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-00000000003c" x="276" y="312" width="80" height="14" fontSize="10.0" bold="true">
+			<text><![CDATA[Hora fin:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-00000000003d" x="356" y="312" width="159" height="14" fontSize="10.0">
+			<expression><![CDATA[$P{P_HORA_FIN}]]></expression>
+		</element>
+
+		<!-- Cabecera de la sección DETALLE -->
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000040" x="0" y="340" width="531" height="24" mode="Opaque" backcolor="#ECECEC">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000041" x="14" y="344" width="400" height="18" fontSize="11.0" bold="true" forecolor="#333333">
+			<text><![CDATA[DETALLE DE COMPENSACIONES]]></text>
+		</element>
+	</title>
+
+	<!-- Encabezado de columnas de la tabla DETALLE -->
+	<columnHeader height="24" splitType="Stretch">
+		<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000050" x="0" y="0" width="531" height="24" mode="Opaque" backcolor="#F7F7F7">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000051" x="133" y="0" width="1" height="24">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000052" x="266" y="0" width="1" height="24">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000053" x="399" y="0" width="1" height="24">
+			<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000054" x="0" y="3" width="133" height="18" fontSize="9.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[FECHA DE COMPENSACIÓN]]></text>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000055" x="133" y="3" width="133" height="18" fontSize="9.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[HORA INICIO]]></text>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000056" x="266" y="3" width="133" height="18" fontSize="9.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[HORA FIN]]></text>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000057" x="399" y="3" width="132" height="18" fontSize="9.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[HORAS]]></text>
+		</element>
+	</columnHeader>
+
+	<!-- Una fila por compensación registrada -->
+	<detail>
+		<band height="24" splitType="Stretch">
+			<element kind="rectangle" uuid="f6000000-0000-0000-0000-000000000060" x="0" y="0" width="531" height="24" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="line" uuid="f6000000-0000-0000-0000-000000000061" x="133" y="0" width="1" height="24">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="line" uuid="f6000000-0000-0000-0000-000000000062" x="266" y="0" width="1" height="24">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="line" uuid="f6000000-0000-0000-0000-000000000063" x="399" y="0" width="1" height="24">
+				<pen lineWidth="0.75" lineColor="#CCCCCC"/>
+			</element>
+			<element kind="textField" uuid="f6000000-0000-0000-0000-000000000064" x="0" y="3" width="133" height="18" fontSize="10.0" hTextAlign="Center">
+				<expression><![CDATA[$F{fecha}]]></expression>
+			</element>
+			<element kind="textField" uuid="f6000000-0000-0000-0000-000000000065" x="133" y="3" width="133" height="18" fontSize="10.0" hTextAlign="Center">
+				<expression><![CDATA[$F{horaInicio}]]></expression>
+			</element>
+			<element kind="textField" uuid="f6000000-0000-0000-0000-000000000066" x="266" y="3" width="133" height="18" fontSize="10.0" hTextAlign="Center">
+				<expression><![CDATA[$F{horaFin}]]></expression>
+			</element>
+			<element kind="textField" uuid="f6000000-0000-0000-0000-000000000067" x="399" y="3" width="132" height="18" fontSize="10.0" hTextAlign="Center">
+				<expression><![CDATA[$F{horas}]]></expression>
+			</element>
+		</band>
+	</detail>
+
+	<!-- Cierre + firmas -->
+	<summary height="170" splitType="Stretch">
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000090" x="0" y="12" width="531" height="16" fontSize="10.5">
+			<text><![CDATA[Por lo tanto, agradeceré disponer se me conceda lo solicitado.]]></text>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000091" x="250" y="44" width="120" height="16" fontSize="10.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[FECHA DE EMISIÓN:]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000092" x="374" y="44" width="157" height="16" fontSize="10.0">
+			<expression><![CDATA[$P{P_FECHA_EMISION}]]></expression>
+		</element>
+		<!-- Firmas -->
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000093" x="40" y="126" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000094" x="40" y="130" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[JEFE INMEDIATO]]></text>
+		</element>
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000095" x="311" y="126" width="180" height="1">
+			<pen lineWidth="0.75" lineColor="#333333"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000096" x="311" y="130" width="180" height="16" fontSize="10.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[SERVIDOR]]></text>
+		</element>
+		<element kind="textField" uuid="f6000000-0000-0000-0000-000000000097" x="311" y="146" width="180" height="16" fontSize="9.5" hTextAlign="Center">
+			<expression><![CDATA[$P{P_NOMBRE_TRABAJADOR}]]></expression>
+		</element>
+	</summary>
+
+	<pageFooter height="28" splitType="Stretch">
+		<element kind="line" uuid="f6000000-0000-0000-0000-000000000100" x="0" y="6" width="531" height="1">
+			<pen lineWidth="0.5" lineColor="#CCCCCC"/>
+		</element>
+		<element kind="staticText" uuid="f6000000-0000-0000-0000-000000000101" x="0" y="11" width="531" height="14" fontSize="8.0" italic="true" forecolor="#888888">
+			<text><![CDATA[Documento generado para uso interno de la entidad.]]></text>
+		</element>
+	</pageFooter>
+</jasperReport>

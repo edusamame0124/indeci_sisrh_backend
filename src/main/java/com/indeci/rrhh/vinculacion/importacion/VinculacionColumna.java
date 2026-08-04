@@ -97,6 +97,14 @@ public enum VinculacionColumna {
 
     // ---- Bloque G — Puesto / ubicación
     SEDE(60, "Sede"),
+    /**
+     * El machote NO tiene columna separada para Dependencia (unidad orgánica, catálogo
+     * CERRADO V012_50): esta MISMA celda de texto libre se usa para resolver tanto
+     * {@code Oficina} (ABIERTO, se autocrea) como {@code Dependencia} (CERRADO, solo match
+     * — ver {@code CatalogoTextResolver.Sesion#dependencia}). Antes solo se usaba para
+     * Oficina y 654 puestos quedaron sin Dependencia (bug corregido 2026-08-04, backfill
+     * V012_51; ver memoria {@code bug-dependencia-vacia-papeletas}).
+     */
     OFICINA(61, "Oficina / dependencia"),
     JEFE_DNI(62, "DNI del jefe inmediato"),
 
