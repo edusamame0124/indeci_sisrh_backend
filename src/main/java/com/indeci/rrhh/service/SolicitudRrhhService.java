@@ -3037,69 +3037,64 @@ public class SolicitudRrhhService {
         }
 
         // ==========================================
-        // VALIDAR ARCHIVO
+        // GUARDAR DOCUMENTO (opcional: RRHH puede aprobar sin adjuntar la papeleta firmada)
         // ==========================================
 
-        if (file == null || file.isEmpty()) {
-            throw new NegocioException(
-                    "Debe adjuntar la papeleta firmada en PDF antes de aprobar.");
+        SolicitudRrhhDoc doc = null;
+
+        if (file != null && !file.isEmpty()) {
+
+            String rutaArchivo =
+                    ftpService.subirArchivo(
+                            file,
+                            "papeletas",
+                            file.getOriginalFilename());
+
+            String nombreArchivo =
+                    file.getOriginalFilename();
+
+            String mimeType =
+                    file.getContentType();
+
+            Long tamanioBytes =
+                    file.getSize();
+
+            doc =
+                    new SolicitudRrhhDoc();
+
+            doc.setSolicitudId(
+                    solicitudId);
+
+            doc.setEtapa(
+                    "RRHH");
+
+            doc.setNombreArchivo(
+                    nombreArchivo);
+
+            doc.setRutaArchivo(
+                    rutaArchivo);
+
+            doc.setMimeType(
+                    mimeType);
+
+            doc.setTamanioBytes(
+                    tamanioBytes);
+
+            doc.setVersionDoc(3);
+
+            doc.setObservacion(
+                    observacion);
+
+            doc.setUsuarioUpload(
+                    "ADMIN");
+
+            doc.setCreatedAt(
+                    LocalDateTime.now());
+
+            doc.setActivo(1);
+
+            solicitudRrhhDocRepository.save(doc);
         }
-
-        String rutaArchivo =
-                ftpService.subirArchivo(
-                        file,
-                        "papeletas",
-                        file.getOriginalFilename());
-
-        String nombreArchivo =
-                file.getOriginalFilename();
-
-        String mimeType =
-                file.getContentType();
-
-        Long tamanioBytes =
-                file.getSize();
-
-        // ==========================================
-        // GUARDAR DOCUMENTO
-        // ==========================================
-
-        SolicitudRrhhDoc doc =
-                new SolicitudRrhhDoc();
-
-        doc.setSolicitudId(
-                solicitudId);
-
-        doc.setEtapa(
-                "RRHH");
-
-        doc.setNombreArchivo(
-                nombreArchivo);
-
-        doc.setRutaArchivo(
-                rutaArchivo);
-
-        doc.setMimeType(
-                mimeType);
-
-
-        doc.setTamanioBytes(
-                tamanioBytes);
-
-        doc.setVersionDoc(3);
-
-        doc.setObservacion(
-                observacion);
-
-        doc.setUsuarioUpload(
-                "ADMIN");
-
-        doc.setCreatedAt(
-                LocalDateTime.now());
-
-        doc.setActivo(1);
-
-        solicitudRrhhDocRepository.save(doc);
 
         // ==========================================
         // BUSCAR ESTADO APROBADO_RRHH
@@ -3228,7 +3223,12 @@ public class SolicitudRrhhService {
     
     @Auditable(
             accion = "RECHAZAR_SOLICITUD_RRHH")
-    public void rechazarRrhh(Long solicitudId) {
+    public void rechazarRrhh(Long solicitudId, String observacion) {
+
+        if (observacion == null || observacion.isBlank()) {
+            throw new NegocioException(
+                    "Debe indicar el motivo del rechazo.");
+        }
 
         SolicitudRrhh solicitud =
                 repository
@@ -3236,6 +3236,9 @@ public class SolicitudRrhhService {
                         .orElseThrow(() ->
                                 new NegocioException(
                                         "Solicitud no encontrada"));
+
+        Long estadoOrigen =
+                solicitud.getEstadoSolicitudId();
 
         EstadoSolicitud estadoActual =
                 estadoSolicitudRepository
@@ -3272,6 +3275,13 @@ public class SolicitudRrhhService {
                 estado.getId());
 
         repository.save(solicitud);
+
+        registrarHistorial(
+                solicitud.getId(),
+                estadoOrigen,
+                estado.getId(),
+                "RECHAZAR_RRHH",
+                observacion);
     }
     
     @Auditable(

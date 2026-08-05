@@ -168,11 +168,18 @@ public class SolicitudRrhhController {
     }
 
   
-    @PreAuthorize("hasAuthority('PAP_APROBAR_RRHH')")
+    /**
+     * Rechazar exige solo PAP_RRHH (acceso al módulo), no PAP_APROBAR_RRHH: a diferencia
+     * de aprobar, rechazar no compromete saldo vacacional ni planilla, así que cualquier
+     * rol con acceso al módulo puede hacerlo (mismo criterio que Jefe, donde aprobar-jefe
+     * y rechazar-jefe comparten PAP_JEFE).
+     */
+    @PreAuthorize("hasAuthority('PAP_RRHH')")
     @PutMapping("/rechazar-rrhh/{id}")
-   // @PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
-    public ApiResponse<Void> rechazarRrhh(@PathVariable Long id) {
-        service.rechazarRrhh(id);
+    public ApiResponse<Void> rechazarRrhh(
+            @PathVariable Long id,
+            @RequestParam(value = "observacion") String observacion) {
+        service.rechazarRrhh(id, observacion);
         return new ApiResponse<>("OK", "Solicitud rechazada por RRHH", null);
     }
 
