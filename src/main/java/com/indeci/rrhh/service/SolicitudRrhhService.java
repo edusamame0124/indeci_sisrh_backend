@@ -39,6 +39,7 @@ import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -1524,6 +1525,21 @@ public class SolicitudRrhhService {
         }
     }
     
+    /**
+     * Estados terminales negativos que NO deben "reservar" un rango de fechas frente a una
+     * nueva solicitud: el empleado debe poder volver a registrar una papeleta del mismo tipo
+     * tras un rechazo (jefe o RRHH) o una anulación (RR.HH. 2026-08-07).
+     */
+    private List<Long> obtenerEstadosNoBloqueantesDuplicidad() {
+
+        return Stream.of("RECHAZADO_JEFE", "RECHAZADO_RRHH", "ANULADO")
+                .map(estadoSolicitudRepository::findByCodigo)
+                .filter(java.util.Optional::isPresent)
+                .map(java.util.Optional::get)
+                .map(EstadoSolicitud::getId)
+                .collect(Collectors.toList());
+    }
+
     // Package-private para probar el guard de exclusión de comisión de servicio.
     void validarDuplicidad(
             SolicitudRrhhDto dto,
@@ -1532,10 +1548,11 @@ public class SolicitudRrhhService {
 
         boolean existe =
                 repository
-                        .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
                                 empleadoId,
                                 dto.getTipoSolicitudId(),
                                 1,
+                                obtenerEstadosNoBloqueantesDuplicidad(),
                                 dto.getFechaFin(),
                                 dto.getFechaInicio());
 
@@ -1585,21 +1602,26 @@ public class SolicitudRrhhService {
             return;
         }
 
+        List<Long> estadosExcluidos =
+                obtenerEstadosNoBloqueantesDuplicidad();
+
         boolean existe =
                 solicitudIdExcluir == null
                         ? repository
-                                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
                                         empleadoId,
                                         tipoContrarioId,
                                         1,
+                                        estadosExcluidos,
                                         dto.getFechaFin(),
                                         dto.getFechaInicio())
                         : repository
-                                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
                                         solicitudIdExcluir,
                                         empleadoId,
                                         tipoContrarioId,
                                         1,
+                                        estadosExcluidos,
                                         dto.getFechaFin(),
                                         dto.getFechaInicio());
 
@@ -3518,11 +3540,12 @@ public class SolicitudRrhhService {
 
         boolean existe =
                 repository
-                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
                         solicitudId,
                         empleadoId,
                         dto.getTipoSolicitudId(),
                         1,
+                        obtenerEstadosNoBloqueantesDuplicidad(),
                         dto.getFechaFin(),
                         dto.getFechaInicio());
 
@@ -3735,7 +3758,7 @@ public class SolicitudRrhhService {
                 observacion);
 
         hist.setUsuario(
-                "ADMIN");
+                SecurityUtil.getUsername());
 
         hist.setFecha(
                 LocalDateTime.now());

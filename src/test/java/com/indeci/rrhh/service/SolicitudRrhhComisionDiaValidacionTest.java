@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.dto.SolicitudRrhhDto;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
+import com.indeci.rrhh.repository.EstadoSolicitudRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
 
@@ -42,6 +43,11 @@ class SolicitudRrhhComisionDiaValidacionTest {
 
     @Mock
     private TipoSolicitudRrhhRepository tipoSolicitudRepository;
+
+    // No estubeado: Mockito devuelve Optional.empty() por defecto para findByCodigo(...),
+    // así que obtenerEstadosNoBloqueantesDuplicidad() resuelve a lista vacía en estos tests.
+    @Mock
+    private EstadoSolicitudRepository estadoSolicitudRepository;
 
     @InjectMocks
     private SolicitudRrhhService service;
@@ -87,16 +93,16 @@ class SolicitudRrhhComisionDiaValidacionTest {
         SolicitudRrhhDto dto = dto(ID_TIPO_COMISION_DIA);
 
         when(repository
-                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        EMPLEADO_ID, ID_TIPO_COMISION_DIA, 1, dto.getFechaFin(), dto.getFechaInicio()))
+                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(EMPLEADO_ID), eq(ID_TIPO_COMISION_DIA), eq(1), any(), eq(dto.getFechaFin()), eq(dto.getFechaInicio())))
                 .thenReturn(false);
 
         when(tipoSolicitudRepository.findByCodigo("006"))
                 .thenReturn(Optional.of(tipoComisionHoras()));
 
         when(repository
-                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        EMPLEADO_ID, ID_TIPO_006, 1, dto.getFechaFin(), dto.getFechaInicio()))
+                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(EMPLEADO_ID), eq(ID_TIPO_006), eq(1), any(), eq(dto.getFechaFin()), eq(dto.getFechaInicio())))
                 .thenReturn(true);
 
         assertThrows(NegocioException.class,
@@ -109,16 +115,16 @@ class SolicitudRrhhComisionDiaValidacionTest {
         SolicitudRrhhDto dto = dto(ID_TIPO_006);
 
         when(repository
-                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        EMPLEADO_ID, ID_TIPO_006, 1, dto.getFechaFin(), dto.getFechaInicio()))
+                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(EMPLEADO_ID), eq(ID_TIPO_006), eq(1), any(), eq(dto.getFechaFin()), eq(dto.getFechaInicio())))
                 .thenReturn(false);
 
         when(tipoSolicitudRepository.findByCodigo("COMISION_DIA"))
                 .thenReturn(Optional.of(tipoComisionDia()));
 
         when(repository
-                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        EMPLEADO_ID, ID_TIPO_COMISION_DIA, 1, dto.getFechaFin(), dto.getFechaInicio()))
+                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(EMPLEADO_ID), eq(ID_TIPO_COMISION_DIA), eq(1), any(), eq(dto.getFechaFin()), eq(dto.getFechaInicio())))
                 .thenReturn(true);
 
         assertThrows(NegocioException.class,
@@ -135,8 +141,8 @@ class SolicitudRrhhComisionDiaValidacionTest {
         SolicitudRrhhDto dto = dto(1L);
 
         lenient().when(repository
-                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        eq(EMPLEADO_ID), eq(1L), eq(1), any(), any()))
+                .existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(EMPLEADO_ID), eq(1L), eq(1), any(), any(), any()))
                 .thenReturn(false);
 
         assertDoesNotThrow(() -> service.validarDuplicidad(dto, otro, EMPLEADO_ID));
@@ -152,8 +158,8 @@ class SolicitudRrhhComisionDiaValidacionTest {
         SolicitudRrhhDto dto = dto(ID_TIPO_COMISION_DIA);
 
         lenient().when(repository
-                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        eq(solicitudId), eq(EMPLEADO_ID), eq(ID_TIPO_COMISION_DIA), eq(1), any(), any()))
+                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(solicitudId), eq(EMPLEADO_ID), eq(ID_TIPO_COMISION_DIA), eq(1), any(), any(), any()))
                 .thenReturn(false);
 
         when(tipoSolicitudRepository.findByCodigo("006"))
@@ -161,8 +167,8 @@ class SolicitudRrhhComisionDiaValidacionTest {
 
         // La única '006' solapada es la que se está editando (excluida por ID) → no debe bloquear.
         when(repository
-                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
-                        eq(solicitudId), eq(EMPLEADO_ID), eq(ID_TIPO_006), eq(1), any(), any()))
+                .existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+                        eq(solicitudId), eq(EMPLEADO_ID), eq(ID_TIPO_006), eq(1), any(), any(), any()))
                 .thenReturn(false);
 
         assertDoesNotThrow(() ->

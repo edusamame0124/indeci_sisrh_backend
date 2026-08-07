@@ -86,7 +86,22 @@ public interface SolicitudRrhhRepository
 	        LocalDate fechaFin,
 	        LocalDate fechaInicio
 	);
-	
+
+	/**
+	 * Variante del chequeo de duplicidad que excluye estados terminales negativos
+	 * (RECHAZADO_JEFE, RECHAZADO_RRHH, ANULADO): una papeleta descartada no debe "reservar"
+	 * el rango de fechas y bloquear que el empleado registre una nueva solicitud del mismo
+	 * tipo (RR.HH. 2026-08-07).
+	 */
+	boolean existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+	        Long empleadoId,
+	        Long tipoSolicitudId,
+	        Integer activo,
+	        List<Long> estadosExcluidos,
+	        LocalDate fechaFin,
+	        LocalDate fechaInicio
+	);
+
 	List<SolicitudRrhh>
 	findByEmpleadoIdInAndActivo(
 	        List<Long> empleadoIds,
@@ -118,6 +133,17 @@ public interface SolicitudRrhhRepository
 	        Long empleadoId,
 	        Long tipoSolicitudId,
 	        Integer activo,
+	        LocalDate fechaFin,
+	        LocalDate fechaInicio);
+
+	/** Variante de {@link #existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual}
+	 * que excluye estados terminales negativos (ver duplicado de creación de arriba). */
+	boolean existsByIdNotAndEmpleadoIdAndTipoSolicitudIdAndActivoAndEstadoSolicitudIdNotInAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
+	        Long id,
+	        Long empleadoId,
+	        Long tipoSolicitudId,
+	        Integer activo,
+	        List<Long> estadosExcluidos,
 	        LocalDate fechaFin,
 	        LocalDate fechaInicio);
 
