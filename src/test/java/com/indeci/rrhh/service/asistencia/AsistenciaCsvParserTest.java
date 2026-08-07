@@ -135,6 +135,25 @@ class AsistenciaCsvParserTest {
         assertThat(result.getFilas().get(0).getDni()).isEqualTo("08274536");
     }
 
+    /**
+     * Fix 2026-08-07: la columna "T/AS" (Tiempo Antes de Salida) del marcador debe llegar tanto
+     * a {@code tiempoAntesSalida} (preview del import) como a {@code salidaAnticipada} (el campo
+     * que realmente lee {@code AsistenciaImportService} para construir el día final) — antes solo
+     * llegaba al primero, y {@code MINUTOS_SALIDA_ANTICIPADA} quedaba en 0 siempre en producción.
+     */
+    @Test
+    void parse_columnaTAS_llenaTiempoAntesSalidaYSalidaAnticipada() {
+        String csv = "DÍA;FECHA;DNI;NOMBRE;ENT.;SAL.;MARCA1;MARCA2;T/AS\n"
+                + "Lun;20/07/2026;10002521;RIVERA ALIAGA CARLOS MANUEL;08:30;16:30;08:26;16:30;01:00\n";
+
+        var result = parser.parse(csv.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(result.getFilas()).hasSize(1);
+        MarcadorCsvRow row = result.getFilas().get(0);
+        assertThat(row.getTiempoAntesSalida()).isEqualTo("01:00");
+        assertThat(row.getSalidaAnticipada()).isEqualTo("01:00");
+    }
+
     private static String cabeceraMarcador() {
         return "DÍA;FECHA;DNI;NOMBRE;ENT.;SAL.;MARCA1;MARCA2\n";
     }

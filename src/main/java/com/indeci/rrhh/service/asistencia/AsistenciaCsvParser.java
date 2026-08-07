@@ -96,6 +96,13 @@ public class AsistenciaCsvParser {
         row.setExcesoRefrigerio(valor(headerIndices, valores, maxColumns, "E/REFRIG.", "E/REFRIG"));
         row.setTiempoRefrigerio(valor(headerIndices, valores, maxColumns, "T/REFRIG", "T/REFRIG."));
         row.setTiempoAntesSalida(valor(headerIndices, valores, maxColumns, "T/AS", "T/AS."));
+        // Fix 2026-08-07: MarcadorCsvRow.salidaAnticipada nunca se llenaba (bug preexistente) —
+        // AsistenciaImportService.construirResumenEmpleado() arma el AsistenciaDiaDto final
+        // leyendo ESTE campo (getSalidaAnticipada()), no tiempoAntesSalida, así que
+        // MINUTOS_SALIDA_ANTICIPADA quedaba en 0 para todos los días aunque el marcador sí
+        // trajera la columna "T/AS" con datos reales (ver TIEMPO_ANTES_SAL_MIN en la tabla de
+        // staging, que sí se llenaba). Mismo dato crudo, mismo formato — sin duplicar el lookup.
+        row.setSalidaAnticipada(row.getTiempoAntesSalida());
         row.setHorasTrabajadas(valor(headerIndices, valores, maxColumns, "H/TRAB.", "H/TRAB", "T/H.TRAB", "T/H.Trab"));
         row.setHorasExtra25(valor(headerIndices, valores, maxColumns, "H25%"));
         row.setHorasExtra35(valor(headerIndices, valores, maxColumns, "H35%"));
