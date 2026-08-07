@@ -78,7 +78,18 @@ public interface SolicitudRrhhRepository
 
     List<SolicitudRrhh>
     findByActivo(Integer activo);
-    
+
+    /**
+     * Bandeja de RRHH (Aprobaciones RRHH): excluye los estados que todavía NO llegaron a la
+     * etapa de RRHH — BORRADOR/PENDIENTE_FIRMA (el empleado ni las envió) y ENVIADO (las está
+     * esperando el Jefe Inmediato, no RRHH). A diferencia de la bandeja del Jefe, esta no se
+     * filtra por equipo/jefe: RRHH ve todos los empleados.
+     */
+    List<SolicitudRrhh>
+    findByActivoAndEstadoSolicitudIdNotIn(
+            Integer activo,
+            List<Long> estadosExcluidos);
+
 	boolean existsByEmpleadoIdAndTipoSolicitudIdAndActivoAndFechaInicioLessThanEqualAndFechaFinGreaterThanEqual(
 	        Long empleadoId,
 	        Long tipoSolicitudId,

@@ -1649,19 +1649,40 @@ public class SolicitudRrhhService {
         boolean esTeletrabajo =
                 "TELETRABAJO".equals(tipo.getCodigo());
 
+        // Omisión de Registro de Asistencia (004): entrada XOR salida (una sola marca
+        // faltante, no un rango) — exige exactamente una de las dos horas, nunca ambas.
+        boolean esOmision =
+                "004".equals(tipo.getCodigo());
+
         if(Integer.valueOf(1).equals(tipo.getMostrarHoras())
                 && !esLactancia
                 && !esTeletrabajo) {
 
-            if(dto.getHoraInicio() == null
-                    || dto.getHoraInicio().isBlank()) {
+            boolean tieneHoraInicio =
+                    dto.getHoraInicio() != null && !dto.getHoraInicio().isBlank();
+
+            boolean tieneHoraFin =
+                    dto.getHoraFin() != null && !dto.getHoraFin().isBlank();
+
+            if(esOmision) {
+
+                if(tieneHoraInicio == tieneHoraFin) {
+
+                    throw new NegocioException(
+                            "Debe indicar exactamente una hora: de ingreso o de salida "
+                            + "(Omisión de Registro es una marca faltante, no un rango).");
+                }
+
+                return;
+            }
+
+            if(!tieneHoraInicio) {
 
                 throw new NegocioException(
                         "Hora inicio es obligatoria");
             }
 
-            if(dto.getHoraFin() == null
-                    || dto.getHoraFin().isBlank()) {
+            if(!tieneHoraFin) {
 
                 throw new NegocioException(
                         "Hora fin es obligatoria");
@@ -3809,11 +3830,26 @@ public class SolicitudRrhhService {
                 .toList();
     }
     
+    /**
+     * Bandeja "Aprobaciones RRHH": excluye BORRADOR/PENDIENTE_FIRMA (el empleado ni las envió)
+     * y ENVIADO (las está esperando el Jefe Inmediato, no RRHH todavía) — mismo criterio que
+     * {@link #estadosNoEnviadosAunPorElEmpleado()} usa para la bandeja del Jefe, un escalón
+     * más arriba en el flujo (RR.HH. 2026-08-07: antes mostraba TODAS las papeletas activas
+     * de TODOS los estados, incluyendo borradores ajenos a RRHH).
+     */
+    private List<Long> estadosNoAptosParaRrhh() {
+        return java.util.stream.Stream.of("BORRADOR", "PENDIENTE_FIRMA", "ENVIADO")
+                .map(estadoSolicitudRepository::findByCodigo)
+                .filter(java.util.Optional::isPresent)
+                .map(o -> o.get().getId())
+                .toList();
+    }
+
     public List<SolicitudRrhhResponseDto>
     listarTodas() {
 
         return repository
-                .findByActivo(1)
+                .findByActivoAndEstadoSolicitudIdNotIn(1, estadosNoAptosParaRrhh())
                 .stream()
                 .map(this::convertir)
                 .toList();
