@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -15,6 +16,13 @@ public interface AsistenciaImportacionFilaRepository
         extends JpaRepository<AsistenciaImportacionFila, Long> {
 
     List<AsistenciaImportacionFila> findByImportacionIdOrderByNumeroFila(Long importacionId);
+
+    /**
+     * Backfill de salida anticipada (2026-08-07) — dato crudo del marcador (columna "T/AS")
+     * que sí quedó en la tabla de staging aunque nunca haya llegado al detalle final. Puede
+     * haber más de una fila por reimportaciones previas; el backfill se queda con el máximo.
+     */
+    List<AsistenciaImportacionFila> findByEmpleadoIdAndFecha(Long empleadoId, LocalDate fecha);
 
     void deleteByImportacionId(Long importacionId);
 

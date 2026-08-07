@@ -15,8 +15,10 @@ import com.indeci.rrhh.entity.Feriado;
 import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.entity.SolicitudRrhh;
 import com.indeci.rrhh.entity.TipoSolicitudRrhh;
+import com.indeci.rrhh.entity.AsistenciaImportacionFila;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
+import com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.FeriadoRepository;
@@ -84,6 +86,7 @@ public class AsistenciaService {
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
     private final FeriadoRepository feriadoRepository;
+    private final AsistenciaImportacionFilaRepository importacionFilaRepository;
     private final CalendarioLaboralService calendarioLaboralService;
 
     /** ESTADO_SOLICITUD_ID = 9 → APROBADA. */
@@ -858,6 +861,76 @@ public class AsistenciaService {
             }
         }
         return corregidas;
+    }
+
+    /**
+     * Backfill ÚNICO (independiente de los anteriores) — NO se ejecuta automáticamente.
+     * Corrige días ya persistidos que quedaron mal clasificados como {@code LABORAL}
+     * ("Presente") porque {@code AsistenciaCsvParser} nunca llenaba
+     * {@code MarcadorCsvRow.salidaAnticipada} (bug corregido 2026-08-07): el dato crudo de la
+     * columna "T/AS" del marcador SÍ se guardó en
+     * {@code INDECI_ASISTENCIA_IMPORTACION_FILA.TIEMPO_ANTES_SAL_MIN}, pero nunca llegó al
+     * detalle final ({@code MINUTOS_SALIDA_ANTICIPADA} quedaba en 0 siempre).
+     *
+     * <p>Defensivo por diseño (decisión RR.HH. 2026-08-07): solo toca un día si su
+     * {@code TIPO_DIA} sigue EXACTAMENTE en {@code LABORAL} — el síntoma preciso del bug.
+     * Nunca pisa {@code VACACIONES}, {@code LICENCIA}, {@code TARDANZA}, {@code OMISION_MARCACION}
+     * ni ningún día ya reclasificado por reconciliación o por edición manual de RR.HH.: si el
+     * día cambió de estado por cualquier otra razón, ya no es candidato y este backfill lo deja
+     * intacto.
+     *
+     * <p>Respeta el mismo guard que los backfills hermanos: no toca periodos CERRADO/APROBADO
+     * (inmutables, LEY-05). Idempotente: un día ya corregido pasa a OBSERVADO y deja de ser
+     * LABORAL, así que no vuelve a matchear en una segunda corrida.
+     */
+    @Transactional
+    public int backfillSalidaAnticipada() {
+        List<AsistenciaCabecera> activas = cabeceraRepository.findByActivo(1);
+        int corregidos = 0;
+
+        for (AsistenciaCabecera cab : activas) {
+            if (cab.getEmpleadoId() == null) {
+                continue;
+            }
+            boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                    .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                    .orElse(false);
+            if (periodoBloqueado) {
+                continue;
+            }
+
+            boolean huboCambios = false;
+            for (AsistenciaDetalle det : detalleRepository.findByCabeceraIdOrderByDia(cab.getId())) {
+                if (!"LABORAL".equals(det.getTipoDia()) || det.getDia() == null) {
+                    continue; // solo el síntoma exacto del bug — nunca pisa otro estado
+                }
+                int minutosReales = importacionFilaRepository
+                        .findByEmpleadoIdAndFecha(cab.getEmpleadoId(), det.getDia())
+                        .stream()
+                        .map(AsistenciaImportacionFila::getTiempoAntesSalMin)
+                        .filter(Objects::nonNull)
+                        .max(Integer::compareTo)
+                        .orElse(0);
+                if (minutosReales <= 0) {
+                    continue;
+                }
+                det.setTipoDia("OBSERVADO");
+                det.setMinutosSalidaAnticipada(minutosReales);
+                String obsPrevia = det.getObservacion();
+                String obsBackfill = "Actualizado por backfill de salida anticipada: el dato del "
+                        + "marcador no llegaba al detalle final por un bug de import corregido el "
+                        + "2026-08-07.";
+                det.setObservacion(
+                        obsPrevia == null || obsPrevia.isBlank() ? obsBackfill : obsPrevia + " | " + obsBackfill);
+                detalleRepository.save(det);
+                corregidos++;
+                huboCambios = true;
+            }
+            if (huboCambios) {
+                recalcularCabeceraDesdeDetalle(cab);
+            }
+        }
+        return corregidos;
     }
 
     /** Año (yyyy) del período "yyyy-MM"; null si el formato no es el esperado. */

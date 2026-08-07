@@ -69,6 +69,7 @@ class AsistenciaServiceTest {
     @Mock private PapeletaJustificacionResolver papeletaJustificacionResolver;
     @Mock private SolicitudRrhhRepository solicitudRrhhRepository;
     @Mock private FeriadoRepository feriadoRepository;
+    @Mock private com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository importacionFilaRepository;
     @Mock private com.indeci.rrhh.service.asistencia.CalendarioLaboralService calendarioLaboralService;
 
     @InjectMocks private AsistenciaService service;
@@ -998,5 +999,89 @@ class AsistenciaServiceTest {
         assertThat(corregidas).isEqualTo(0);
         verify(detalleJdbcWriter, never()).insertarLote(any());
         verify(cabeceraRepository, never()).save(any());
+    }
+
+    // ── Backfill de salida anticipada (2026-08-07) ──
+
+    private com.indeci.rrhh.entity.AsistenciaImportacionFila filaStaging(Long empleadoId, LocalDate fecha, int tiempoAntesSalMin) {
+        com.indeci.rrhh.entity.AsistenciaImportacionFila f = new com.indeci.rrhh.entity.AsistenciaImportacionFila();
+        f.setEmpleadoId(empleadoId);
+        f.setFecha(fecha);
+        f.setTiempoAntesSalMin(tiempoAntesSalMin);
+        return f;
+    }
+
+    /** Caso real (staging): DNI 10002521, 2026-07-20 — entrada 08:26, salida 16:30, 60 min T/AS, sin tardanza. */
+    @Test
+    void backfillSalidaAnticipada_corrige_LABORAL_con_dato_crudo_a_OBSERVADO() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(2024L);
+        cab.setEmpleadoId(1767L);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle diaAfectado = detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 20));
+        AsistenciaDetalle diaSinDatoCrudo = detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 21));
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(detalleRepository.findByCabeceraIdOrderByDia(2024L))
+                .thenReturn(List.of(diaAfectado, diaSinDatoCrudo));
+        when(importacionFilaRepository.findByEmpleadoIdAndFecha(1767L, LocalDate.of(2026, 7, 20)))
+                .thenReturn(List.of(filaStaging(1767L, LocalDate.of(2026, 7, 20), 60)));
+        when(importacionFilaRepository.findByEmpleadoIdAndFecha(1767L, LocalDate.of(2026, 7, 21)))
+                .thenReturn(List.of());
+
+        int corregidos = service.backfillSalidaAnticipada();
+
+        assertThat(corregidos).isEqualTo(1);
+        assertThat(diaAfectado.getTipoDia()).isEqualTo("OBSERVADO");
+        assertThat(diaAfectado.getMinutosSalidaAnticipada()).isEqualTo(60);
+        assertThat(diaAfectado.getObservacion()).contains("backfill de salida anticipada");
+        // Sin dato crudo real: no se toca aunque siga LABORAL.
+        assertThat(diaSinDatoCrudo.getTipoDia()).isEqualTo("LABORAL");
+        verify(detalleRepository).save(diaAfectado);
+        verify(detalleRepository, never()).save(diaSinDatoCrudo);
+    }
+
+    @Test
+    void backfillSalidaAnticipada_nunca_toca_dias_que_no_son_exactamente_LABORAL() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(2024L);
+        cab.setEmpleadoId(1767L);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle tardanza = detalleEnFecha("TARDANZA", LocalDate.of(2026, 7, 14));
+        AsistenciaDetalle vacaciones = detalleEnFecha("VACACIONES", LocalDate.of(2026, 7, 15));
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(detalleRepository.findByCabeceraIdOrderByDia(2024L)).thenReturn(List.of(tardanza, vacaciones));
+
+        int corregidos = service.backfillSalidaAnticipada();
+
+        assertThat(corregidos).isEqualTo(0);
+        assertThat(tardanza.getTipoDia()).isEqualTo("TARDANZA");
+        assertThat(vacaciones.getTipoDia()).isEqualTo("VACACIONES");
+        verify(importacionFilaRepository, never()).findByEmpleadoIdAndFecha(any(), any());
+        verify(detalleRepository, never()).save(any());
+    }
+
+    @Test
+    void backfillSalidaAnticipada_periodo_bloqueado_no_se_toca() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(3000L);
+        cab.setEmpleadoId(500L);
+        cab.setPeriodo("2026-07");
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoAprobado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoAprobado.setEstado("APROBADO");
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoAprobado));
+
+        int corregidos = service.backfillSalidaAnticipada();
+
+        assertThat(corregidos).isEqualTo(0);
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
     }
 }

@@ -222,4 +222,20 @@ public class AsistenciaController {
         int corregidas = service.backfillFusionarDiasHuerfanos();
         return new ApiResponse<>("OK", "Cabeceras corregidas: " + corregidas, corregidas);
     }
+
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — corrige días ya persistidos
+     * mal clasificados como LABORAL ("Presente") porque el parser del marcador nunca llenaba
+     * el campo de salida anticipada (bug corregido 2026-08-07 en AsistenciaCsvParser). Cruza
+     * contra el dato crudo aún disponible en INDECI_ASISTENCIA_IMPORTACION_FILA y SOLO toca
+     * días que siguen exactamente en LABORAL — nunca pisa Vacaciones/Licencia/Tardanza ni
+     * ediciones manuales. No toca periodos CERRADO/APROBADO. Idempotente. Gateado a
+     * SUPER_ADMIN — quitar este endpoint una vez ejecutado en cada ambiente.
+     */
+    @PostMapping("/backfill-salida-anticipada")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillSalidaAnticipada() {
+        int corregidos = service.backfillSalidaAnticipada();
+        return new ApiResponse<>("OK", "Días de salida anticipada corregidos: " + corregidos, corregidos);
+    }
 }
