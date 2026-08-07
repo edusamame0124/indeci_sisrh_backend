@@ -182,6 +182,34 @@ class PapeletaJustificacionResolverTest {
         assertThat(dia.get().getObservacion()).contains("LICENCIA CON GOCE");
     }
 
+    // ── Salida anticipada (Observado) — decisión RR.HH. 2026-08-07 ──
+
+    @Test
+    void permiso_aprobado_que_cubre_la_fecha_limpia_la_salida_anticipada_y_vuelve_a_LABORAL() {
+        SolicitudRrhh p = papeleta("008", "Permiso por lactancia",
+                LocalDate.of(2026, 7, 21), LocalDate.of(2026, 7, 21));
+
+        Optional<AsistenciaDiaDto> dia =
+                resolver.justificarSalidaAnticipada(LocalDate.of(2026, 7, 21), List.of(p));
+
+        assertThat(dia).isPresent();
+        assertThat(dia.get().getTipoDia()).isEqualTo("LABORAL");
+        assertThat(dia.get().getMinutosSalidaAnticipada()).isZero();
+        assertThat(dia.get().getMinutosTardanza()).isZero();
+        assertThat(dia.get().getOrigen()).isEqualTo("PAPELETA");
+        assertThat(dia.get().getObservacion())
+                .contains("Salida anticipada justificada por papeleta aprobada: Permiso por lactancia");
+    }
+
+    @Test
+    void sin_papeleta_que_cubra_la_fecha_no_justifica_la_salida_anticipada() {
+        SolicitudRrhh p = papeleta("008", "Permiso por lactancia",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 5));
+
+        assertThat(resolver.justificarSalidaAnticipada(LocalDate.of(2026, 7, 21), List.of(p)))
+                .isEmpty();
+    }
+
     /**
      * Bug real encontrado en auditoría: Vacaciones ("012") y Omisión ("004") NUNCA tienen
      * JUSTIFICA_ASISTENCIA=1 (V012_36 — "tienen su propio tipo de día"). Si la consulta solo

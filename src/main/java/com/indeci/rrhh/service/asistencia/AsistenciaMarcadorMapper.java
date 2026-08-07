@@ -80,7 +80,17 @@ public final class AsistenciaMarcadorMapper {
 
         if (obs.isBlank()) {
             if (entrada && salida) {
-                return minutosTardanza > 0 ? "TARDANZA" : "LABORAL";
+                if (minutosTardanza > 0) {
+                    return "TARDANZA";
+                }
+                // Petición RR.HH. (2026-08-07): marcó salida antes de su hora esperada →
+                // Observado, con los minutos sin laborar visibles (tag "Salida anticipada").
+                // No es Falta ni Tardanza: ambas marcas existen, solo que la de salida es
+                // temprana.
+                if (minutosSalidaAnticipada > 0) {
+                    return "OBSERVADO";
+                }
+                return "LABORAL";
             }
             // Regla SERVIR/INDECI: una sola marca (entrada XOR salida) = OMISION_MARCACION,
             // NO falta. Tiene gracia para presentar la papeleta 004; recién al cierre penaliza.

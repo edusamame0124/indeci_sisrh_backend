@@ -491,6 +491,46 @@ class AsistenciaServiceTest {
     }
 
     /**
+     * P3 (2026-08-07): si la cabecera existe pero su planilla ya está CERRADA/APROBADA
+     * (LEY-05, inmutable), reconciliarDetalleCabecera no toca nada — y ahora
+     * reconciliarPorPapeletaAprobada debe devolver el período como advertencia, para que
+     * SolicitudRrhhService.aprobarRrhh se lo pueda avisar a RR.HH. en vez de aprobar en
+     * silencio sin efecto real.
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_periodo_cerrado_no_reconcilia_y_devuelve_advertencia() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(270L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 13));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 16));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("012");
+        tipo.setJustificaAsistencia(1);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(999L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo("2026-07");
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoCerrado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoCerrado.setEstado("CERRADO");
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoCerrado));
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.of(cab));
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 16)))
+                .thenReturn(List.of(solicitud));
+
+        List<String> periodosBloqueados = service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        assertThat(periodosBloqueados).containsExactly("2026-07");
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
+        verify(detalleRepository, never()).save(any());
+    }
+
+    /**
      * Fase A (decisión RR.HH.): si nunca se importó un marcador para el período, la vacación
      * no puede depender de una marcación física para "existir" — se crea la cabecera desde
      * cero con los días de la papeleta ya en VACACIONES (caso feliz).

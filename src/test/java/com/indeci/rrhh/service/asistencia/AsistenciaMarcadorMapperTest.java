@@ -46,6 +46,29 @@ class AsistenciaMarcadorMapperTest {
     }
 
     @Test
+    void entradaYSalidaConSalidaAnticipada_esObservado() {
+        // Petición RR.HH. 2026-08-07: ambas marcas presentes, salida antes de lo esperado,
+        // sin tardanza → Observado (no Falta, no Tardanza).
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Lun", LocalDate.of(2026, 7, 21), "08:02", "16:15", null, null, "08:00",
+                0, 45, "");
+        assertThat(dia.getTipoDia()).isEqualTo("OBSERVADO");
+        assertThat(dia.getMinutosSalidaAnticipada()).isEqualTo(45);
+    }
+
+    @Test
+    void tardanzaTieneMayorPrioridadQueSalidaAnticipada() {
+        // Si el mismo día tiene tardanza Y salida anticipada, la Tardanza manda (regla existente
+        // de descuento con tolerancia parametrizada) — la salida anticipada queda como dato
+        // informativo (minutosSalidaAnticipada), no cambia la condición.
+        AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
+                "Lun", LocalDate.of(2026, 7, 22), "08:10", "16:15", null, null, "08:00",
+                10, 45, "");
+        assertThat(dia.getTipoDia()).isEqualTo("TARDANZA");
+        assertThat(dia.getMinutosSalidaAnticipada()).isEqualTo(45);
+    }
+
+    @Test
     void observacionVaciaSinMarcas_esObservado() {
         AsistenciaDiaDto dia = AsistenciaMarcadorMapper.toDia(
                 "Mar", LocalDate.of(2026, 5, 6), "", "", null, null, "08:00",

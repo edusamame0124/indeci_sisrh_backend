@@ -91,6 +91,18 @@ public interface SolicitudRrhhRepository
 	findByEmpleadoIdInAndActivo(
 	        List<Long> empleadoIds,
 	        Integer activo);
+
+	/**
+	 * Bandeja del Jefe Inmediato (SPEC — supervisión de papeletas): excluye los estados que
+	 * todavía pertenecen al empleado ({@code BORRADOR}/{@code PENDIENTE_FIRMA}, antes de
+	 * "Enviar"). El Jefe solo debe ver solicitudes ya enviadas con la papeleta firmada real,
+	 * nunca un borrador en progreso que aún podría no llegar a enviarse.
+	 */
+	List<SolicitudRrhh>
+	findByEmpleadoIdInAndActivoAndEstadoSolicitudIdNotIn(
+	        List<Long> empleadoIds,
+	        Integer activo,
+	        List<Long> estadosExcluidos);
 	
 	
 	List<SolicitudRrhh>

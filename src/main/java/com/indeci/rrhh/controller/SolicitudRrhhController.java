@@ -143,7 +143,7 @@ public class SolicitudRrhhController {
     
     @PreAuthorize("hasAuthority('PAP_APROBAR_RRHH')")
     @PutMapping("/aprobar-rrhh/{id}")
-    public ApiResponse<Void>
+    public ApiResponse<com.indeci.rrhh.dto.AprobarRrhhResultDto>
     aprobarRrhh(
 
             @PathVariable Long id,
@@ -156,7 +156,7 @@ public class SolicitudRrhhController {
                     required = false)
             String observacion) {
 
-        service.aprobarRrhh(
+        com.indeci.rrhh.dto.AprobarRrhhResultDto resultado = service.aprobarRrhh(
                 id,
                 file,
                 observacion);
@@ -164,7 +164,7 @@ public class SolicitudRrhhController {
         return new ApiResponse<>(
                 "OK",
                 "Solicitud aprobada por RRHH",
-                null);
+                resultado);
     }
 
   

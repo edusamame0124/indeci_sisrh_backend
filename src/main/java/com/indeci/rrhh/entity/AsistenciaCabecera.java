@@ -66,6 +66,31 @@ public class AsistenciaCabecera {
     @Column(name = "DESCUENTO_TARDANZA_MENSUAL")
     private Double descuentoTardanzaMensual = 0.0;
 
+    // ── V012_56 — agregados del modelo de dos niveles de SALIDA ANTICIPADA (espejo de arriba) ──
+    /** Minutos de días con salida anticipada > umbral diario (Descuento 1). */
+    @Column(name = "MIN_SALIDA_ANTIC_DIARIA")
+    private Integer minSalidaAnticDiaria = 0;
+
+    /** Minutos acumulados de días con salida anticipada ≤ umbral diario. */
+    @Column(name = "MIN_SALIDA_ANTIC_MENOR_ACUM")
+    private Integer minSalidaAnticMenorAcum = 0;
+
+    /** Exceso de la acumulación mensual sobre el tope (Descuento 2). */
+    @Column(name = "MIN_SALIDA_ANTIC_EXCESO_MES")
+    private Integer minSalidaAnticExcesoMes = 0;
+
+    /** Descuento por salida anticipada diaria (Descuento 1, S/). */
+    @Column(name = "DESCUENTO_SALIDA_ANTIC_DIARIA")
+    private Double descuentoSalidaAnticDiaria = 0.0;
+
+    /** Descuento por exceso mensual (Descuento 2, S/). */
+    @Column(name = "DESCUENTO_SALIDA_ANTIC_MENSUAL")
+    private Double descuentoSalidaAnticMensual = 0.0;
+
+    /** Descuento total por salida anticipada (S/) — lo que lee el motor de planilla. */
+    @Column(name = "DESCUENTO_SALIDA_ANTICIPADA")
+    private Double descuentoSalidaAnticipada = 0.0;
+
     @Column(name = "ESTADO")
     private String estado;
 

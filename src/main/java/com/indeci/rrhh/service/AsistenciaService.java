@@ -28,6 +28,7 @@ import com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator;
 import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
+import com.indeci.rrhh.service.asistencia.SalidaAnticipadaDescuentoCalculator;
 import com.indeci.rrhh.service.asistencia.TardanzaDescuentoCalculator;
 
 import java.math.BigDecimal;
@@ -531,6 +532,7 @@ public class AsistenciaService {
         cab.setDescuentoFalta(agregados.getDescuentoFalta());
 
         aplicarDescuentoTardanzaDosNiveles(cab, dias, remun);
+        aplicarDescuentoSalidaAnticipadaDosNiveles(cab, dias, remun);
         cabeceraRepository.save(cab);
     }
 
@@ -548,11 +550,17 @@ public class AsistenciaService {
      * Para tipos distintos de Vacaciones, tampoco actúa sobre meses sin cabecera de asistencia
      * cargada (nada que reconciliar). Vacaciones es la excepción (Fase A): si el mes no tiene
      * cabecera, la crea desde cero — ver {@link #crearCabeceraVacaciones}.
+     *
+     * @return los períodos (formato "yyyy-MM") en los que la papeleta NO tuvo efecto porque su
+     *     planilla ya está CERRADA/APROBADA — vacío si reconcilió todo o si no había nada que
+     *     reconciliar. Lo consume {@code SolicitudRrhhService.aprobarRrhh} para devolver una
+     *     advertencia a RR.HH. (P3, 2026-08-07): sin esto, la papeleta queda aprobada en
+     *     silencio pero sin ningún efecto sobre una asistencia/planilla ya cerrada.
      */
     @Transactional
-    public void reconciliarPorPapeletaAprobada(SolicitudRrhh solicitud, TipoSolicitudRrhh tipo) {
+    public List<String> reconciliarPorPapeletaAprobada(SolicitudRrhh solicitud, TipoSolicitudRrhh tipo) {
         if (tipo == null) {
-            return;
+            return List.of();
         }
         boolean esVacaciones = CODIGO_VACACIONES.equals(tipo.getCodigo());
         boolean justificaFalta = Integer.valueOf(1).equals(tipo.getJustificaAsistencia());
@@ -563,13 +571,13 @@ public class AsistenciaService {
         boolean autorizaTardanza = tipo.getCodigo() != null
                 && CODIGOS_PERMISO_ASISTENCIA.contains(tipo.getCodigo());
         if (!justificaFalta && !autorizaTardanza && !esVacaciones) {
-            return;
+            return List.of();
         }
         Long empleadoId = solicitud.getEmpleadoId();
         LocalDate ini = solicitud.getFechaInicio();
         LocalDate fin = solicitud.getFechaFin() != null ? solicitud.getFechaFin() : ini;
         if (empleadoId == null || ini == null) {
-            return;
+            return List.of();
         }
         // Vacaciones también necesita justificantes (para justificar() en FALTA y
         // justificarVacacionSobreMarcacion() en LABORAL/TARDANZA) aunque su tipo nunca tenga
@@ -579,13 +587,15 @@ public class AsistenciaService {
                 : List.of();
         SolicitudRrhh papeletaAutorizacion = autorizaTardanza ? solicitud : null;
         if (justificantes.isEmpty() && papeletaAutorizacion == null && !esVacaciones) {
-            return;
+            return List.of();
         }
+        List<String> periodosBloqueados = new ArrayList<>();
         for (String periodo : periodosEntre(ini, fin)) {
             Optional<AsistenciaCabecera> cab =
                     cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1);
             if (cab.isPresent()) {
-                reconciliarDetalleCabecera(cab.get(), ini, fin, justificantes, papeletaAutorizacion);
+                reconciliarDetalleCabecera(cab.get(), ini, fin, justificantes, papeletaAutorizacion)
+                        .ifPresent(periodosBloqueados::add);
             } else if (esVacaciones) {
                 // Fase A (decisión RR.HH.): la vacación no depende de que exista una marcación
                 // física para "existir" en el calendario. Si nunca se importó un marcador para
@@ -596,6 +606,7 @@ public class AsistenciaService {
                 crearCabeceraVacaciones(empleadoId, periodo, ini, fin, solicitud);
             }
         }
+        return periodosBloqueados;
     }
 
     /**
@@ -861,14 +872,19 @@ public class AsistenciaService {
         }
     }
 
-    private void reconciliarDetalleCabecera(
+    /**
+     * @return el período (cab.getPeriodo()) si estaba CERRADO/APROBADO y por eso no se
+     *     reconcilió nada; vacío en cualquier otro caso (reconcilió, o no había nada que
+     *     reconciliar).
+     */
+    private Optional<String> reconciliarDetalleCabecera(
             AsistenciaCabecera cab, LocalDate ini, LocalDate fin,
             List<SolicitudRrhh> justificantes, SolicitudRrhh papeletaAutorizacion) {
         boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
                 .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
                 .orElse(false);
         if (periodoBloqueado) {
-            return;
+            return Optional.of(cab.getPeriodo());
         }
         boolean huboCambios = false;
         for (AsistenciaDetalle det : detalleRepository.findByCabeceraIdOrderByDia(cab.getId())) {
@@ -887,6 +903,13 @@ public class AsistenciaService {
                 // física real (el trabajador no debía estar laborando ese día). No aplica a
                 // Teletrabajo/Permiso, que no tienen definida esta regla de sobrescritura.
                 justificado = papeletaJustificacionResolver.justificarVacacionSobreMarcacion(dia, justificantes);
+            } else if ("OBSERVADO".equals(tipoActual)
+                    && det.getMinutosSalidaAnticipada() != null && det.getMinutosSalidaAnticipada() > 0) {
+                // Decisión RR.HH. 2026-08-07: una papeleta de permiso (con o sin goce) aprobada
+                // que cubre la ventana horaria de la salida anticipada limpia los minutos y
+                // devuelve el día a LABORAL ("Presente") — no a PERMISO, para no mezclarlo con
+                // la condición de permiso de día completo.
+                justificado = papeletaJustificacionResolver.justificarSalidaAnticipada(dia, justificantes);
             } else {
                 justificado = Optional.empty();
             }
@@ -894,6 +917,7 @@ public class AsistenciaService {
                 AsistenciaDiaDto dto = justificado.get();
                 det.setTipoDia(dto.getTipoDia());
                 det.setMinutosTardanza(dto.getMinutosTardanza());
+                det.setMinutosSalidaAnticipada(dto.getMinutosSalidaAnticipada());
                 det.setObservacion(dto.getObservacion());
                 det.setOrigen(dto.getOrigen());
                 detalleRepository.save(det);
@@ -919,6 +943,7 @@ public class AsistenciaService {
         if (huboCambios) {
             recalcularCabeceraDesdeDetalle(cab);
         }
+        return Optional.empty();
     }
 
     /**
@@ -1005,6 +1030,39 @@ public class AsistenciaService {
         cab.setDescuentoTardanzaDiaria(split.getDescuentoDiaria());
         cab.setDescuentoTardanzaMensual(split.getDescuentoMensual());
         cab.setDescuentoTardanza(split.getDescuentoTotal());
+    }
+
+    /**
+     * Aplica el descuento de salida anticipada de dos niveles (V012_56) a la cabecera —
+     * espejo de {@link #aplicarDescuentoTardanzaDosNiveles}, con parámetros propios
+     * (decisión RR.HH. 2026-08-07: no comparte umbral/tope con tardanza). Solo cuenta los días
+     * que SIGUEN en {@code OBSERVADO}: si una papeleta ya justificó la salida anticipada
+     * (ver {@link com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver#justificarSalidaAnticipada}),
+     * el día pasa a LABORAL y queda fuera de este cálculo. {@code DESCUENTO_SALIDA_ANTICIPADA}
+     * queda como el total (D1+D2), que es lo que lee el motor de planilla.
+     */
+    private void aplicarDescuentoSalidaAnticipadaDosNiveles(
+            AsistenciaCabecera cab, List<AsistenciaDiaDto> dias, double remun) {
+        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        List<Integer> salidasAnticipadasDiarias = dias.stream()
+                .filter(d -> "OBSERVADO".equals(d.getTipoDia()) && d.getMinutosSalidaAnticipada() != null)
+                .map(AsistenciaDiaDto::getMinutosSalidaAnticipada)
+                .toList();
+        int umbral = (jornada != null && jornada.getUmbralSalidaAnticDiariaMin() != null)
+                ? jornada.getUmbralSalidaAnticDiariaMin() : 10;
+        int tope = (jornada != null && jornada.getTopeSalidaAnticMensualMin() != null)
+                ? jornada.getTopeSalidaAnticMensualMin() : 60;
+        BigDecimal jornadaHoras = (jornada != null && jornada.getJornadaHoras() != null)
+                ? jornada.getJornadaHoras() : BigDecimal.valueOf(8);
+
+        SalidaAnticipadaDescuentoCalculator.Resultado split = SalidaAnticipadaDescuentoCalculator
+                .calcular(salidasAnticipadasDiarias, remun, jornadaHoras, umbral, tope);
+        cab.setMinSalidaAnticDiaria(split.getMinSalidaAnticDiaria());
+        cab.setMinSalidaAnticMenorAcum(split.getMinSalidaAnticMenorAcum());
+        cab.setMinSalidaAnticExcesoMes(split.getMinSalidaAnticExcesoMes());
+        cab.setDescuentoSalidaAnticDiaria(split.getDescuentoDiaria());
+        cab.setDescuentoSalidaAnticMensual(split.getDescuentoMensual());
+        cab.setDescuentoSalidaAnticipada(split.getDescuentoTotal());
     }
 
     /** Jornada vigente del empleado vía su régimen en INDECI_EMPLEADO_PLANILLA. */
@@ -1175,6 +1233,7 @@ public class AsistenciaService {
 
         // Fix 3 — tardanza con el modelo de dos niveles (no pisar D1/D2 con single-tier).
         aplicarDescuentoTardanzaDosNiveles(cab, dias, remun);
+        aplicarDescuentoSalidaAnticipadaDosNiveles(cab, dias, remun);
 
         AsistenciaCabecera guardada = cabeceraRepository.save(cab);
 

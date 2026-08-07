@@ -949,6 +949,20 @@ public class GeneradorPlanillaService {
             total = total.add(descOmision);
         }
 
+        // Salida anticipada (P1, decisión RR.HH. 2026-08-07): marcó salida antes de lo esperado,
+        // sin justificar con papeleta — descuento de dos niveles (V012_56), mismo concepto MEF
+        // que la Falta (LEY-01: no se declara un código MEF nuevo), distinguido por la glosa.
+        BigDecimal descSalidaAnticipada = toBigDecimal(asist.getDescuentoSalidaAnticipada());
+        if (descSalidaAnticipada.signum() > 0) {
+            int minDiaria = asist.getMinSalidaAnticDiaria() != null ? asist.getMinSalidaAnticDiaria() : 0;
+            int minMenorAcum = asist.getMinSalidaAnticMenorAcum() != null ? asist.getMinSalidaAnticMenorAcum() : 0;
+            grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_DESC_FALTA), descSalidaAnticipada,
+                    "Descuento por salida anticipada ("
+                            + (minDiaria + minMenorAcum)
+                            + " min — D.Leg. 276 Art. 24)");
+            total = total.add(descSalidaAnticipada);
+        }
+
         return total;
     }
 
@@ -957,6 +971,18 @@ public class GeneradorPlanillaService {
      * momento de generar la planilla, NO están cubiertos por una papeleta 004 aprobada, y devuelve
      * su descuento como falta (remuneración/30 por día). Si hay papeleta, el día ya fue convertido
      * a ASISTENCIA_JUSTIFICADA en la carga y no llega aquí como omisión.
+     *
+     * <p>Decisión RR.HH. 2026-08-07: además de cobrar el descuento, el registro de asistencia se
+     * reescribe a {@code FALTA} en el mismo instante — así el badge de "Condición" del modal Ver
+     * Detalle deja de divergir de lo que ya se descontó en planilla. Es idempotente: en una
+     * regeneración posterior, el día ya no aparece como {@code OMISION_MARCACION} (el filtro de
+     * arriba no lo vuelve a traer), así que este método no lo vuelve a cobrar — pero como también
+     * se incrementan {@code DIAS_FALTA}/{@code DESCUENTO_FALTA} de la cabecera, el bloque normal de
+     * Falta (más arriba en {@link #calcularDescuentoAsistencia}) sí lo sigue cobrando, sin perder
+     * ni duplicar el descuento. Si una papeleta 004 llega antes de que el período quede
+     * CERRADO/APROBADO, {@code AsistenciaService.reconciliarDetalleCabecera} revierte el día con su
+     * propio guard (LEY-05) — el cambio de aquí no lo bloquea porque ese guard mira el ESTADO del
+     * período, no el TIPO_DIA de la fila.
      */
     private BigDecimal calcularDescuentoOmisionCierre(
             AsistenciaCabecera asist, Long empleadoId, String periodo) {
@@ -975,15 +1001,38 @@ public class GeneradorPlanillaService {
                 .orElse(null);
         List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
                 papeletaJustificacionResolver.cargarJustificantes(empleadoId, finPeriodo);
-        long noJustificadas = omisiones.stream()
+        List<AsistenciaDetalle> noJustificadas = omisiones.stream()
                 .filter(d -> !papeletaJustificacionResolver.omisionJustificada(d.getDia(), justificantes))
-                .count();
-        if (noJustificadas == 0) {
+                .toList();
+        if (noJustificadas.isEmpty()) {
             return BigDecimal.ZERO;
         }
+
+        for (AsistenciaDetalle d : noJustificadas) {
+            d.setTipoDia("FALTA");
+            String obsPrevia = d.getObservacion();
+            String obsCierre = "Actualizado a FALTA por omisión de marcación no justificada al cierre de planilla.";
+            d.setObservacion(obsPrevia == null || obsPrevia.isBlank() ? obsCierre : obsPrevia + " | " + obsCierre);
+            asistenciaDetalleRepository.save(d);
+        }
+
         double base = asist.getRemuneracionBase() != null ? asist.getRemuneracionBase() : 0.0;
-        return toBigDecimal(com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator
-                .calcularDescuentoFalta(base, (int) noJustificadas));
+        double descuentoOmision = com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator
+                .calcularDescuentoFalta(base, noJustificadas.size());
+
+        // Mantiene la cabecera sincronizada para que una regeneración posterior no pierda el
+        // descuento (ver nota de idempotencia arriba): el día ya no vuelve a contarse como
+        // omisión, pero sí queda contado como falta "normal" desde ahora en adelante.
+        int diasFaltaPrevios = asist.getDiasFalta() != null ? asist.getDiasFalta() : 0;
+        double descuentoFaltaPrevio = asist.getDescuentoFalta() != null ? asist.getDescuentoFalta() : 0.0;
+        asist.setDiasFalta(diasFaltaPrevios + noJustificadas.size());
+        asist.setDescuentoFalta(BigDecimal.valueOf(descuentoFaltaPrevio)
+                .add(BigDecimal.valueOf(descuentoOmision))
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue());
+        asistenciaCabeceraRepository.save(asist);
+
+        return toBigDecimal(descuentoOmision);
     }
 
     /**

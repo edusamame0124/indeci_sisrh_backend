@@ -1,6 +1,7 @@
 package com.indeci.rrhh.service;
 
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.AprobarRrhhResultDto;
 import com.indeci.rrhh.dto.DocumentoAdjuntoDto;
 import com.indeci.rrhh.dto.SaldoVacacionalDto;
 import com.indeci.rrhh.dto.SolicitudCompensacionDetDto;
@@ -29,6 +30,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.IsoFields;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -2979,7 +2981,7 @@ public class SolicitudRrhhService {
     @Auditable(
             accion = "APROBAR_SOLICITUD_RRHH")
     @Transactional
-    public void aprobarRrhh(
+    public AprobarRrhhResultDto aprobarRrhh(
             Long solicitudId,
             MultipartFile file,
             String observacion) {
@@ -3153,7 +3155,8 @@ public class SolicitudRrhhService {
         // Si el tipo justifica asistencia (JUSTIFICA_ASISTENCIA=1) y algún día del rango ya
         // quedó en FALTA/OMISION_MARCACION por haberse importado antes de esta aprobación,
         // lo reconcilia ahora. Sin esto el día queda congelado en FALTA para siempre.
-        asistenciaService.reconciliarPorPapeletaAprobada(solicitud, tipoSolicitud);
+        List<String> periodosBloqueados =
+                asistenciaService.reconciliarPorPapeletaAprobada(solicitud, tipoSolicitud);
 
         // ==========================================
         // AUDITORIA
@@ -3162,6 +3165,17 @@ public class SolicitudRrhhService {
         auditoriaContext.setDetalle(
                 "Solicitud aprobada por RRHH ID: "
                         + solicitudId);
+
+        // P3 (2026-08-07): la papeleta queda aprobada igual, pero si algún período que cubría
+        // ya tenía su planilla CERRADA/APROBADA (LEY-05), no se reconcilió esa asistencia — se
+        // avisa a RR.HH. en vez de dejarlo pasar en silencio.
+        List<String> advertencias = new ArrayList<>();
+        for (String periodo : periodosBloqueados) {
+            advertencias.add(
+                    "El período " + periodo + " ya tiene planilla cerrada/aprobada: esta papeleta "
+                            + "no modificó esa asistencia ni la planilla ya generada.");
+        }
+        return new AprobarRrhhResultDto(advertencias);
     }
 
     /**
@@ -3749,11 +3763,26 @@ public class SolicitudRrhhService {
                         .toList();
 
         return repository
-                .findByEmpleadoIdInAndActivo(
+                .findByEmpleadoIdInAndActivoAndEstadoSolicitudIdNotIn(
                         empleadosIds,
-                        1)
+                        1,
+                        estadosNoEnviadosAunPorElEmpleado())
                 .stream()
                 .map(this::convertir)
+                .toList();
+    }
+
+    /**
+     * Estados que siguen bajo control del EMPLEADO (aún no le dio "Enviar" con la papeleta
+     * firmada) y por lo tanto NO deben aparecer en la bandeja del Jefe Inmediato — evita que
+     * vea (y le muestre un botón de "Aprobar y enviar a RRHH" sobre) una solicitud que el
+     * empleado todavía podría modificar o nunca llegar a enviar.
+     */
+    private List<Long> estadosNoEnviadosAunPorElEmpleado() {
+        return java.util.stream.Stream.of("BORRADOR", "PENDIENTE_FIRMA")
+                .map(estadoSolicitudRepository::findByCodigo)
+                .filter(java.util.Optional::isPresent)
+                .map(o -> o.get().getId())
                 .toList();
     }
     
@@ -3805,12 +3834,13 @@ public class SolicitudRrhhService {
                         .toList();
 
         return repository
-                .findByEmpleadoIdInAndActivo(
+                .findByEmpleadoIdInAndActivoAndEstadoSolicitudIdNotIn(
                         empleadosIds,
-                        1)
+                        1,
+                        estadosNoEnviadosAunPorElEmpleado())
                 .stream()
                 .map(this::convertir)
                 .toList();
     }
-    
+
 }

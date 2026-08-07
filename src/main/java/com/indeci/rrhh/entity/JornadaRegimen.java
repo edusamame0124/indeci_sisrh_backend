@@ -53,6 +53,14 @@ public class JornadaRegimen {
     @Column(name = "TOPE_TARDANZA_MENSUAL_MIN", nullable = false)
     private Integer topeTardanzaMensualMin = 60;
 
+    /** V012_56 — umbral diario: día con salida anticipada > este valor se descuenta completo (Descuento 1). */
+    @Column(name = "UMBRAL_SALIDA_ANTIC_DIARIA_MIN", nullable = false)
+    private Integer umbralSalidaAnticDiariaMin = 10;
+
+    /** V012_56 — tope mensual: salidas anticipadas ≤ umbral se acumulan; el exceso se descuenta (Descuento 2). */
+    @Column(name = "TOPE_SALIDA_ANTIC_MENSUAL_MIN", nullable = false)
+    private Integer topeSalidaAnticMensualMin = 60;
+
     @Column(name = "JORNADA_HORAS", nullable = false)
     private BigDecimal jornadaHoras = BigDecimal.valueOf(8);
 

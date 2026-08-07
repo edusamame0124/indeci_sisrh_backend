@@ -48,6 +48,7 @@ public class PapeletaJustificacionResolver {
     static final String TIPO_DIA_VACACIONES = "VACACIONES";
     static final String TIPO_DIA_LICENCIA = "LICENCIA";
     static final String TIPO_DIA_ASISTENCIA_JUSTIFICADA = "ASISTENCIA_JUSTIFICADA";
+    static final String TIPO_DIA_LABORAL = "LABORAL";
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /**
@@ -122,9 +123,50 @@ public class PapeletaJustificacionResolver {
         dia.setDia(fecha);
         dia.setTipoDia(TIPO_DIA_ASISTENCIA_JUSTIFICADA);
         dia.setMinutosTardanza(0);
+        dia.setMinutosSalidaAnticipada(0);
         dia.setObservacion("Omisión de marcación justificada por papeleta 004 aprobada.");
         dia.setOrigen("PAPELETA");
         return Optional.of(dia);
+    }
+
+    /**
+     * Si alguna papeleta de {@code justificantes} cubre la fecha, limpia la salida anticipada:
+     * el día vuelve a {@code LABORAL} ("Presente") con los minutos en cero — no se reclasifica
+     * a {@code PERMISO} (esa condición es para permisos de día completo, no para cubrir una
+     * ausencia parcial ya marcada). Decisión RR.HH. 2026-08-07.
+     */
+    public Optional<AsistenciaDiaDto> justificarSalidaAnticipada(
+            LocalDate fecha, List<SolicitudRrhh> justificantes) {
+        if (fecha == null || justificantes == null) {
+            return Optional.empty();
+        }
+        for (SolicitudRrhh s : justificantes) {
+            if (cubreFecha(s, fecha)) {
+                AsistenciaDiaDto dia = new AsistenciaDiaDto();
+                dia.setDia(fecha);
+                dia.setTipoDia(TIPO_DIA_LABORAL);
+                dia.setMinutosTardanza(0);
+                dia.setMinutosSalidaAnticipada(0);
+                dia.setObservacion(observacionSalidaAnticipada(s));
+                dia.setOrigen("PAPELETA");
+                return Optional.of(dia);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String observacionSalidaAnticipada(SolicitudRrhh s) {
+        TipoSolicitudRrhh tipo = s.getTipoSolicitud();
+        String nombreTipo = tipo != null && tipo.getNombre() != null ? tipo.getNombre() : "Permiso";
+        StringBuilder sb = new StringBuilder("Salida anticipada justificada por papeleta aprobada: ")
+                .append(nombreTipo);
+        if (s.getId() != null) {
+            sb.append(" N°").append(s.getId());
+        }
+        if (s.getFechaAprobacion() != null) {
+            sb.append(" (aprobada ").append(s.getFechaAprobacion().toLocalDate().format(FECHA)).append(")");
+        }
+        return sb.append('.').toString();
     }
 
     /** El día cae dentro del rango [fechaInicio, fechaFin] del permiso (o el único día). */
@@ -150,6 +192,7 @@ public class PapeletaJustificacionResolver {
         dia.setDia(fecha);
         dia.setTipoDia(tipoDiaPara(esTeletrabajo, esVacaciones, esLicencia));
         dia.setMinutosTardanza(0);
+        dia.setMinutosSalidaAnticipada(0);
         dia.setObservacion(observacion(s, tipo, esTeletrabajo, esLicencia));
         dia.setOrigen("PAPELETA");
         return dia;
@@ -199,6 +242,7 @@ public class PapeletaJustificacionResolver {
                 dia.setDia(fecha);
                 dia.setTipoDia(TIPO_DIA_VACACIONES);
                 dia.setMinutosTardanza(0);
+                dia.setMinutosSalidaAnticipada(0);
                 dia.setObservacion(observacionSobrescritura(s, tipo));
                 dia.setOrigen("PAPELETA");
                 return Optional.of(dia);
