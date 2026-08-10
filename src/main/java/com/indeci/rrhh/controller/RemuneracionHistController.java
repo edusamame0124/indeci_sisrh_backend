@@ -26,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/rrhh/empleado-planilla")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.PLA_READ)
+@PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_READ)
 public class RemuneracionHistController {
 
     private final RemuneracionHistService service;
@@ -48,7 +48,7 @@ public class RemuneracionHistController {
     }
 
     @PostMapping("/{empleadoPlanillaId}/remuneracion-hist")
-    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
     public ApiResponse<EmpleadoRemuneracionHistDto> registrar(
             @PathVariable Long empleadoPlanillaId,
             @RequestBody @Valid RemuneracionCambioInput input) {
@@ -57,7 +57,7 @@ public class RemuneracionHistController {
     }
 
     @DeleteMapping("/{empleadoPlanillaId}/remuneracion-hist/{historialId}")
-    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
     public ApiResponse<Void> eliminar(
             @PathVariable Long empleadoPlanillaId,
             @PathVariable Long historialId) {

@@ -27,6 +27,32 @@ public final class SisrhSecurityExpressions {
     public static final String PLA_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_WRITE   + "')";
     public static final String PLA_APPROVE = SA + " or hasAuthority('" + SisrhPermission.PLA_APPROVE + "')";
 
+    /**
+     * Escritura de Configuración Remunerativa y Salud/EPS del empleado — paneles del
+     * Módulo Vinculación (pantalla "Datos del Empleado"), no del módulo Planilla real
+     * (generación/aprobación/períodos, que sigue exigiendo PLA_WRITE puro). Acepta
+     * PLA_WRITE (rol PLANILLA) o EMP_WRITE (rol VINCULACION, dueño de facto de esta
+     * pantalla) — antes esos controllers exigían solo PLA_WRITE y dejaban afuera a
+     * VINCULACION, aunque el resto de paneles de la misma pantalla (Puesto, Cuenta
+     * Bancaria, Régimen Pensionario, Horario Especial) ya usan EMP_WRITE (hallazgo
+     * 2026-08-09, mismo patrón que JORNADA_READ más abajo).
+     */
+    public static final String EMP_VINCULA_WRITE = SA
+            + " or hasAuthority('" + SisrhPermission.PLA_WRITE + "')"
+            + " or hasAuthority('" + SisrhPermission.EMP_WRITE + "')";
+
+    /**
+     * Lectura de Configuración Remunerativa / Salud-EPS del empleado — hermano de
+     * EMP_VINCULA_WRITE en modo lectura. Sin esto, el panel de Vinculación no puede
+     * ni cargar los datos existentes antes de mostrar el botón de escritura (hallazgo
+     * 2026-08-09, mismo día — se detectó recién al probar en real: el POST ya
+     * funcionaba, pero el GET previo seguía devolviendo 403). Acepta PLA_READ o
+     * EMP_READ.
+     */
+    public static final String EMP_VINCULA_READ = SA
+            + " or hasAuthority('" + SisrhPermission.PLA_READ + "')"
+            + " or hasAuthority('" + SisrhPermission.EMP_READ + "')";
+
     /** Asistencia (M04) — familia propia, independiente de PLA_* y EMP_*. */
     public static final String ASI_READ    = SA + " or hasAuthority('" + SisrhPermission.ASI_READ    + "')";
     public static final String ASI_WRITE   = SA + " or hasAuthority('" + SisrhPermission.ASI_WRITE   + "')";
@@ -44,12 +70,25 @@ public final class SisrhSecurityExpressions {
      * Lectura de la configuración de jornada y tolerancias (M04). La consumen tanto
      * Planilla como Asistencia: el cálculo de tardanzas depende de ella. Antes la
      * clase entera exigía PLA_WRITE, de modo que un GET de configuración pedía
-     * permiso de ESCRITURA de planilla y dejaba fuera al rol ASISTENCIA.
-     * La escritura de esa configuración sigue siendo PLA_WRITE.
+     * permiso de ESCRITURA de planilla y dejaba fuera al rol ASISTENCIA. La
+     * escritura tiene su propia expresión hermana: {@link #JORNADA_WRITE}.
      */
     public static final String JORNADA_READ = SA
             + " or hasAuthority('" + SisrhPermission.ASI_READ + "')"
             + " or hasAuthority('" + SisrhPermission.PLA_READ + "')";
+
+    /**
+     * Escritura de la configuración de jornada y tolerancias (M04) — hermano de
+     * JORNADA_READ en modo escritura. "Jornada y tolerancias" es una pestaña propia
+     * del módulo Gestión de Asistencia (junto a Carga masiva, Consulta diaria, etc.);
+     * exigir solo PLA_WRITE dejaba al rol ASISTENCIA sin poder guardar su propia
+     * pantalla, con el mismo síntoma 403 que EMP_VINCULA_WRITE resolvió para
+     * Vinculación (hallazgo 2026-08-09, directiva: ASISTENCIA debe tener acceso
+     * completo a todo lo que está dentro de Gestión de Asistencia).
+     */
+    public static final String JORNADA_WRITE = SA
+            + " or hasAuthority('" + SisrhPermission.ASI_WRITE + "')"
+            + " or hasAuthority('" + SisrhPermission.PLA_WRITE + "')";
 
     public static final String PLA_CTS_READ    = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_READ    + "')";
     public static final String PLA_CTS_WRITE   = SA + " or hasAuthority('" + SisrhPermission.PLA_CTS_WRITE   + "')";

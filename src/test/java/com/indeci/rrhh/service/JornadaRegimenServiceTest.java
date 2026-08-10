@@ -139,6 +139,43 @@ class JornadaRegimenServiceTest {
     }
 
     @Test
+    void guardar_turnoContinuo24h_permiteIngresoIgualSalida() {
+        when(regimenRepository.findById(1L)).thenReturn(Optional.of(regimen()));
+        when(jornadaRepository.findByRegimenLaboralId(1L)).thenReturn(Optional.empty());
+        when(jornadaRepository.save(any(JornadaRegimen.class))).thenAnswer(inv -> {
+            JornadaRegimen j = inv.getArgument(0);
+            j.setId(5L);
+            return j;
+        });
+
+        JornadaRegimenDto dto = dtoValido();
+        dto.setHoraIngreso("08:30");
+        dto.setHoraSalida("08:30"); // turno continuo: cierra al día siguiente a la misma hora
+        dto.setJornadaHoras(BigDecimal.valueOf(24));
+
+        JornadaRegimenDto guardado = service.guardar(dto);
+
+        assertThat(guardado.getHoraIngreso()).isEqualTo("08:30");
+        assertThat(guardado.getHoraSalida()).isEqualTo("08:30");
+        assertThat(guardado.getJornadaHoras()).isEqualByComparingTo("24");
+    }
+
+    @Test
+    void guardar_ingresoIgualSalidaSinJornada24h_siguelanzandoExcepcion() {
+        when(regimenRepository.findById(1L)).thenReturn(Optional.of(regimen()));
+        lenient().when(jornadaRepository.findByRegimenLaboralId(1L)).thenReturn(Optional.empty());
+
+        JornadaRegimenDto dto = dtoValido();
+        dto.setHoraIngreso("08:30");
+        dto.setHoraSalida("08:30");
+        dto.setJornadaHoras(BigDecimal.valueOf(8)); // jornada normal: la excepción NO aplica
+
+        assertThatThrownBy(() -> service.guardar(dto))
+                .isInstanceOf(NegocioException.class)
+                .hasMessageContaining("salida");
+    }
+
+    @Test
     void guardar_sinRegimen_lanzaExcepcion() {
         JornadaRegimenDto dto = dtoValido();
         dto.setRegimenLaboralId(null);

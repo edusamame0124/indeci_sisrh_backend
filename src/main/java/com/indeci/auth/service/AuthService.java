@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.indeci.audit.annotation.Auditable;
@@ -28,6 +27,7 @@ import com.indeci.exception.SeguridadException;
 import com.indeci.security.captcha.TurnstileService;
 import com.indeci.security.jwt.JwtProvider;
 import com.indeci.security.otp.OtpService;
+import com.indeci.security.password.PasswordService;
 import com.indeci.security.ratelimit.LoginRateLimiter;
 import com.indeci.rrhh.entity.Persona;
 import com.indeci.rrhh.repository.PersonaRepository;
@@ -53,7 +53,7 @@ public class AuthService {
     private final UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
     private final UsuarioPermisoRepository usuarioPermisoRepository;
     private final JwtProvider jwtProvider;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
     private final TurnstileService turnstileService;
     private final LoginRateLimiter loginRateLimiter;
     private final OtpService otpService;
@@ -91,7 +91,7 @@ public class AuthService {
                 .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
 
         String rawPassword = request.getPassword() != null ? request.getPassword() : "";
-        if (!verificarClaveUsuario(user, rawPassword)) {
+        if (!passwordService.verificarClave(user, rawPassword)) {
             throw new NegocioException("Credenciales inválidas");
         }
 
@@ -367,7 +367,7 @@ public class AuthService {
             throw new NegocioException("Usuario ya cambió su contraseña");
         }
 
-        aplicarClaveCodificada(user, request.getNuevaClave());
+        passwordService.aplicarClaveCodificada(user, request.getNuevaClave());
         user.setNewClave("N");
 
         userRepository.save(user);
@@ -390,32 +390,6 @@ public class AuthService {
     // ============================
     // HELPERS
     // ============================
-    /**
-     * Valida contra PASSWORD y, si aplica, PASSWORD_HASH (cuentas legacy o migradas).
-     */
-    private boolean verificarClaveUsuario(User user, String rawPassword) {
-        if (rawPassword == null || rawPassword.isEmpty()) {
-            return false;
-        }
-        if (coincideHash(user.getPassword(), rawPassword)) {
-            return true;
-        }
-        return coincideHash(user.getPasswordHash(), rawPassword);
-    }
-
-    private boolean coincideHash(String encoded, String rawPassword) {
-        if (encoded == null || encoded.isBlank()) {
-            return false;
-        }
-        return passwordEncoder.matches(rawPassword, encoded);
-    }
-
-    private void aplicarClaveCodificada(User user, String rawPassword) {
-        String encoded = passwordEncoder.encode(rawPassword);
-        user.setPassword(encoded);
-        user.setPasswordHash(encoded);
-    }
-
     private List<String> obtenerRoles(User user) {
         List<UsuarioRol> usuarioRoles = usuarioRolRepository.findByUserId(user.getId());
         Set<String> roles = new LinkedHashSet<>();

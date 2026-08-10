@@ -52,4 +52,9 @@ public class AsistenciaDiariaRowDto {
 
     // ---- Teletrabajo ----
     private boolean tieneTeletrabajo;
+
+    // ---- Horario Especial vigente ese día (INDECI_EMPLEADO_JORNADA_EXCEPCION) ----
+    private boolean tieneHorarioEspecial;
+    private String horarioEspecialIngreso;
+    private String horarioEspecialSalida;
 }

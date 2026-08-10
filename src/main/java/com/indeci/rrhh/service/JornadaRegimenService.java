@@ -29,6 +29,14 @@ public class JornadaRegimenService {
 
     private static final Pattern HORA = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
 
+    /**
+     * Umbral de jornada (horas) a partir del cual Ingreso=Salida deja de ser un error y pasa a
+     * significar "turno continuo que cierra al día siguiente a la misma hora" (ej. guardia COEN
+     * 08:30→08:30). Directiva RIS INDECI 2026-08-09 — sin esta excepción, un turno de 24h nunca
+     * podría guardarse (la validación normal exige salida > ingreso).
+     */
+    private static final BigDecimal UMBRAL_TURNO_CONTINUO_HORAS = BigDecimal.valueOf(24);
+
     private final JornadaRegimenRepository jornadaRepository;
     private final RegimenLaboralRepository regimenRepository;
 
@@ -129,7 +137,7 @@ public class JornadaRegimenService {
         validarHora(dto.getRefrigerioInicio(), "inicio de refrigerio");
         validarHora(dto.getRefrigerioFin(), "fin de refrigerio");
 
-        if (esMayor(dto.getHoraIngreso(), dto.getHoraSalida())) {
+        if (!esTurnoContinuo24h(dto) && esMayor(dto.getHoraIngreso(), dto.getHoraSalida())) {
             throw new NegocioException("La hora de salida debe ser posterior a la de ingreso.");
         }
         if (esMayor(dto.getRefrigerioInicio(), dto.getRefrigerioFin())) {
@@ -163,6 +171,17 @@ public class JornadaRegimenService {
         Integer ma = toMinutos(a);
         Integer mb = toMinutos(b);
         return ma != null && mb != null && ma >= mb;
+    }
+
+    /** true si Ingreso=Salida (turno que cierra al día siguiente) Y la jornada es de 24h o más. */
+    private boolean esTurnoContinuo24h(JornadaRegimenDto dto) {
+        if (dto.getJornadaHoras() == null
+                || dto.getJornadaHoras().compareTo(UMBRAL_TURNO_CONTINUO_HORAS) < 0) {
+            return false;
+        }
+        Integer ma = toMinutos(dto.getHoraIngreso());
+        Integer mb = toMinutos(dto.getHoraSalida());
+        return ma != null && ma.equals(mb);
     }
 
     private Integer toMinutos(String hora) {

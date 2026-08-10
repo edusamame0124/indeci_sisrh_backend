@@ -3,6 +3,7 @@ package com.indeci.rrhh.controller;
 import com.indeci.common.dto.ApiResponse;
 import com.indeci.rrhh.dto.*;
 import com.indeci.rrhh.service.EmpleadoSaludEpsService;
+import com.indeci.security.auth.SisrhSecurityExpressions;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,29 +18,33 @@ import java.util.List;
  * Gestiona la cobertura de salud (Solo EsSalud o EsSalud+EPS) por empleado.
  * El motor de planilla usa esta configuración para distribuir el aporte del empleador.
  * Normativa: D.S. 009-97-SA — aporte empleador EsSalud 9%.
+ *
+ * <p>Escritura: {@code EMP_VINCULA_WRITE} (PLA_WRITE o EMP_WRITE) — panel dentro de
+ * "Datos del Empleado" (Módulo Vinculación), no del módulo Planilla real (hallazgo
+ * 2026-08-09, mismo criterio aplicado en {@code EmpleadoPlanillaController}).
  */
 @RestController
 @RequestMapping("/api/rrhh/empleados/{empleadoId}/salud-eps")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('PLA_WRITE')")
+@PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
 public class EmpleadoSaludEpsController {
 
     private final EmpleadoSaludEpsService service;
 
     @GetMapping("/eps")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('PLA_WRITE') or hasAuthority('PLA_READ')")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_READ)
     public ApiResponse<List<EpsDto>> listarEps() {
         return new ApiResponse<>("OK", "Catálogo EPS", service.listarEps());
     }
 
     @GetMapping("/actual")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('PLA_WRITE') or hasAuthority('PLA_READ')")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_READ)
     public ApiResponse<EmpleadoSaludEpsDto> actual(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Cobertura actual", service.actual(empleadoId));
     }
 
     @GetMapping("/historial")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('PLA_WRITE') or hasAuthority('PLA_READ')")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_READ)
     public ApiResponse<List<EmpleadoSaludEpsDto>> historial(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Historial Salud/EPS", service.historial(empleadoId));
     }

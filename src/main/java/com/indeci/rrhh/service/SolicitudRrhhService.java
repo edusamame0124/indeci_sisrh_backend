@@ -79,6 +79,9 @@ public class SolicitudRrhhService {
     private final VacacionRepository vacacionRepository;
     private final FeriadoRepository feriadoRepository;
     private final AsistenciaService asistenciaService;
+    // Single Source of Truth para la jornada efectiva (régimen u Horario Especial) — usado
+    // para descontar el refrigerio del cálculo de horas de los permisos (hallazgo 2026-08-09).
+    private final com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver jornadaResolver;
     //private static final String TIPO_VACACIONES = "VAC";
     
 
@@ -95,6 +98,28 @@ public class SolicitudRrhhService {
             // no está habilitado para teletrabajo, sin propagar error al dashboard.
             return false;
         }
+    }
+
+    /**
+     * Refrigerio vigente del empleado logueado en una fecha (régimen u Horario Especial) —
+     * alimenta el cálculo de horas efectivas en el frontend de papeletas, para que el
+     * usuario vea el mismo número que el backend va a persistir.
+     */
+    public com.indeci.rrhh.dto.MiJornadaRefrigerioDto miRefrigerio(LocalDate fecha) {
+        com.indeci.rrhh.dto.MiJornadaRefrigerioDto dto =
+                new com.indeci.rrhh.dto.MiJornadaRefrigerioDto();
+        try {
+            Long empleadoId = obtenerEmpleadoActual();
+            JornadaRegimen jornada = jornadaResolver.resolverParaFecha(empleadoId, fecha);
+            if (jornada != null) {
+                dto.setRefrigerioInicio(jornada.getRefrigerioInicio());
+                dto.setRefrigerioFin(jornada.getRefrigerioFin());
+            }
+        } catch (RuntimeException ex) {
+            // Principal sin empleado asociado, o sin jornada configurada: sin refrigerio
+            // que descontar — el frontend cae al cálculo de reloj puro, igual que el backend.
+        }
+        return dto;
     }
 
     private boolean esTeletrabajador(Long empleadoId) {
@@ -160,7 +185,8 @@ public class SolicitudRrhhService {
         
         guardarDetalleCompensacion(
         		entity.getId(),
-                dto);
+                dto,
+                empleadoId);
 
         // Papeleta de Teletrabajo (Ley N° 31572): actividades del día.
         guardarDetalleTeletrabajo(
@@ -315,9 +341,11 @@ public class SolicitudRrhhService {
                     .save(entity);
         }
     }
-    private void guardarDetalleCompensacion(
+    // Package-private para probar la integridad del recálculo server-side de horas.
+    void guardarDetalleCompensacion(
             Long solicitudId,
-            SolicitudRrhhDto dto) {
+            SolicitudRrhhDto dto,
+            Long empleadoId) {
 
         if(dto.getDetallesCompensacion() == null
                 || dto.getDetallesCompensacion()
@@ -343,8 +371,16 @@ public class SolicitudRrhhService {
             entity.setHoraFin(
                     det.getHoraFin());
 
+            // Integridad de datos (2026-08-09): el backend NUNCA confía en las horas que
+            // manda el cliente — las recalcula con la misma fórmula de intersección de
+            // refrigerio que el permiso principal, para que nadie pueda inflar/reducir el
+            // cronograma de compensación llamando la API directamente.
             entity.setCantidadHoras(
-                    det.getCantidadHoras());
+                    calcularHoras(
+                            empleadoId,
+                            det.getFechaCompensacion(),
+                            det.getHoraInicio(),
+                            det.getHoraFin()));
 
             entity.setActivo(1);
 
@@ -989,7 +1025,8 @@ public class SolicitudRrhhService {
 
         validarLactancia(
                 dto,
-                tipo);
+                tipo,
+                empleadoId);
         completarFechasLactancia(
                 dto,
                 tipo);
@@ -1261,7 +1298,8 @@ public class SolicitudRrhhService {
     
     private void validarLactancia(
             SolicitudRrhhDto dto,
-            TipoSolicitudRrhh tipo) {
+            TipoSolicitudRrhh tipo,
+            Long empleadoId) {
 
         boolean esLactancia =
                 "008".equals(tipo.getCodigo())
@@ -1270,7 +1308,7 @@ public class SolicitudRrhhService {
         if(!esLactancia){
             return;
         }
-        
+
         if(dto.getFechaNacimientoHijo() == null) {
             throw new NegocioException(
                     "Fecha nacimiento del hijo es obligatoria");
@@ -1282,10 +1320,10 @@ public class SolicitudRrhhService {
             throw new NegocioException(
                     "La fecha de nacimiento del hijo no puede ser futura");
         }
-        
-     
-        
-        
+
+
+
+
         boolean continua =
                 dto.getHoraInicio() != null
                 && !dto.getHoraInicio().isBlank()
@@ -1296,26 +1334,28 @@ public class SolicitudRrhhService {
                 dto.getMinutosIngreso() != null
                 || dto.getMinutosSalida() != null;
 
-        
-        	
-        	
-        	
+
+
+
+
         	if(!continua && !fraccionada) {
 
         	    throw new NegocioException(
         	            "Debe registrar horario o minutos fraccionados");
         	}
-        	
+
         	if(continua && fraccionada) {
 
         	    throw new NegocioException(
         	            "Debe elegir horario continuo o fraccionado, no ambos");
         	}
-        	
+
         	if(continua) {
 
         	    double horas =
         	            calcularHoras(
+        	                    empleadoId,
+        	                    dto.getFechaInicio(),
         	                    dto.getHoraInicio(),
         	                    dto.getHoraFin());
 
@@ -1324,7 +1364,7 @@ public class SolicitudRrhhService {
         	        throw new NegocioException(
         	                "El permiso por lactancia no puede exceder 1 hora diaria");
         	    }
-        	    
+
         		LocalTime inicio =
             	        LocalTime.parse(dto.getHoraInicio());
 
@@ -1832,15 +1872,17 @@ public class SolicitudRrhhService {
         calcularCantidades(
                 entity,
                 dto,
-                tipo);
+                tipo,
+                empleadoId);
 
         return entity;
     }
-    
+
     private void calcularCantidades(
             SolicitudRrhh entity,
             SolicitudRrhhDto dto,
-            TipoSolicitudRrhh tipo) {
+            TipoSolicitudRrhh tipo,
+            Long empleadoId) {
     	
     	System.out.println("codigo=" + tipo.getCodigo());
     	System.out.println("mostrarHoras=" + tipo.getMostrarHoras());
@@ -1912,16 +1954,15 @@ public class SolicitudRrhhService {
         	System.out.println("Ingrese a HORAS CALCULADAS=");
         	Double horas =
         	        calcularHoras(
+        	                empleadoId,
+        	                dto.getFechaInicio(),
         	                dto.getHoraInicio(),
         	                dto.getHoraFin());
 
         	System.out.println("HORAS CALCULADAS=" + horas);
 
 
-            entity.setCantidadHoras(
-                    calcularHoras(
-                            dto.getHoraInicio(),
-                            dto.getHoraFin()));
+            entity.setCantidadHoras(horas);
         }
     }
     // ==========================================
@@ -1995,6 +2036,8 @@ public class SolicitudRrhhService {
 
         	    double horas =
         	            calcularHoras(
+        	                    empleadoId,
+        	                    dto.getFechaInicio(),
         	                    dto.getHoraInicio(),
         	                    dto.getHoraFin());
 
@@ -2273,6 +2316,8 @@ public class SolicitudRrhhService {
 
             entity.setCantidadHoras(
                     calcularHoras(
+                            empleadoId,
+                            dto.getFechaInicio(),
                             dto.getHoraInicio(),
                             dto.getHoraFin()));
         }
@@ -2360,7 +2405,25 @@ public class SolicitudRrhhService {
         return (double) dias;
     }
     
-    private Double calcularHoras(
+    /**
+     * Horas EFECTIVAS de un permiso por horas (normativa SERVIR, directiva RR.HH.
+     * 2026-08-09): un permiso puede cruzar el horario de refrigerio del trabajador, pero
+     * ese tramo no cuenta como tiempo efectivo — se descuenta la intersección entre
+     * [horaInicio, horaFin) y el refrigerio vigente ese día (régimen u Horario Especial,
+     * vía {@link EmpleadoJornadaResolver}). Ej.: salida 12:00, ingreso 15:00, refrigerio
+     * 13:00-14:00 → 3h de reloj − 1h de refrigerio = 2h efectivas.
+     *
+     * <p>Si el empleado no tiene jornada configurada (sin régimen, o sin refrigerio
+     * definido), no hay nada que descontar y el resultado es la resta de reloj pura —
+     * igual que el comportamiento anterior a este fix, para no bloquear la papeleta por
+     * un dato de configuración ajeno al trabajador.
+     *
+     * <p>Package-private para probar la fórmula de intersección directamente, sin montar
+     * todo el flujo de {@code registrar()}.
+     */
+    Double calcularHoras(
+            Long empleadoId,
+            LocalDate fecha,
             String horaInicio,
             String horaFin) {
 
@@ -2378,13 +2441,59 @@ public class SolicitudRrhhService {
                 LocalTime.parse(
                         horaFin);
 
-        long minutos =
+        long minutosBrutos =
                 Duration.between(
                         inicio,
                         fin)
                         .toMinutes();
 
-        return minutos / 60.0;
+        if (minutosBrutos <= 0) {
+            return minutosBrutos / 60.0;
+        }
+
+        long minutosRefrigerio =
+                minutosSolapadosConRefrigerio(
+                        empleadoId, fecha, inicio, fin);
+
+        return (minutosBrutos - minutosRefrigerio) / 60.0;
+    }
+
+    /**
+     * Minutos de [inicio, fin) que caen dentro del refrigerio vigente ese día para el
+     * empleado (fórmula de intersección de rangos: max(0, min(fin) − max(inicio))).
+     */
+    private long minutosSolapadosConRefrigerio(
+            Long empleadoId, LocalDate fecha, LocalTime inicio, LocalTime fin) {
+
+        if (empleadoId == null || fecha == null) {
+            return 0;
+        }
+
+        JornadaRegimen jornada = jornadaResolver.resolverParaFecha(empleadoId, fecha);
+        if (jornada == null
+                || jornada.getRefrigerioInicio() == null
+                || jornada.getRefrigerioFin() == null) {
+            return 0;
+        }
+
+        LocalTime refrigerioInicio;
+        LocalTime refrigerioFin;
+        try {
+            refrigerioInicio = LocalTime.parse(jornada.getRefrigerioInicio());
+            refrigerioFin = LocalTime.parse(jornada.getRefrigerioFin());
+        } catch (RuntimeException ex) {
+            // Config de jornada corrupta: no bloquea la papeleta, simplemente no descuenta.
+            return 0;
+        }
+
+        LocalTime solapeInicio = inicio.isAfter(refrigerioInicio) ? inicio : refrigerioInicio;
+        LocalTime solapeFin = fin.isBefore(refrigerioFin) ? fin : refrigerioFin;
+
+        if (!solapeFin.isAfter(solapeInicio)) {
+            return 0;
+        }
+
+        return Duration.between(solapeInicio, solapeFin).toMinutes();
     }
 
     // ==========================================
@@ -3390,7 +3499,8 @@ public class SolicitudRrhhService {
 
         validarLactancia(
                 dto,
-                tipo);
+                tipo,
+                empleadoId);
         completarFechasLactancia(
                 dto,
                 tipo);
@@ -3462,7 +3572,8 @@ public class SolicitudRrhhService {
         calcularCantidades(
                 solicitud,
                 dto,
-                tipo);
+                tipo,
+                empleadoId);
 
         repository.save(
                 solicitud);
@@ -3475,7 +3586,8 @@ public class SolicitudRrhhService {
         // Teletrabajo debe sincronizar su detalle hijo, igual que ya ocurre con Vacaciones.
         actualizarDetalleCompensacion(
                 solicitudId,
-                dto);
+                dto,
+                empleadoId);
 
         actualizarDetalleTeletrabajo(
                 solicitudId,
@@ -3489,7 +3601,8 @@ public class SolicitudRrhhService {
     /** B1 — espejo de {@link #actualizarDetalleVacacion}: reemplaza el cronograma de compensación. */
     private void actualizarDetalleCompensacion(
             Long solicitudId,
-            SolicitudRrhhDto dto) {
+            SolicitudRrhhDto dto,
+            Long empleadoId) {
 
         solicitudCompensacionDetRepository
                 .deleteBySolicitudId(
@@ -3497,7 +3610,8 @@ public class SolicitudRrhhService {
 
         guardarDetalleCompensacion(
                 solicitudId,
-                dto);
+                dto,
+                empleadoId);
     }
 
     /** B1 — espejo de {@link #actualizarDetalleVacacion}: reemplaza las actividades de teletrabajo. */

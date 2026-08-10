@@ -2,7 +2,10 @@ package com.indeci.rrhh.service;
 
 import com.indeci.audit.annotation.Auditable;
 import com.indeci.audit.context.AuditoriaContext;
+import com.indeci.auth.entity.AuthRefreshToken;
+import com.indeci.auth.repository.AuthRefreshTokenRepository;
 import com.indeci.exception.NegocioException;
+import com.indeci.rrhh.dto.CambiarClavePropiaDto;
 import com.indeci.rrhh.dto.MiPerfilUpdateDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
@@ -37,7 +40,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.indeci.security.password.PasswordService;
 import com.indeci.security.util.SecurityUtil;
+import com.indeci.user.entity.User;
+import com.indeci.user.repository.UserRepository;
 
 
 @Service
@@ -57,6 +63,9 @@ public class PersonaService {
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final RegimenLaboralRepository regimenLaboralRepository;
     private final FtpService ftpService;
+    private final UserRepository userRepository;
+    private final PasswordService passwordService;
+    private final AuthRefreshTokenRepository authRefreshTokenRepository;
 
     
     
@@ -464,6 +473,55 @@ public class PersonaService {
     @Transactional
     public void actualizarFotoMiPerfil(MultipartFile file) {
         actualizarFoto(resolverEmpleadoPropio().getPersonaId(), file);
+    }
+
+    /**
+     * Autoservicio — cambio de contraseña voluntario del empleado autenticado.
+     * A diferencia de {@code AuthService.cambiarClave()} (clave temporal forzada
+     * del primer login, sin verificar clave actual), aquí SÍ se exige conocer la
+     * contraseña vigente antes de reemplazarla.
+     */
+    @Auditable(accion = "CAMBIAR_CLAVE_PROPIA")
+    @Transactional
+    public void cambiarClavePropia(CambiarClavePropiaDto dto) {
+
+        String username = SecurityUtil.getUsername();
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new NegocioException("Credenciales inválidas"));
+
+        if ("S".equalsIgnoreCase(user.getNewClave())) {
+            throw new NegocioException(
+                    "Tiene una contraseña temporal pendiente de cambio. Vuelva a iniciar sesión para completarla.");
+        }
+
+        if (!passwordService.verificarClave(user, dto.getClaveActual())) {
+            throw new NegocioException("La contraseña actual no es correcta");
+        }
+
+        if (dto.getClaveActual().equals(dto.getClaveNueva())) {
+            throw new NegocioException("La nueva contraseña debe ser distinta a la actual");
+        }
+
+        passwordService.aplicarClaveCodificada(user, dto.getClaveNueva());
+        userRepository.save(user);
+
+        revocarOtrasSesiones(username);
+    }
+
+    /** Fuerza reautenticación en el resto de sesiones/dispositivos tras el cambio de clave. */
+    private void revocarOtrasSesiones(String username) {
+
+        List<AuthRefreshToken> activos =
+                authRefreshTokenRepository.findByUsuarioAndActivo(username, "S");
+
+        for (AuthRefreshToken token : activos) {
+            token.setActivo("N");
+            token.setFechaRevocacion(LocalDateTime.now());
+            token.setMotivoRevocacion("CAMBIO_CLAVE");
+        }
+
+        authRefreshTokenRepository.saveAll(activos);
     }
 
     /** Resuelve el Empleado del usuario autenticado (claim {@code empleadoId} del JWT). */

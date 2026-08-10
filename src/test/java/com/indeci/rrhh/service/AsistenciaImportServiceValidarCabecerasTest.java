@@ -6,20 +6,18 @@ import com.indeci.rrhh.dto.AsistenciaValidacionBatchDto;
 import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.entity.AsistenciaImportacion;
-import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionRepository;
-import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
-import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvParser;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvValidator;
 import com.indeci.rrhh.service.asistencia.AsistenciaImportErroresCsvWriter;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
+import com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,6 +28,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,9 +45,9 @@ class AsistenciaImportServiceValidarCabecerasTest {
     @Mock private AsistenciaService asistenciaService;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private AsistenciaImportErroresCsvWriter erroresCsvWriter;
-    @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
-    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private EmpleadoJornadaResolver jornadaResolver;
     @Mock private AsistenciaDetalleRepository detalleRepository;
+    @Mock private com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService turno24hReconciliador;
     @Mock private ObjectMapper objectMapper;
 
     @InjectMocks private AsistenciaImportService service;
@@ -98,13 +97,11 @@ class AsistenciaImportServiceValidarCabecerasTest {
         when(cabeceraRepository.findByImportacionIdAndActivo(77L, 1)).thenReturn(List.of(cab));
 
         // Jornada + un día de 45 min (bruto) → Descuento 1 (45 > umbral 10).
-        EmpleadoPlanilla ep = new EmpleadoPlanilla();
-        ep.setRegimenLaboralId(7L);
-        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(42L, 1))
-                .thenReturn(Optional.of(ep));
         JornadaRegimen jornada = new JornadaRegimen();
         jornada.setHoraIngreso("08:00");
-        when(jornadaRegimenRepository.findByRegimenLaboralId(7L)).thenReturn(Optional.of(jornada));
+        when(jornadaResolver.regimenDe(42L)).thenReturn(jornada);
+        when(jornadaResolver.excepcionesActivas(42L)).thenReturn(List.of());
+        when(jornadaResolver.resolverParaFecha(any(), any(), any())).thenReturn(jornada);
         AsistenciaDetalle d = new AsistenciaDetalle();
         d.setTipoDia("LABORAL");
         d.setMarcaEntrada("08:45"); // 45 min bruto
@@ -139,13 +136,11 @@ class AsistenciaImportServiceValidarCabecerasTest {
 
         // Régimen del empleado → jornada CAS: ingreso 08:30 (umbral/tope/jornada
         // por defecto 10/60/8). Modelo dos niveles: NO se resta tolerancia.
-        EmpleadoPlanilla ep = new EmpleadoPlanilla();
-        ep.setRegimenLaboralId(7L);
-        when(empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(42L, 1))
-                .thenReturn(Optional.of(ep));
         JornadaRegimen jornada = new JornadaRegimen();
         jornada.setHoraIngreso("08:30");
-        when(jornadaRegimenRepository.findByRegimenLaboralId(7L)).thenReturn(Optional.of(jornada));
+        when(jornadaResolver.regimenDe(42L)).thenReturn(jornada);
+        when(jornadaResolver.excepcionesActivas(42L)).thenReturn(List.of());
+        when(jornadaResolver.resolverParaFecha(any(), any(), any())).thenReturn(jornada);
 
         // Día LABORAL con Marca1 = 08:50 → 08:50 − 08:30 = 20 min (bruto, sin tolerancia).
         AsistenciaDetalle d = new AsistenciaDetalle();

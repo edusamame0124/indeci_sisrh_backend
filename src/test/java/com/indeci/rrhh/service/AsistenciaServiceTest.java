@@ -15,7 +15,7 @@ import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.FeriadoRepository;
-import com.indeci.rrhh.repository.JornadaRegimenRepository;
+import com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
@@ -63,7 +63,7 @@ class AsistenciaServiceTest {
     @Mock private com.indeci.rrhh.service.asistencia.AsistenciaDetalleJdbcWriter detalleJdbcWriter;
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private BaseAsistenciaResolver baseResolver;
-    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private EmpleadoJornadaResolver jornadaResolver;
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
     @Mock private PeriodoPlanillaRepository periodoPlanillaRepository;
     @Mock private PapeletaJustificacionResolver papeletaJustificacionResolver;
@@ -71,6 +71,7 @@ class AsistenciaServiceTest {
     @Mock private FeriadoRepository feriadoRepository;
     @Mock private com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository importacionFilaRepository;
     @Mock private com.indeci.rrhh.service.asistencia.CalendarioLaboralService calendarioLaboralService;
+    @Mock private com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService turno24hReconciliador;
 
     @InjectMocks private AsistenciaService service;
 
@@ -1083,5 +1084,62 @@ class AsistenciaServiceTest {
 
         assertThat(corregidos).isEqualTo(0);
         verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
+    }
+
+    @Test
+    void backfillTurno24h_delegaAlReconciliadorYRecalculaCabecera_cuandoHuboCambios() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(4001L);
+        cab.setEmpleadoId(9001L);
+        cab.setPeriodo("2026-07");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(turno24hReconciliador.reconciliar(cab)).thenReturn(2);
+        when(detalleRepository.findByCabeceraIdOrderByDia(4001L))
+                .thenReturn(List.of(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 10))));
+
+        int corregidos = service.backfillTurno24h();
+
+        assertThat(corregidos).isEqualTo(2);
+        verify(turno24hReconciliador).reconciliar(cab);
+        verify(cabeceraRepository).save(cab);
+    }
+
+    @Test
+    void backfillTurno24h_sinCambios_noRecalculaCabecera() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(4002L);
+        cab.setEmpleadoId(9002L);
+        cab.setPeriodo("2026-07");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(turno24hReconciliador.reconciliar(cab)).thenReturn(0);
+
+        int corregidos = service.backfillTurno24h();
+
+        assertThat(corregidos).isEqualTo(0);
+        verify(cabeceraRepository, never()).save(any());
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
+    }
+
+    @Test
+    void backfillTurno24h_periodoBloqueado_noSeToca() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(4003L);
+        cab.setEmpleadoId(9003L);
+        cab.setPeriodo("2026-07");
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoCerrado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoCerrado.setEstado("CERRADO");
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoCerrado));
+
+        int corregidos = service.backfillTurno24h();
+
+        assertThat(corregidos).isEqualTo(0);
+        verify(turno24hReconciliador, never()).reconciliar(any());
     }
 }

@@ -105,6 +105,16 @@ public class SolicitudRrhhController {
         return new ApiResponse<>("OK", "Habilitación teletrabajo", service.esTeletrabajadorActual());
     }
 
+    /**
+     * Refrigerio vigente del empleado logueado en una fecha — alimenta el cálculo de horas
+     * efectivas en el frontend de permisos por horas (hallazgo 2026-08-09).
+     */
+    @GetMapping("/mi-refrigerio")
+    public ApiResponse<com.indeci.rrhh.dto.MiJornadaRefrigerioDto> miRefrigerio(
+            @RequestParam java.time.LocalDate fecha) {
+        return new ApiResponse<>("OK", "Refrigerio vigente", service.miRefrigerio(fecha));
+    }
+
     @PutMapping("/enviar/{id}")
     //@PreAuthorize(SisrhSecurityExpressions.EMP_WRITE)
     public ApiResponse<Void> enviar(

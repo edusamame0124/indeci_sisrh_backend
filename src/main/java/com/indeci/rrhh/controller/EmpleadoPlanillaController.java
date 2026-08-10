@@ -52,7 +52,7 @@ public class EmpleadoPlanillaController {
     }
 
     @PostMapping
-    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
     public ApiResponse<Void> guardar(@RequestBody EmpleadoPlanillaDto dto) {
         service.guardar(dto);
         return new ApiResponse<>("OK", "Planilla registrada", null);
@@ -65,19 +65,20 @@ public class EmpleadoPlanillaController {
     }
 
     @GetMapping("/{empleadoId}")
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_READ)
     public ApiResponse<List<EmpleadoPlanillaResponseDto>> listar(@PathVariable Long empleadoId) {
         return new ApiResponse<>("OK", "Planilla del empleado", service.listar(empleadoId));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
     public ApiResponse<Void> actualizar(@PathVariable Long id, @RequestBody EmpleadoPlanillaDto dto) {
         service.actualizar(id, dto);
         return new ApiResponse<>("OK", "Planilla actualizada", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+    @PreAuthorize(SisrhSecurityExpressions.EMP_VINCULA_WRITE)
     public ApiResponse<Void> eliminar(@PathVariable Long id) {
         service.eliminar(id);
         return new ApiResponse<>("OK", "Planilla desactivada", null);

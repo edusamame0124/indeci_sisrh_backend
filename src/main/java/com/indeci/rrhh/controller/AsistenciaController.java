@@ -59,9 +59,10 @@ public class AsistenciaController {
             @RequestParam(required = false) LocalDate fechaFin,
             @RequestParam(required = false) String dni,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "false") boolean soloHorarioEspecial,
             @PageableDefault(size = 10) Pageable pageable) {
         return new ApiResponse<>("OK", "Asistencia del rango",
-                service.listarDiaria(fechaInicio, fechaFin, dni, q, pageable));
+                service.listarDiaria(fechaInicio, fechaFin, dni, q, soloHorarioEspecial, pageable));
     }
 
     /**
@@ -237,5 +238,19 @@ public class AsistenciaController {
     public ApiResponse<Integer> backfillSalidaAnticipada() {
         int corregidos = service.backfillSalidaAnticipada();
         return new ApiResponse<>("OK", "Días de salida anticipada corregidos: " + corregidos, corregidos);
+    }
+
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — corrige días ya
+     * persistidos como FALTA de guardias COEN 24h (08:30→08:30) para empleados con turno 24h
+     * activo, usando el mismo reconciliador que corre en cada import nuevo. No toca periodos
+     * CERRADO/APROBADO. Idempotente. Gateado a SUPER_ADMIN — quitar este endpoint una vez
+     * ejecutado en cada ambiente.
+     */
+    @PostMapping("/backfill-turno-24h")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillTurno24h() {
+        int corregidos = service.backfillTurno24h();
+        return new ApiResponse<>("OK", "Días de turno 24h corregidos: " + corregidos, corregidos);
     }
 }

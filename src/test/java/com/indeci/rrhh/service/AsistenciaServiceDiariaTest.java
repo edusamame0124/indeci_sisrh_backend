@@ -13,7 +13,7 @@ import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
 import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
-import com.indeci.rrhh.repository.JornadaRegimenRepository;
+import com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
@@ -50,9 +50,10 @@ class AsistenciaServiceDiariaTest {
     @Mock private BaseAsistenciaResolver baseResolver;
     @Mock private SolicitudRrhhRepository solicitudRrhhRepository;
     @Mock private TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
-    @Mock private JornadaRegimenRepository jornadaRegimenRepository;
+    @Mock private EmpleadoJornadaResolver jornadaResolver;
     @Mock private EmpleadoPlanillaRepository empleadoPlanillaRepository;
     @Mock private com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
+    @Mock private com.indeci.rrhh.repository.EmpleadoJornadaExcepcionRepository empleadoJornadaExcepcionRepository;
     @Mock private com.indeci.rrhh.service.asistencia.CalendarioLaboralService calendarioLaboralService;
 
     @InjectMocks private AsistenciaService service;
@@ -71,13 +72,13 @@ class AsistenciaServiceDiariaTest {
         };
         Pageable pageable = PageRequest.of(0, 10);
         List<Object[]> content = Collections.singletonList(row);
-        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq("43872244"), eq(null), eq(pageable)))
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq("43872244"), eq(false), eq(null), eq(pageable)))
                 .thenReturn(new PageImpl<>(content, pageable, 1));
         when(tipoSolicitudRrhhRepository.findAll()).thenReturn(List.of());
 
         // fechaFin = null → consulta de un solo día (compatibilidad).
         Page<AsistenciaDiariaRowDto> page =
-                service.listarDiaria(FECHA, null, "43872244", null, pageable);
+                service.listarDiaria(FECHA, null, "43872244", null, false, pageable);
 
         assertThat(page.getTotalElements()).isEqualTo(1);
         AsistenciaDiariaRowDto dto = page.getContent().get(0);
@@ -87,9 +88,93 @@ class AsistenciaServiceDiariaTest {
         assertThat(dto.getMarcaEntrada()).isEqualTo("08:28");
     }
 
+    private Object[] filaBase(Long empleadoId, LocalDate fecha) {
+        return new Object[] {
+                10L, 20L, empleadoId, "43872244", "CHAMORRO GIAMPIETRI GIAN CARLO", fecha,
+                "08:15", "17:22", "LABORAL",
+                480, 0, "2026-06", "IMPORT_MARCADOR",
+                0, null, null, null, "08:00",
+                0, 0, 0, 0, null, null,
+                30L
+        };
+    }
+
+    private com.indeci.rrhh.entity.EmpleadoJornadaExcepcion excepcion(
+            Long empleadoId, LocalDate ini, LocalDate fin, String horaIngreso, String horaSalida) {
+        com.indeci.rrhh.entity.EmpleadoJornadaExcepcion e = new com.indeci.rrhh.entity.EmpleadoJornadaExcepcion();
+        e.setEmpleadoId(empleadoId);
+        e.setFechaInicio(ini);
+        e.setFechaFin(fin);
+        e.setHoraIngreso(horaIngreso);
+        e.setHoraSalida(horaSalida);
+        e.setDocumentoAutorizacion("Resolución Jefatural N° 1-2026");
+        e.setActivo(1);
+        return e;
+    }
+
+    @Test
+    void listarDiaria_conExcepcionVigenteEseDia_marcaChipConHoras() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Object[] row = filaBase(42L, FECHA);
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq((String) null), eq(false), eq((String) null), eq(pageable)))
+                .thenReturn(new PageImpl<>(Collections.singletonList(row), pageable, 1));
+        when(tipoSolicitudRrhhRepository.findAll()).thenReturn(List.of());
+        when(empleadoJornadaExcepcionRepository.findByEmpleadoIdInAndActivo(List.of(42L), 1))
+                .thenReturn(List.of(excepcion(42L, FECHA.minusDays(5), FECHA.plusDays(5), "09:00", "17:00")));
+
+        Page<AsistenciaDiariaRowDto> page = service.listarDiaria(FECHA, null, null, null, false, pageable);
+
+        AsistenciaDiariaRowDto dto = page.getContent().get(0);
+        assertThat(dto.isTieneHorarioEspecial()).isTrue();
+        assertThat(dto.getHorarioEspecialIngreso()).isEqualTo("09:00");
+        assertThat(dto.getHorarioEspecialSalida()).isEqualTo("17:00");
+    }
+
+    @Test
+    void listarDiaria_sinExcepcion_noMarcaChip() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Object[] row = filaBase(42L, FECHA);
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq((String) null), eq(false), eq((String) null), eq(pageable)))
+                .thenReturn(new PageImpl<>(Collections.singletonList(row), pageable, 1));
+        when(tipoSolicitudRrhhRepository.findAll()).thenReturn(List.of());
+        when(empleadoJornadaExcepcionRepository.findByEmpleadoIdInAndActivo(List.of(42L), 1))
+                .thenReturn(List.of());
+
+        Page<AsistenciaDiariaRowDto> page = service.listarDiaria(FECHA, null, null, null, false, pageable);
+
+        assertThat(page.getContent().get(0).isTieneHorarioEspecial()).isFalse();
+    }
+
+    @Test
+    void listarDiaria_excepcionFueraDeVigencia_noMarcaChip() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Object[] row = filaBase(42L, FECHA);
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq((String) null), eq(false), eq((String) null), eq(pageable)))
+                .thenReturn(new PageImpl<>(Collections.singletonList(row), pageable, 1));
+        when(tipoSolicitudRrhhRepository.findAll()).thenReturn(List.of());
+        // Excepción real, pero ya vencida antes de la fecha consultada.
+        when(empleadoJornadaExcepcionRepository.findByEmpleadoIdInAndActivo(List.of(42L), 1))
+                .thenReturn(List.of(excepcion(42L, FECHA.minusDays(30), FECHA.minusDays(10), "09:00", "17:00")));
+
+        Page<AsistenciaDiariaRowDto> page = service.listarDiaria(FECHA, null, null, null, false, pageable);
+
+        assertThat(page.getContent().get(0).isTieneHorarioEspecial()).isFalse();
+    }
+
+    @Test
+    void listarDiaria_soloHorarioEspecial_propagaFlagALaConsulta() {
+        Pageable pageable = PageRequest.of(0, 10);
+        when(detalleRepository.buscarDiariaRango(eq(FECHA), eq(FECHA), eq((String) null), eq(true), eq((String) null), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        service.listarDiaria(FECHA, null, null, null, true, pageable);
+
+        verify(detalleRepository).buscarDiariaRango(FECHA, FECHA, null, true, null, pageable);
+    }
+
     @Test
     void listarDiaria_sin_fecha_inicio_lanza_negocio() {
-        assertThatThrownBy(() -> service.listarDiaria(null, null, null, null, PageRequest.of(0, 10)))
+        assertThatThrownBy(() -> service.listarDiaria(null, null, null, null, false, PageRequest.of(0, 10)))
                 .isInstanceOf(NegocioException.class)
                 .hasMessageContaining("fecha");
     }

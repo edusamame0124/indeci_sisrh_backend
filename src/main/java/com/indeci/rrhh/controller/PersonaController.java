@@ -4,6 +4,7 @@ import com.indeci.common.dto.ApiResponse;
 import com.indeci.security.auth.SisrhSecurityExpressions;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.indeci.rrhh.dto.CambiarClavePropiaDto;
 import com.indeci.rrhh.dto.MiPerfilUpdateDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoDto;
 import com.indeci.rrhh.dto.PersonaEmpleadoResponseDto;
@@ -11,6 +12,7 @@ import com.indeci.rrhh.dto.PersonaResumenDto;
 import com.indeci.rrhh.dto.PersonaResumenPageDto;
 import com.indeci.rrhh.service.PersonaService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -167,6 +169,18 @@ public class PersonaController {
     public ApiResponse<Void> subirFotoMiPerfil(@RequestPart("file") MultipartFile file) {
         personaService.actualizarFotoMiPerfil(file);
         return new ApiResponse<>("OK", "Foto actualizada", null);
+    }
+
+    /**
+     * Autoservicio — cambio de contraseña voluntario. Exige conocer la clave actual
+     * (a diferencia de POST /api/auth/cambiar-clave, exclusivo del flujo de clave
+     * temporal forzada del primer login).
+     */
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/persona/me/clave")
+    public ApiResponse<Void> cambiarMiClave(@Valid @RequestBody CambiarClavePropiaDto dto) {
+        personaService.cambiarClavePropia(dto);
+        return new ApiResponse<>("OK", "Contraseña actualizada correctamente", null);
     }
     // DETALLE
     @GetMapping("/persona/{id}")

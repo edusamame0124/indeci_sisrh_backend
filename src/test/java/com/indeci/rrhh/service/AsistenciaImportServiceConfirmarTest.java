@@ -45,6 +45,7 @@ class AsistenciaImportServiceConfirmarTest {
     @Mock private AuditoriaContext auditoriaContext;
     @Mock private AsistenciaImportErroresCsvWriter erroresCsvWriter;
     @Mock private AsistenciaImportErroresXlsxWriter erroresXlsxWriter;
+    @Mock private com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService turno24hReconciliador;
     @Mock private ObjectMapper objectMapper;
 
     @InjectMocks private AsistenciaImportService service;

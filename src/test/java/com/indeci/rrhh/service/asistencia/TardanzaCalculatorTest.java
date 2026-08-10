@@ -54,4 +54,24 @@ class TardanzaCalculatorTest {
         // Sin Marca1 ni Marca3 no hay nada que comparar → null (fallback al reloj)
         assertThat(TardanzaCalculator.calcular(fila(null, null), jornada("08:00", "14:00", 5, 5))).isNull();
     }
+
+    /**
+     * Regresión — Horario Especial (RR.HH. 2026-08-08): mismo caso, dos jornadas distintas.
+     * El objeto "jornada" que recibe TardanzaCalculator es exactamente lo que devuelve
+     * EmpleadoJornadaResolver — sin excepción (régimen 08:00) o con excepción (07:00).
+     */
+    @Test
+    void marcaBrutoContraRegimen_sinExcepcion_07minutos() {
+        // 08:07 vs régimen 08:00 → 7 minutos brutos (sin restar tolerancia).
+        Integer min = TardanzaCalculator.calcularBruto("08:07", null, jornada("08:00", "14:00", 5, 5));
+        assertThat(min).isEqualTo(7);
+    }
+
+    @Test
+    void marcaBrutoContraHorarioEspecial_conExcepcion_67minutos() {
+        // Mismo marcaje (08:07) pero con Horario Especial vigente ese día (entra 07:00) →
+        // 67 minutos brutos, no 7 — ejemplo numérico validado con RR.HH.
+        Integer min = TardanzaCalculator.calcularBruto("08:07", null, jornada("07:00", "14:00", 5, 5));
+        assertThat(min).isEqualTo(67);
+    }
 }

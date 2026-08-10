@@ -19,6 +19,7 @@ import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.AsistenciaDetalle;
 import com.indeci.rrhh.entity.AsistenciaImportacion;
 import com.indeci.rrhh.entity.AsistenciaImportacionFila;
+import com.indeci.rrhh.entity.EmpleadoJornadaExcepcion;
 import com.indeci.rrhh.entity.EmpleadoPlanilla;
 import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.entity.PeriodoPlanilla;
@@ -27,7 +28,6 @@ import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository;
 import com.indeci.rrhh.repository.AsistenciaImportacionRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
-import com.indeci.rrhh.repository.JornadaRegimenRepository;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.service.asistencia.AsistenciaCsvParser;
 import com.indeci.rrhh.service.asistencia.AsistenciaLectorRouter;
@@ -43,6 +43,7 @@ import com.indeci.rrhh.service.asistencia.CalendarioLaboralService;
 import com.indeci.rrhh.service.asistencia.AsistenciaTiempoUtil;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResolver;
 import com.indeci.rrhh.service.asistencia.BaseAsistenciaResult;
+import com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver;
 import com.indeci.rrhh.service.asistencia.MarcadorCsvRow;
 import com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver;
 import com.indeci.rrhh.service.asistencia.TardanzaCalculator;
@@ -102,8 +103,9 @@ public class AsistenciaImportService {
     private final AsistenciaImportErroresCsvWriter erroresCsvWriter;
     private final AsistenciaImportErroresXlsxWriter erroresXlsxWriter;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
-    private final JornadaRegimenRepository jornadaRegimenRepository;
+    private final EmpleadoJornadaResolver jornadaResolver;
     private final AsistenciaDetalleRepository detalleRepository;
+    private final com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService turno24hReconciliador;
     private final CalendarioLaboralService calendarioService;
     private final PapeletaJustificacionResolver papeletaJustificacionResolver;
     private final com.indeci.rrhh.service.asistencia.AsistenciaImportFilaJdbcWriter filaJdbcWriter;
@@ -804,6 +806,7 @@ public class AsistenciaImportService {
             } else if ("VALIDADA".equals(estado)) {
                 // Re-validar: recalcula con la jornada vigente (idempotente).
                 recalcularTardanzaDesdeMarcas(cabecera);
+                turno24hReconciliador.reconciliar(cabecera);
                 refrescarDescuentos(cabecera);
                 yaValidadas++;
             } else if ("PREVALIDADA".equals(estado) || "LISTA_PARA_VALIDAR".equals(estado)) {
@@ -812,6 +815,10 @@ public class AsistenciaImportService {
                 // reales y la jornada vigente del régimen, y refresca el descuento con la
                 // base vigente, ANTES de habilitar la cabecera para el motor M05.
                 recalcularTardanzaDesdeMarcas(cabecera);
+                // Turno 24h COEN (RIS INDECI 2026-08-09): corre DESPUÉS de recalcularTardanzaDesdeMarcas
+                // (que ignora los días en FALTA, cero interferencia) — reclasifica guardias huérfanas
+                // de empleados con turno 24h vigente antes de calcular el descuento final.
+                turno24hReconciliador.reconciliar(cabecera);
                 refrescarDescuentos(cabecera);
                 validadas++;
             } else {
@@ -860,17 +867,35 @@ public class AsistenciaImportService {
     /**
      * Recalcula la asistencia de un empleado/periodo (tardanza desde marcas + descuentos)
      * sin pasar por "Validar cabeceras". Disparado desde el botón "Recalcular".
+     *
+     * <p>LEY-05 / hallazgo 2026-08-09: si el periodo ya tiene planilla CERRADO/APROBADO,
+     * este método NO debe tocar {@code INDECI_ASISTENCIA_DETALLE} — ese movimiento de
+     * planilla ya es inmutable, y recalcular igual dejaría la asistencia (lo que se ve en
+     * pantalla) desincronizada del monto ya generado/pagado en la boleta, sin que nadie lo
+     * note. Falla rápido, antes de tocar la cabecera.
      */
     @Auditable(accion = "RECALCULAR_ASISTENCIA")
     @Transactional
     public void recalcularAsistencia(Long empleadoId, String periodo) {
+        validarPeriodoRecalculable(periodo);
         AsistenciaCabecera cabecera = cabeceraRepository
                 .findByEmpleadoIdAndPeriodoAndActivo(empleadoId, periodo, 1)
                 .orElseThrow(() -> new NegocioException(
                         "No hay asistencia registrada para el empleado en este periodo."));
         recalcularTardanzaDesdeMarcas(cabecera);
+        turno24hReconciliador.reconciliar(cabecera);
         refrescarDescuentos(cabecera);
         cabeceraRepository.save(cabecera);
+    }
+
+    private void validarPeriodoRecalculable(String periodo) {
+        String estado = estadoPeriodo(periodo);
+        if ("CERRADO".equalsIgnoreCase(estado) || "APROBADO".equalsIgnoreCase(estado)) {
+            throw new NegocioException(
+                    "El periodo " + periodo + " está " + estado + ": la planilla ya está generada y "
+                            + "es inmutable, así que no se puede recalcular la asistencia. Si corresponde "
+                            + "una corrección, coordine con Planilla una nueva versión hacia adelante.");
+        }
     }
 
     /**
@@ -881,13 +906,16 @@ public class AsistenciaImportService {
      * nada y deja una advertencia (el "fallback a 0" deja de ser silencioso).
      */
     private void recalcularTardanzaDesdeMarcas(AsistenciaCabecera cabecera) {
-        JornadaRegimen jornada = jornadaDeEmpleado(cabecera.getEmpleadoId());
+        JornadaRegimen jornada = jornadaResolver.regimenDe(cabecera.getEmpleadoId());
         if (jornada == null) {
             log.warn("Asistencia empleado {} periodo {}: sin jornada configurada para su régimen; "
                     + "tardanza NO recalculada (se conserva la del marcador).",
                     cabecera.getEmpleadoId(), cabecera.getPeriodo());
             return;
         }
+        // Horario Especial (decisión RR.HH. 2026-08-08): las excepciones activas del empleado se
+        // resuelven UNA vez y se reusan por día — cada día puede caer o no dentro de su vigencia.
+        List<EmpleadoJornadaExcepcion> excepciones = jornadaResolver.excepcionesActivas(cabecera.getEmpleadoId());
         List<AsistenciaDetalle> detalles =
                 detalleRepository.findByCabeceraIdOrderByDia(cabecera.getId());
         // Modelo de dos niveles (V010_95): tardanza diaria EN BRUTO (sin restar
@@ -895,7 +923,8 @@ public class AsistenciaImportService {
         List<Integer> tardanzasDiarias = new ArrayList<>();
         for (AsistenciaDetalle d : detalles) {
             if (esDiaTrabajado(d.getTipoDia())) {
-                Integer min = TardanzaCalculator.calcularBruto(d.getMarcaEntrada(), d.getMarca3(), jornada);
+                JornadaRegimen jornadaDia = jornadaResolver.resolverParaFecha(jornada, excepciones, d.getDia());
+                Integer min = TardanzaCalculator.calcularBruto(d.getMarcaEntrada(), d.getMarca3(), jornadaDia);
                 if (min != null) {
                     d.setMinutosTardanza(min);
                     d.setTipoDia(min > 0 ? "TARDANZA" : "LABORAL");
@@ -907,6 +936,7 @@ public class AsistenciaImportService {
         }
         detalleRepository.saveAll(detalles);
 
+        // Umbral/tope/jornadaHoras siempre del RÉGIMEN — la excepción no los redefine.
         int umbral = jornada.getUmbralTardanzaDiariaMin() != null ? jornada.getUmbralTardanzaDiariaMin() : 10;
         int tope = jornada.getTopeTardanzaMensualMin() != null ? jornada.getTopeTardanzaMensualMin() : 60;
         TardanzaDescuentoCalculator.Resultado split = TardanzaDescuentoCalculator.calcular(
@@ -922,20 +952,6 @@ public class AsistenciaImportService {
         return "LABORAL".equals(tipoDia) || "TARDANZA".equals(tipoDia);
     }
 
-    /** Jornada vigente del empleado vía su régimen en INDECI_EMPLEADO_PLANILLA. */
-    private JornadaRegimen jornadaDeEmpleado(Long empleadoId) {
-        if (empleadoId == null) {
-            return null;
-        }
-        Long regimenId = empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
-                .map(EmpleadoPlanilla::getRegimenLaboralId)
-                .orElse(null);
-        if (regimenId == null) {
-            return null;
-        }
-        return jornadaRegimenRepository.findByRegimenLaboralId(regimenId).orElse(null);
-    }
-
     private void refrescarDescuentos(AsistenciaCabecera cabecera) {
         BaseAsistenciaResult base = baseResolver.resolver(cabecera.getEmpleadoId());
         if (base == null || base.getRemuneracionBase() <= 0) {
@@ -948,7 +964,7 @@ public class AsistenciaImportService {
         // recalcularTardanzaDesdeMarcas y la tasa por minuto del régimen (divisor
         // remun/30/jornada/60). DESCUENTO_TARDANZA sigue siendo el TOTAL (D1+D2),
         // que el motor de planilla lee sin cambios.
-        JornadaRegimen jornada = jornadaDeEmpleado(cabecera.getEmpleadoId());
+        JornadaRegimen jornada = jornadaResolver.regimenDe(cabecera.getEmpleadoId());
         java.math.BigDecimal jornadaHoras = (jornada != null && jornada.getJornadaHoras() != null)
                 ? jornada.getJornadaHoras()
                 : java.math.BigDecimal.valueOf(8);
@@ -1271,33 +1287,22 @@ public class AsistenciaImportService {
      * configurada o no hay marcas comparables, deja {@code null} → se usa el valor del reloj.
      */
     private void aplicarJornada(List<MarcadorCsvRow> filas) {
-        Map<Long, JornadaRegimen> jornadaPorEmpleado = new HashMap<>();
-        Map<Long, JornadaRegimen> jornadaPorRegimen = new HashMap<>();
+        Map<Long, JornadaRegimen> regimenPorEmpleado = new HashMap<>();
+        // Horario Especial (decisión RR.HH. 2026-08-08): se cachean las excepciones ACTIVAS por
+        // empleado (no varían dentro del mismo lote) y se resuelve la jornada EFECTIVA por fila,
+        // usando la fecha de esa fila — una excepción puede empezar/terminar a mitad del período.
+        Map<Long, List<EmpleadoJornadaExcepcion>> excepcionesPorEmpleado = new HashMap<>();
         for (MarcadorCsvRow row : filas) {
             Long empleadoId = row.getEmpleadoId();
             if (empleadoId == null) {
                 continue;
             }
-            if (!jornadaPorEmpleado.containsKey(empleadoId)) {
-                jornadaPorEmpleado.put(empleadoId, resolverJornada(empleadoId, jornadaPorRegimen));
-            }
-            row.setTardanzaMinCalculada(
-                    TardanzaCalculator.calcular(row, jornadaPorEmpleado.get(empleadoId)));
+            JornadaRegimen base = regimenPorEmpleado.computeIfAbsent(empleadoId, jornadaResolver::regimenDe);
+            List<EmpleadoJornadaExcepcion> excepciones =
+                    excepcionesPorEmpleado.computeIfAbsent(empleadoId, jornadaResolver::excepcionesActivas);
+            JornadaRegimen jornadaDia = jornadaResolver.resolverParaFecha(base, excepciones, row.getFecha());
+            row.setTardanzaMinCalculada(TardanzaCalculator.calcular(row, jornadaDia));
         }
-    }
-
-    private JornadaRegimen resolverJornada(Long empleadoId, Map<Long, JornadaRegimen> cachePorRegimen) {
-        Long regimenId = empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
-                .map(EmpleadoPlanilla::getRegimenLaboralId)
-                .orElse(null);
-        if (regimenId == null) {
-            return null;
-        }
-        if (!cachePorRegimen.containsKey(regimenId)) {
-            cachePorRegimen.put(regimenId,
-                    jornadaRegimenRepository.findByRegimenLaboralId(regimenId).orElse(null));
-        }
-        return cachePorRegimen.get(regimenId);
     }
 
     /** Tardanza efectiva: la recalculada por jornada o, si no hay, el valor del reloj. */

@@ -22,7 +22,7 @@ import com.indeci.rrhh.repository.AsistenciaImportacionFilaRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoRepository;
 import com.indeci.rrhh.repository.FeriadoRepository;
-import com.indeci.rrhh.repository.JornadaRegimenRepository;
+import com.indeci.rrhh.service.asistencia.EmpleadoJornadaResolver;
 import com.indeci.rrhh.repository.PeriodoPlanillaRepository;
 import com.indeci.rrhh.repository.SolicitudRrhhRepository;
 import com.indeci.rrhh.repository.TipoSolicitudRrhhRepository;
@@ -82,9 +82,11 @@ public class AsistenciaService {
     private final TipoSolicitudRrhhRepository tipoSolicitudRrhhRepository;
     private final com.indeci.rrhh.service.asistencia.PapeletaJustificacionResolver papeletaJustificacionResolver;
 
-    private final JornadaRegimenRepository jornadaRegimenRepository;
+    private final EmpleadoJornadaResolver jornadaResolver;
+    private final com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService turno24hReconciliador;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final com.indeci.rrhh.repository.TeletrabajoReporteDetRepository teletrabajoReporteDetRepository;
+    private final com.indeci.rrhh.repository.EmpleadoJornadaExcepcionRepository empleadoJornadaExcepcionRepository;
     private final FeriadoRepository feriadoRepository;
     private final AsistenciaImportacionFilaRepository importacionFilaRepository;
     private final CalendarioLaboralService calendarioLaboralService;
@@ -166,6 +168,7 @@ public class AsistenciaService {
             LocalDate fechaFin,
             String dni,
             String q,
+            boolean soloHorarioEspecial,
             Pageable pageable) {
         if (fechaInicio == null) {
             throw new NegocioException("La fecha de inicio es obligatoria.");
@@ -181,12 +184,13 @@ public class AsistenciaService {
         String dniFiltro = limpiarFiltro(dni);
         String qFiltro = limpiarFiltro(q);
         Page<AsistenciaDiariaRowDto> page = detalleRepository
-                .buscarDiariaRango(fechaInicio, fin, dniFiltro, qFiltro, pageable)
+                .buscarDiariaRango(fechaInicio, fin, dniFiltro, soloHorarioEspecial, qFiltro, pageable)
                 .map(this::mapearDiariaRow);
-        // Enriquecimiento por RANGO: cada fila se cruza con las papeletas/teletrabajo que
-        // cubren SU propia fecha (Opción A), no una fecha global.
+        // Enriquecimiento por RANGO: cada fila se cruza con las papeletas/teletrabajo/horario
+        // especial que cubren SU propia fecha (Opción A), no una fecha global.
         enriquecerPapeletas(page.getContent());
         enriquecerTeletrabajo(page.getContent());
+        enriquecerHorarioEspecial(page.getContent());
         return page;
     }
 
@@ -365,6 +369,46 @@ public class AsistenciaService {
             if (cubre) {
                 row.setTieneTeletrabajo(true);
             }
+        }
+    }
+
+    /**
+     * Marca cada fila con el Horario Especial vigente ese día (si lo hay), para el chip de
+     * Consulta Diaria y el filtro "solo con horario especial vigente" — mismo patrón que
+     * {@link #enriquecerPapeletas} / {@link #enriquecerTeletrabajo}: 1 sola consulta batch,
+     * match por fila contra la fecha propia de esa fila (no una fecha global del rango).
+     */
+    private void enriquecerHorarioEspecial(List<AsistenciaDiariaRowDto> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        List<Long> empleadoIds = rows.stream()
+                .map(AsistenciaDiariaRowDto::getEmpleadoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (empleadoIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, List<com.indeci.rrhh.entity.EmpleadoJornadaExcepcion>> excepcionesPorEmpleado =
+                empleadoJornadaExcepcionRepository.findByEmpleadoIdInAndActivo(empleadoIds, 1).stream()
+                        .collect(Collectors.groupingBy(com.indeci.rrhh.entity.EmpleadoJornadaExcepcion::getEmpleadoId));
+
+        for (AsistenciaDiariaRowDto row : rows) {
+            List<com.indeci.rrhh.entity.EmpleadoJornadaExcepcion> lista =
+                    excepcionesPorEmpleado.get(row.getEmpleadoId());
+            if (lista == null) {
+                continue;
+            }
+            lista.stream()
+                    .filter(exc -> exc.cubre(row.getFecha()))
+                    .findFirst()
+                    .ifPresent(exc -> {
+                        row.setTieneHorarioEspecial(true);
+                        row.setHorarioEspecialIngreso(exc.getHoraIngreso());
+                        row.setHorarioEspecialSalida(exc.getHoraSalida());
+                    });
         }
     }
 
@@ -933,6 +977,46 @@ public class AsistenciaService {
         return corregidos;
     }
 
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — corrige días ya
+     * persistidos como FALTA de guardias COEN 24h (08:30→08:30 del día siguiente) para
+     * empleados con turno 24h activo, aplicando el mismo reconciliador que corre en cada
+     * import nuevo ({@link com.indeci.rrhh.service.asistencia.Turno24hReconciliadorService}).
+     * Útil para meses ya cargados ANTES de que el trabajador tuviera su turno 24h registrado
+     * en el sistema, o antes de que este fix existiera (RIS INDECI 2026-08-09).
+     *
+     * <p>Respeta el mismo guard que los backfills hermanos: no toca periodos CERRADO/APROBADO
+     * (inmutables, LEY-05) — esos quedan omitidos silenciosamente, nunca bloquean el resto.
+     * Idempotente: un día ya reconciliado deja de ser FALTA, así que no vuelve a matchear en
+     * una segunda corrida.
+     *
+     * @return cantidad de días (detalle) reclasificados en total.
+     */
+    @Transactional
+    public int backfillTurno24h() {
+        List<AsistenciaCabecera> activas = cabeceraRepository.findByActivo(1);
+        int corregidos = 0;
+
+        for (AsistenciaCabecera cab : activas) {
+            if (cab.getEmpleadoId() == null) {
+                continue;
+            }
+            boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                    .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                    .orElse(false);
+            if (periodoBloqueado) {
+                continue;
+            }
+
+            int reconciliados = turno24hReconciliador.reconciliar(cab);
+            if (reconciliados > 0) {
+                recalcularCabeceraDesdeDetalle(cab);
+                corregidos += reconciliados;
+            }
+        }
+        return corregidos;
+    }
+
     /** Año (yyyy) del período "yyyy-MM"; null si el formato no es el esperado. */
     private Integer anioDePeriodo(String periodo) {
         if (periodo == null || periodo.length() < 4) {
@@ -1082,7 +1166,7 @@ public class AsistenciaService {
      */
     private void aplicarDescuentoTardanzaDosNiveles(
             AsistenciaCabecera cab, List<AsistenciaDiaDto> dias, double remun) {
-        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        JornadaRegimen jornada = jornadaResolver.regimenDe(cab.getEmpleadoId());
         List<Integer> tardanzasDiarias = dias.stream()
                 .filter(d -> "TARDANZA".equals(d.getTipoDia()) && d.getMinutosTardanza() != null)
                 .map(AsistenciaDiaDto::getMinutosTardanza)
@@ -1116,7 +1200,7 @@ public class AsistenciaService {
      */
     private void aplicarDescuentoSalidaAnticipadaDosNiveles(
             AsistenciaCabecera cab, List<AsistenciaDiaDto> dias, double remun) {
-        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        JornadaRegimen jornada = jornadaResolver.regimenDe(cab.getEmpleadoId());
         List<Integer> salidasAnticipadasDiarias = dias.stream()
                 .filter(d -> "OBSERVADO".equals(d.getTipoDia()) && d.getMinutosSalidaAnticipada() != null)
                 .map(AsistenciaDiaDto::getMinutosSalidaAnticipada)
@@ -1136,20 +1220,6 @@ public class AsistenciaService {
         cab.setDescuentoSalidaAnticDiaria(split.getDescuentoDiaria());
         cab.setDescuentoSalidaAnticMensual(split.getDescuentoMensual());
         cab.setDescuentoSalidaAnticipada(split.getDescuentoTotal());
-    }
-
-    /** Jornada vigente del empleado vía su régimen en INDECI_EMPLEADO_PLANILLA. */
-    private JornadaRegimen jornadaDeEmpleado(Long empleadoId) {
-        if (empleadoId == null) {
-            return null;
-        }
-        Long regimenId = empleadoPlanillaRepository.findFirstByEmpleadoIdAndActivo(empleadoId, 1)
-                .map(EmpleadoPlanilla::getRegimenLaboralId)
-                .orElse(null);
-        if (regimenId == null) {
-            return null;
-        }
-        return jornadaRegimenRepository.findByRegimenLaboralId(regimenId).orElse(null);
     }
 
     private AsistenciaDiaDto aDiaDto(AsistenciaDetalle det) {
@@ -1562,7 +1632,7 @@ public class AsistenciaService {
         dto.setMinTardanzaExcesoMes(cab.getMinTardanzaExcesoMes());
         dto.setDescuentoTardanzaDiaria(cab.getDescuentoTardanzaDiaria());
         dto.setDescuentoTardanzaMensual(cab.getDescuentoTardanzaMensual());
-        JornadaRegimen jornada = jornadaDeEmpleado(cab.getEmpleadoId());
+        JornadaRegimen jornada = jornadaResolver.regimenDe(cab.getEmpleadoId());
         dto.setUmbralTardanzaDiariaMin(
                 jornada != null && jornada.getUmbralTardanzaDiariaMin() != null
                         ? jornada.getUmbralTardanzaDiariaMin() : 10);

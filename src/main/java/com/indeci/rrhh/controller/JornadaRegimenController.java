@@ -15,18 +15,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Configuración de jornada y tolerancias por régimen laboral (M04).
+ * Configuración de jornada y tolerancias por régimen laboral (M04) — pestaña propia
+ * de Gestión de Asistencia.
  *
- * <p>La ESCRITURA (guardar/eliminar) sigue exigiendo {@code PLA_WRITE} por el
- * nivel de clase. La LECTURA se abre a {@code JORNADA_READ}: el módulo de
- * Asistencia necesita esta configuración para calcular tardanzas, y exigirle un
- * permiso de escritura de planilla para un GET dejaba al rol ASISTENCIA sin
- * poder operar su propia pantalla.
+ * <p>Lectura y escritura aceptan tanto {@code PLA_*} (rol PLANILLA) como {@code ASI_*}
+ * (rol ASISTENCIA, dueño de facto de esta pantalla) — hallazgo 2026-08-09: antes la
+ * escritura exigía solo PLA_WRITE y dejaba a ASISTENCIA sin poder guardar su propia
+ * configuración de jornada, con 403 pese a tener acceso pleno al resto del módulo.
  */
 @RestController
 @RequestMapping("/api/rrhh/parametros/jornada")
 @RequiredArgsConstructor
-@PreAuthorize(SisrhSecurityExpressions.PLA_WRITE)
+@PreAuthorize(SisrhSecurityExpressions.JORNADA_WRITE)
 public class JornadaRegimenController {
 
     private final JornadaRegimenService service;

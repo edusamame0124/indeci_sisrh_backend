@@ -96,12 +96,19 @@ public interface AsistenciaDetalleRepository
                AND det.dia BETWEEN :fechaInicio AND :fechaFin
                AND (:dni IS NULL OR p.dni LIKE CONCAT('%', :dni, '%'))
                AND (:q IS NULL OR UPPER(p.nombreCompleto) LIKE UPPER(CONCAT('%', :q, '%')))
+               AND (:soloHorarioEspecial = FALSE OR EXISTS (
+                       SELECT 1 FROM EmpleadoJornadaExcepcion exc
+                        WHERE exc.empleadoId = cab.empleadoId
+                          AND exc.activo = 1
+                          AND det.dia BETWEEN exc.fechaInicio AND exc.fechaFin
+                   ))
              ORDER BY p.nombreCompleto, p.dni, det.dia
             """)
     Page<Object[]> buscarDiariaRango(
             @Param("fechaInicio") LocalDate fechaInicio,
             @Param("fechaFin") LocalDate fechaFin,
             @Param("dni") String dni,
+            @Param("soloHorarioEspecial") boolean soloHorarioEspecial,
             @Param("q") String q,
             Pageable pageable);
 

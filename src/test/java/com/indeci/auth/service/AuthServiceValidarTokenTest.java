@@ -32,7 +32,7 @@ import com.indeci.user.repository.UsuarioPermisoRepository;
 import com.indeci.user.repository.UsuarioRolRepository;
 
 import io.jsonwebtoken.security.SignatureException;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import com.indeci.security.password.PasswordService;
 
 /**
  * Fase 3 SSO — Tests de {@code validarToken}. Solo necesita JwtProvider real
@@ -49,7 +49,7 @@ class AuthServiceValidarTokenTest {
     @Mock private PermisoRepository permisoRepository;
     @Mock private UsuarioPermisoDenyRepository usuarioPermisoDenyRepository;
     @Mock private UsuarioPermisoRepository usuarioPermisoRepository;
-    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private PasswordService passwordService;
     @Mock private TurnstileService turnstileService;
     @Mock private LoginRateLimiter loginRateLimiter;
     @Mock private OtpService otpService;
@@ -72,7 +72,7 @@ class AuthServiceValidarTokenTest {
                 userRepository, usuarioRolRepository, rolRepository,
                 rolPermisoRepository, permisoRepository, usuarioPermisoDenyRepository,
                 usuarioPermisoRepository, jwtProvider,
-                passwordEncoder, turnstileService, loginRateLimiter,
+                passwordService, turnstileService, loginRateLimiter,
                 otpService, authRefreshTokenRepository, usuarioSistemaService,
                 personaRepository);
 
