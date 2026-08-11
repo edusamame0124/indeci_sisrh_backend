@@ -22,6 +22,8 @@ import com.indeci.rrhh.dto.AsistenciaResponseDto;
 import com.indeci.rrhh.service.AsistenciaImportService;
 import com.indeci.rrhh.service.AsistenciaService;
 import com.indeci.rrhh.service.AsistenciaPdfService;
+import com.indeci.rrhh.service.asistencia.AsistenciaMarcacionesXlsxService;
+import com.indeci.rrhh.service.asistencia.AsistenciaMarcacionesXlsxWriter;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenPeriodoService;
 import com.indeci.rrhh.service.asistencia.AsistenciaResumenPeriodoXlsxWriter;
 import com.indeci.security.auth.SisrhSecurityExpressions;
@@ -33,6 +35,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Asistencia (M04). La autorización se declara <b>por método</b>, no a nivel de clase:
@@ -50,6 +53,8 @@ public class AsistenciaController {
     private final AsistenciaImportService importService;
     private final AsistenciaResumenPeriodoService resumenPeriodoService;
     private final AsistenciaResumenPeriodoXlsxWriter resumenPeriodoXlsxWriter;
+    private final AsistenciaMarcacionesXlsxService marcacionesXlsxService;
+    private final AsistenciaMarcacionesXlsxWriter marcacionesXlsxWriter;
 
     /** Consulta de asistencia por rango [fechaInicio, fechaFin] y filtros opcionales (DNI, nombre). */
     @GetMapping("/diaria")
@@ -60,9 +65,10 @@ public class AsistenciaController {
             @RequestParam(required = false) String dni,
             @RequestParam(required = false) String q,
             @RequestParam(required = false, defaultValue = "false") boolean soloHorarioEspecial,
+            @RequestParam(required = false) List<String> tiposDia,
             @PageableDefault(size = 10) Pageable pageable) {
         return new ApiResponse<>("OK", "Asistencia del rango",
-                service.listarDiaria(fechaInicio, fechaFin, dni, q, soloHorarioEspecial, pageable));
+                service.listarDiaria(fechaInicio, fechaFin, dni, q, soloHorarioEspecial, tiposDia, pageable));
     }
 
     /**
@@ -82,6 +88,26 @@ public class AsistenciaController {
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
         headers.setContentDisposition(ContentDisposition.attachment()
                 .filename("reporte_asistencia_" + fechaInicio + "_" + fechaFin + ".xlsx")
+                .build());
+        return ResponseEntity.ok().headers(headers).body(xlsx);
+    }
+
+    /**
+     * Reporte de marcaciones diarias (XLSX, 1 fila por día x empleado), formato institucional
+     * {@code docs/EJEMPLO REPORTE EXCEL SISTEMA.xlsx}. Usa el mismo rango de la "Consulta diaria
+     * de asistencia" — botón "Exportar marcaciones".
+     */
+    @GetMapping("/diaria/marcaciones-xlsx")
+    @PreAuthorize(SisrhSecurityExpressions.ASI_READ)
+    public ResponseEntity<byte[]> exportarMarcacionesXlsx(
+            @RequestParam LocalDate fechaInicio,
+            @RequestParam LocalDate fechaFin) {
+        byte[] xlsx = marcacionesXlsxWriter.generar(marcacionesXlsxService.generar(fechaInicio, fechaFin));
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename("marcaciones_asistencia_" + fechaInicio + "_" + fechaFin + ".xlsx")
                 .build());
         return ResponseEntity.ok().headers(headers).body(xlsx);
     }

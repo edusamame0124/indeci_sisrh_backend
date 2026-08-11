@@ -23,6 +23,7 @@ import com.indeci.admin.dto.AccesoSistemaDto;
 import com.indeci.admin.dto.AccesoSistemaPutItem;
 import com.indeci.admin.dto.AccesosPutRequest;
 import com.indeci.admin.dto.AdminPersonaLookupResponse;
+import com.indeci.admin.dto.AdminSetPasswordRequest;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserPermisoDeniesPutRequest;
@@ -32,6 +33,8 @@ import com.indeci.admin.dto.AdminUserStatusPatchRequest;
 import com.indeci.admin.dto.AdminUserSummaryResponse;
 import com.indeci.admin.dto.PermisoDeniedResponse;
 import com.indeci.audit.annotation.Auditable;
+import com.indeci.auth.entity.AuthRefreshToken;
+import com.indeci.auth.repository.AuthRefreshTokenRepository;
 import com.indeci.exception.NegocioException;
 import com.indeci.rrhh.entity.Empleado;
 import com.indeci.rrhh.entity.Persona;
@@ -82,6 +85,7 @@ public class AdminUserService {
     private final ObjectMapper objectMapper;
     private final PersonaRepository personaRepository;
     private final EmpleadoRepository empleadoRepository;
+    private final AuthRefreshTokenRepository authRefreshTokenRepository;
 
     @Value("${indeci.admin.new-user-default-role-id:}")
     private String newUserDefaultRoleIdRaw;
@@ -109,6 +113,7 @@ public class AdminUserService {
         return users.map(u -> new AdminUserSummaryResponse(
                 u.getId(),
                 u.getUsername(),
+                resolveNombreCompletoForUser(u.getId()),
                 u.getStatus(),
                 buildAccesos(u.getId())));
     }
@@ -245,6 +250,12 @@ public class AdminUserService {
                 .orElse(null);
     }
 
+    private String resolveNombreCompletoForUser(Long userId) {
+        return personaRepository.findByUserId(userId)
+                .map(Persona::getNombreCompleto)
+                .orElse(null);
+    }
+
     private String normalizeDni(String raw) {
         if (raw == null) {
             throw new NegocioException("El DNI es obligatorio");
@@ -368,6 +379,42 @@ public class AdminUserService {
                 .orElseThrow(() -> new NegocioException("Usuario no encontrado"));
         u.setNewClave("S");
         userRepository.save(u);
+    }
+
+    /**
+     * Soporte de mesa de ayuda (SUPER_ADMIN) — a diferencia de {@link #resetPassword},
+     * aquí SÍ se define una clave utilizable de inmediato (el empleado que ya no
+     * recuerda la suya no puede llegar al flujo forzado sin poder loguearse antes).
+     * Queda marcada como temporal (NEW_CLAVE='S'): el empleado deberá reemplazarla
+     * por una propia en su próximo ingreso, igual que la clave temporal de alta.
+     */
+    @Auditable(accion = "ADMIN_USER_SET_PASSWORD")
+    @Transactional
+    public void setPassword(Long id, AdminSetPasswordRequest req) {
+        User u = userRepository.findById(id)
+                .orElseThrow(() -> new NegocioException("Usuario no encontrado"));
+
+        String encoded = passwordEncoder.encode(req.getClaveNueva());
+        u.setPassword(encoded);
+        u.setPasswordHash(encoded);
+        u.setNewClave("S");
+        userRepository.save(u);
+
+        revocarSesionesActivas(u.getUsername());
+    }
+
+    /** Fuerza reautenticación del empleado en todos sus dispositivos tras el reinicio. */
+    private void revocarSesionesActivas(String username) {
+        List<AuthRefreshToken> activos =
+                authRefreshTokenRepository.findByUsuarioAndActivo(username, "S");
+
+        for (AuthRefreshToken token : activos) {
+            token.setActivo("N");
+            token.setFechaRevocacion(LocalDateTime.now());
+            token.setMotivoRevocacion("ADMIN_RESET_CLAVE");
+        }
+
+        authRefreshTokenRepository.saveAll(activos);
     }
 
     @Transactional(readOnly = true)

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.indeci.admin.dto.AdminPersonaLookupResponse;
+import com.indeci.admin.dto.AdminSetPasswordRequest;
 import com.indeci.admin.dto.AdminUserCreateRequest;
 import com.indeci.admin.dto.AdminUserDetailResponse;
 import com.indeci.admin.dto.AdminUserEmpleadoPutRequest;
@@ -91,6 +92,21 @@ public class AdminUserController {
     public ApiResponse<Void> resetPassword(@PathVariable Long id) {
         adminUserService.resetPassword(id);
         return new ApiResponse<>("OK", "Clave marcada para renovación", null);
+    }
+
+    /**
+     * Soporte de mesa de ayuda — SUPER_ADMIN define una clave temporal utilizable
+     * de inmediato para un empleado que ya no recuerda la suya. Acceso más estricto
+     * que el resto del controller (solo SUPER_ADMIN, no todo ADM_USERS).
+     */
+    @PostMapping("/{id}/clave")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Void> setPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminSetPasswordRequest body) {
+        adminUserService.setPassword(id, body);
+        return new ApiResponse<>(
+                "OK", "Contraseña temporal asignada. El usuario deberá definir una nueva al ingresar.", null);
     }
 
     /** Spec 011 / B2 — vincula (o desvincula) la cuenta con un empleado. */

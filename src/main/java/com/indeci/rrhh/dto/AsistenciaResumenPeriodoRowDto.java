@@ -39,4 +39,8 @@ public class AsistenciaResumenPeriodoRowDto {
     // ---- FALTAS ----
     private int totalFaltas;
     private double descuentoFaltas;
+
+    // ---- SALIDA ANTICIPADA (modelo espejo de TARDANZA, V012_56) ----
+    private int diasSalidaAnticipada;
+    private int minutosSalidaAnticipada;
 }

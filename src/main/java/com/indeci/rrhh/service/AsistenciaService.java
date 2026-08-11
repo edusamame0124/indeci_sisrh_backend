@@ -169,6 +169,7 @@ public class AsistenciaService {
             String dni,
             String q,
             boolean soloHorarioEspecial,
+            List<String> tiposDia,
             Pageable pageable) {
         if (fechaInicio == null) {
             throw new NegocioException("La fecha de inicio es obligatoria.");
@@ -183,8 +184,9 @@ public class AsistenciaService {
         }
         String dniFiltro = limpiarFiltro(dni);
         String qFiltro = limpiarFiltro(q);
+        List<String> tiposDiaFiltro = limpiarTiposDia(tiposDia);
         Page<AsistenciaDiariaRowDto> page = detalleRepository
-                .buscarDiariaRango(fechaInicio, fin, dniFiltro, soloHorarioEspecial, qFiltro, pageable)
+                .buscarDiariaRango(fechaInicio, fin, dniFiltro, soloHorarioEspecial, qFiltro, tiposDiaFiltro, pageable)
                 .map(this::mapearDiariaRow);
         // Enriquecimiento por RANGO: cada fila se cruza con las papeletas/teletrabajo/horario
         // especial que cubren SU propia fecha (Opción A), no una fecha global.
@@ -1250,6 +1252,19 @@ public class AsistenciaService {
             return null;
         }
         return valor.trim();
+    }
+
+    /** Valida y normaliza la lista de condiciones del filtro de consulta diaria (null = todas). */
+    private List<String> limpiarTiposDia(List<String> tiposDia) {
+        if (tiposDia == null || tiposDia.isEmpty()) {
+            return null;
+        }
+        for (String tipo : tiposDia) {
+            if (!TIPOS_DIA.contains(tipo)) {
+                throw new NegocioException("Tipo de día inválido: " + tipo);
+            }
+        }
+        return tiposDia;
     }
 
     private AsistenciaDiariaRowDto mapearDiariaRow(Object[] row) {

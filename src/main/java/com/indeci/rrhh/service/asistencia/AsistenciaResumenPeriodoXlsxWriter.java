@@ -35,6 +35,7 @@ public class AsistenciaResumenPeriodoXlsxWriter {
             "Total Minutos por descuento 1 y 2", "S/ Descuento 1 y 2",
             "Minutos Permisos particulares", "S/ Descuento por permisos particulares",
             "Total de Faltas", "Descuento por faltas",
+            "Salida Anticipada", "Horas/Minutos dejados de trabajar",
     };
 
     /** [inicio, fin] 0-based inclusive de cada grupo, para la fila de cabecera fusionada. */
@@ -119,8 +120,22 @@ public class AsistenciaResumenPeriodoXlsxWriter {
             setNum(row, c++, f.getMinutosPermisosParticulares());
             setNum(row, c++, f.getDescuentoPermisosParticulares());
             setNum(row, c++, f.getTotalFaltas());
-            setNum(row, c, f.getDescuentoFaltas());
+            setNum(row, c++, f.getDescuentoFaltas());
+            setNum(row, c++, f.getDiasSalidaAnticipada());
+            setMinutosFormateados(row, c, f.getMinutosSalidaAnticipada());
         }
+    }
+
+    /** Minutos como "Xh Ym" legible, o vacío si no hubo salida anticipada en el período. */
+    private void setMinutosFormateados(Row row, int col, int minutos) {
+        Cell cell = row.createCell(col);
+        if (minutos <= 0) {
+            cell.setCellValue("");
+            return;
+        }
+        int h = minutos / 60;
+        int m = minutos % 60;
+        cell.setCellValue(h == 0 ? m + "m" : h + "h " + m + "m");
     }
 
     private CellStyle grupoStyle(XSSFWorkbook wb) {

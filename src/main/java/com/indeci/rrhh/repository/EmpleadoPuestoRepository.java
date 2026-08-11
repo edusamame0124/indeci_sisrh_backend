@@ -45,4 +45,11 @@ public interface EmpleadoPuestoRepository extends JpaRepository<EmpleadoPuesto, 
     List<EmpleadoPuesto> findVigentesEnFecha(
             @Param("empleadoIds") List<Long> empleadoIds,
             @Param("fecha") LocalDate fecha);
+
+    /**
+     * Reporte de marcaciones diarias — todo el historial de puesto (vigente e inactivo) de los
+     * empleados indicados, en batch. El llamador resuelve la oficina vigente por la fecha propia
+     * de cada fila (distinta por día), no una fecha única de corte.
+     */
+    List<EmpleadoPuesto> findByEmpleadoIdIn(List<Long> empleadoIds);
 }

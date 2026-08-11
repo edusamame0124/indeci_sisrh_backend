@@ -102,6 +102,7 @@ public interface AsistenciaDetalleRepository
                           AND exc.activo = 1
                           AND det.dia BETWEEN exc.fechaInicio AND exc.fechaFin
                    ))
+               AND (:tiposDia IS NULL OR det.tipoDia IN :tiposDia)
              ORDER BY p.nombreCompleto, p.dni, det.dia
             """)
     Page<Object[]> buscarDiariaRango(
@@ -110,6 +111,7 @@ public interface AsistenciaDetalleRepository
             @Param("dni") String dni,
             @Param("soloHorarioEspecial") boolean soloHorarioEspecial,
             @Param("q") String q,
+            @Param("tiposDia") List<String> tiposDia,
             Pageable pageable);
 
     @Query("""
@@ -186,4 +188,19 @@ public interface AsistenciaDetalleRepository
              GROUP BY det.cabeceraId
             """)
     List<Object[]> rangoCubiertoPorCabecera(@Param("cabeceraIds") Collection<Long> cabeceraIds);
+
+    /**
+     * Reporte de asistencia consolidado por período — cantidad de días con salida
+     * anticipada (det.minutosSalidaAnticipada > 0) por cabecera, en batch. Alimenta
+     * la columna "Salida anticipada" del reporte (conteo; el total en minutos ya
+     * está persistido en {@code AsistenciaCabecera.minutosSalidaAnticipada}).
+     */
+    @Query("""
+            SELECT det.cabeceraId, COUNT(det)
+              FROM AsistenciaDetalle det
+             WHERE det.cabeceraId IN :cabeceraIds
+               AND det.minutosSalidaAnticipada > 0
+             GROUP BY det.cabeceraId
+            """)
+    List<Object[]> contarDiasConSalidaAnticipadaPorCabecera(@Param("cabeceraIds") Collection<Long> cabeceraIds);
 }

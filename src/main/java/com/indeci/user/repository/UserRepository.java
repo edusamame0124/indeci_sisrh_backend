@@ -23,7 +23,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
             select u
               from User u
-             where (:q is null or lower(u.username) like lower(concat('%', :q, '%')))
+             where (:q is null
+                    or lower(u.username) like lower(concat('%', :q, '%'))
+                    or exists (
+                        select p
+                          from Persona p
+                         where p.userId = u.id
+                           and lower(p.nombreCompleto) like lower(concat('%', :q, '%'))
+                    ))
                and (:status is null or upper(u.status) = upper(:status))
                and (
                     :sistema is null

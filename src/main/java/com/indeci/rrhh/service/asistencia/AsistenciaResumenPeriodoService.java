@@ -7,6 +7,7 @@ import com.indeci.rrhh.entity.AsistenciaCabecera;
 import com.indeci.rrhh.entity.EmpleadoPuesto;
 import com.indeci.rrhh.entity.JornadaRegimen;
 import com.indeci.rrhh.repository.AsistenciaCabeceraRepository;
+import com.indeci.rrhh.repository.AsistenciaDetalleRepository;
 import com.indeci.rrhh.repository.EmpleadoPlanillaRepository;
 import com.indeci.rrhh.repository.EmpleadoPuestoRepository;
 import com.indeci.rrhh.repository.JornadaRegimenRepository;
@@ -47,6 +48,7 @@ public class AsistenciaResumenPeriodoService {
     private static final BigDecimal JORNADA_HORAS_DEFAULT = BigDecimal.valueOf(8);
 
     private final AsistenciaCabeceraRepository cabeceraRepository;
+    private final AsistenciaDetalleRepository detalleRepository;
     private final PersonaService personaService;
     private final EmpleadoPlanillaRepository empleadoPlanillaRepository;
     private final JornadaRegimenRepository jornadaRegimenRepository;
@@ -84,6 +86,11 @@ public class AsistenciaResumenPeriodoService {
         LocalDate hastaEfectivo = finMes.isBefore(fechaFin) ? finMes : fechaFin;
 
         List<Long> empleadoIds = cabeceras.stream().map(AsistenciaCabecera::getEmpleadoId).toList();
+        List<Long> cabeceraIds = cabeceras.stream().map(AsistenciaCabecera::getId).toList();
+
+        Map<Long, Long> diasSalidaAnticipadaPorCabecera = detalleRepository
+                .contarDiasConSalidaAnticipadaPorCabecera(cabeceraIds).stream()
+                .collect(Collectors.toMap(fila -> (Long) fila[0], fila -> (Long) fila[1]));
 
         Map<Long, EmpleadoPuesto> puestoPorEmpleado = empleadoPuestoRepository
                 .findVigentesEnFecha(empleadoIds, finMes).stream()
@@ -102,13 +109,15 @@ public class AsistenciaResumenPeriodoService {
                     cab,
                     personasPorEmpleado.get(cab.getEmpleadoId()),
                     puestoPorEmpleado.get(cab.getEmpleadoId()),
-                    horasPermisoPorEmpleado.getOrDefault(cab.getEmpleadoId(), 0.0)));
+                    horasPermisoPorEmpleado.getOrDefault(cab.getEmpleadoId(), 0.0),
+                    diasSalidaAnticipadaPorCabecera.getOrDefault(cab.getId(), 0L)));
         }
         return filas;
     }
 
     private AsistenciaResumenPeriodoRowDto construirFila(
-            AsistenciaCabecera cab, PersonaResumenDto persona, EmpleadoPuesto puesto, double horasPermiso) {
+            AsistenciaCabecera cab, PersonaResumenDto persona, EmpleadoPuesto puesto, double horasPermiso,
+            long diasSalidaAnticipada) {
 
         double remun = cab.getRemuneracionBase() != null ? cab.getRemuneracionBase() : 0.0;
         BigDecimal jornadaHoras = jornadaHorasDe(cab.getEmpleadoId());
@@ -140,6 +149,9 @@ public class AsistenciaResumenPeriodoService {
 
         row.setTotalFaltas(valor(cab.getDiasFalta()));
         row.setDescuentoFaltas(valor(cab.getDescuentoFalta()));
+
+        row.setDiasSalidaAnticipada((int) diasSalidaAnticipada);
+        row.setMinutosSalidaAnticipada(valor(cab.getMinutosSalidaAnticipada()));
         return row;
     }
 
