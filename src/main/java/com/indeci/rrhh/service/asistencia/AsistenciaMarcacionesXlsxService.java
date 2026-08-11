@@ -125,7 +125,10 @@ public class AsistenciaMarcacionesXlsxService {
         row.setMarcaSalida(fila.getMarcaSalida());
         row.setHorasExtraDiaMin(horasExtraDiaSimple(
                 horarioEntrada, fila.getMarcaEntrada(), fila.getMarcaSalida(), horarioSalida));
-        row.setMinutosSalidaAnticipada(minutosSalidaAnticipada(horarioSalida, fila.getMarcaSalida()));
+        // Reusa el campo ya persistido (AsistenciaDetalle.minutosSalidaAnticipada) en vez de
+        // recalcular horario vs. marca: ese campo ya respeta la reconciliación por papeleta
+        // (queda en 0 cuando el día fue justificado) — recalcular desde el reloj lo ignoraría.
+        row.setMinutosSalidaAnticipada(valorPositivo(fila.getMinutosSalidaAnticipada()));
 
         row.setCondicion(TipoDiaAsistencia.etiqueta(fila.getTipoDia()));
         row.setPermisoPapeletaTeletrabajo(permisoPapeletaTeletrabajo(fila));
@@ -147,15 +150,9 @@ public class AsistenciaMarcacionesXlsxService {
         return (int) (antesEntrada + despuesSalida);
     }
 
-    /** "horario_salida − marca_salida" en minutos, solo si es positivo (salió antes); null si no aplica. */
-    private Integer minutosSalidaAnticipada(String horarioSalida, String marcaSalida) {
-        LocalTime hs = parseHora(horarioSalida);
-        LocalTime ms = parseHora(marcaSalida);
-        if (hs == null || ms == null) {
-            return null;
-        }
-        long diferencia = java.time.Duration.between(ms, hs).toMinutes();
-        return diferencia > 0 ? (int) diferencia : null;
+    /** Minutos de salida anticipada solo si es positivo; null si no aplica (0, negativo o sin dato). */
+    private Integer valorPositivo(Integer minutos) {
+        return (minutos != null && minutos > 0) ? minutos : null;
     }
 
     private LocalTime parseHora(String texto) {

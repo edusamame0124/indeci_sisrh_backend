@@ -441,6 +441,14 @@ public class AsistenciaService {
                         "Debe indicar el motivo/expediente PAD para marcar el día como Sanción PAD.");
             }
             det.setTipoDia(dto.getTipoDia());
+            // Bug reportado (RR.HH., 2026-08-11): al reclasificar manualmente el día a un tipo
+            // distinto de OBSERVADO (ej. licencia, comisión de servicio, permiso), los minutos de
+            // salida anticipada de la marcación original quedaban "congelados" y seguían
+            // mostrándose en T.Econo / reportes aunque el día ya no fuera descontable — mismo
+            // patrón que MINUTOS_TARDANZA, que sí se limpia en aplicarDecisionPapeleta.
+            if (!"OBSERVADO".equals(dto.getTipoDia())) {
+                det.setMinutosSalidaAnticipada(0);
+            }
         }
         if (dto.getMarcaEntrada() != null) {
             det.setMarcaEntrada(dto.getMarcaEntrada().isBlank() ? null : dto.getMarcaEntrada().trim());
@@ -497,6 +505,9 @@ public class AsistenciaService {
             // seguían mostrando el valor de la marcación física original (ej. "289 min" /
             // "NO AUTORIZADO"), porque antes esto no se tocaba al autorizar.
             det.setMinutosTardanza(0);
+            // Mismo bug, mismo patrón (RR.HH., 2026-08-11): MINUTOS_SALIDA_ANTICIPADA tampoco se
+            // limpiaba al autorizar, y seguía apareciendo en T.Econo / reportes pese a "Presente".
+            det.setMinutosSalidaAnticipada(0);
             det.setObservacion(observacionAutorizacionPapeleta(papeleta));
         } else {
             String motivo = dto.getPapeletaMotivoRechazo();
@@ -788,11 +799,14 @@ public class AsistenciaService {
 
     /**
      * Backfill ÚNICO (independiente del de papeletas) — NO se ejecuta automáticamente. Corrige
-     * días ya persistidos que quedaron mal clasificados como {@code LABORAL}/{@code OBSERVADO}
-     * pero que en realidad son {@code FERIADO} según el catálogo oficial ({@code INDECI_FERIADO})
-     * y no tienen marcación real (no es "feriado trabajado"). Causa: antes de este fix,
-     * {@code AsistenciaMarcadorMapper} solo reconocía "jueves/viernes santo" por texto del
-     * marcador — Fiestas Patrias, Día de la Fuerza Aérea, etc. caían al LABORAL por defecto.
+     * días ya persistidos que quedaron mal clasificados como {@code LABORAL}/{@code OBSERVADO}/
+     * {@code FALTA} pero que en realidad son {@code FERIADO} según el catálogo oficial
+     * ({@code INDECI_FERIADO}) y no tienen marcación real (no es "feriado trabajado"). Dos causas
+     * cubiertas: (1) {@code AsistenciaMarcadorMapper} solo reconocía "jueves/viernes santo" por
+     * texto del marcador — Fiestas Patrias, Día de la Fuerza Aérea, etc. caían a LABORAL por
+     * defecto; (2) una fecha ausente del catálogo al momento del import hace que
+     * {@code AsistenciaImportService#diaFalta} la llene como FALTA vía el relleno de calendario
+     * (caso real: 27/07/2026, D.S. N° 075-2026-PCM, ausente del seed hasta V012_59).
      *
      * <p>Solo toca cabeceras ACTIVAS y respeta periodos CERRADO/APROBADO (inmutables, LEY-05).
      * Idempotente: un día ya corregido a FERIADO no vuelve a matchear la condición.
@@ -840,7 +854,9 @@ public class AsistenciaService {
                     continue;
                 }
                 boolean tipoCorregible =
-                        "LABORAL".equals(det.getTipoDia()) || "OBSERVADO".equals(det.getTipoDia());
+                        "LABORAL".equals(det.getTipoDia())
+                                || "OBSERVADO".equals(det.getTipoDia())
+                                || "FALTA".equals(det.getTipoDia());
                 boolean sinMarcacionReal = !AsistenciaTiempoUtil.tieneMarca(det.getMarcaEntrada())
                         && !AsistenciaTiempoUtil.tieneMarca(det.getMarcaSalida());
                 if (tipoCorregible && sinMarcacionReal) {

@@ -869,6 +869,46 @@ class AsistenciaServiceTest {
         verify(detalleRepository).save(diaFeriadoSinMarcar);
     }
 
+    /**
+     * Caso real 2026-08-11: el 27/07/2026 (D.S. N° 075-2026-PCM, día no laborable
+     * compensable) estaba ausente de INDECI_FERIADO al momento del import, así que el
+     * relleno de calendario ({@code AsistenciaImportService#diaFalta}) lo generó como
+     * FALTA para todos los empleados. Tras sembrar el feriado (V012_59), este backfill
+     * debe corregir también FALTA → FERIADO, no solo LABORAL/OBSERVADO.
+     */
+    @Test
+    void backfillFeriadosMalClasificados_corrige_FALTA_sin_marcacion_a_FERIADO() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(2025L);
+        cab.setEmpleadoId(1767L);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle diaFeriadoComoFalta = new AsistenciaDetalle();
+        diaFeriadoComoFalta.setDia(LocalDate.of(2026, 7, 27));
+        diaFeriadoComoFalta.setTipoDia("FALTA");
+        diaFeriadoComoFalta.setMarcaEntrada("");
+        diaFeriadoComoFalta.setMarcaSalida("");
+
+        AsistenciaDetalle diaNormal = new AsistenciaDetalle();
+        diaNormal.setDia(LocalDate.of(2026, 7, 14));
+        diaNormal.setTipoDia("LABORAL");
+        diaNormal.setMarcaEntrada("08:00");
+        diaNormal.setMarcaSalida("17:00");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(feriadoRepository.findByAnioInAndActivo(Set.of(2026), 1))
+                .thenReturn(List.of(feriado(LocalDate.of(2026, 7, 27))));
+        when(detalleRepository.findByCabeceraIdOrderByDia(2025L))
+                .thenReturn(List.of(diaFeriadoComoFalta, diaNormal));
+
+        int corregidos = service.backfillFeriadosMalClasificados();
+
+        assertThat(corregidos).isEqualTo(1);
+        assertThat(diaFeriadoComoFalta.getTipoDia()).isEqualTo("FERIADO");
+        assertThat(diaNormal.getTipoDia()).isEqualTo("LABORAL");
+        verify(detalleRepository).save(diaFeriadoComoFalta);
+    }
+
     @Test
     void backfillFeriadosMalClasificados_periodo_bloqueado_no_se_toca() {
         AsistenciaCabecera cab = new AsistenciaCabecera();
