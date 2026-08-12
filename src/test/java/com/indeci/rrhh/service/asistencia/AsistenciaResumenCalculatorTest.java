@@ -105,6 +105,25 @@ class AsistenciaResumenCalculatorTest {
         assertThat(resumen.getDiasLaborados()).isZero();
     }
 
+    /**
+     * RIS INDECI Art. 25.5 (2026-08-07): "no registrar ingreso y/o salida... son consideradas
+     * inasistencias" — Omisión de marca sin justificar cuenta como Falta desde el primer cálculo
+     * (no solo al generar planilla), aunque la Condición se siga mostrando como "Omisión de
+     * marca" — este test opera sobre el TIPO_DIA tal cual, no sobre la etiqueta de pantalla.
+     */
+    @Test
+    void omision_marcacion_cuenta_como_falta_y_descuenta_igual() {
+        AsistenciaDiaDto dia = new AsistenciaDiaDto();
+        dia.setTipoDia("OMISION_MARCACION");
+
+        AsistenciaResumenCalculator.Resumen resumen =
+                AsistenciaResumenCalculator.calcular(List.of(dia), 3000.0);
+
+        assertThat(resumen.getDiasFalta()).isEqualTo(1);
+        assertThat(resumen.getDescuentoFalta()).isEqualTo(100.0);
+        assertThat(resumen.getDiasLaborados()).isZero();
+    }
+
     @Test
     void mes_sin_incidencias_no_genera_descuento_por_sancion_pad() {
         AsistenciaDiaDto laboral = new AsistenciaDiaDto();

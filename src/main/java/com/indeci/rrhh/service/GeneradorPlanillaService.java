@@ -929,6 +929,11 @@ public class GeneradorPlanillaService {
             total = total.add(descTardanza);
         }
 
+        // Decisión RR.HH. 2026-08-07 (RIS INDECI Art. 25.5): DESCUENTO_FALTA ya incluye la Omisión
+        // de marca sin justificar — AsistenciaResumenCalculator la cuenta como Falta desde el
+        // primer cálculo (no solo al generar planilla), así que no hace falta un top-up aparte
+        // aquí (evita doble descuento). La Condición del día se sigue mostrando como "Omisión de
+        // marca" (roja) para trazabilidad — no se reescribe a FALTA.
         BigDecimal descFalta = toBigDecimal(asist.getDescuentoFalta());
         if (descFalta.signum() > 0) {
             grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_DESC_FALTA), descFalta,
@@ -936,17 +941,6 @@ public class GeneradorPlanillaService {
                             + (asist.getDiasFalta() != null ? asist.getDiasFalta() : 0)
                             + " día(s) — D.Leg. 276 Art. 24)");
             total = total.add(descFalta);
-        }
-
-        // Cierre de la "Omisión de marcación": recién aquí (generación de planilla) toda
-        // OMISION_MARCACION sin papeleta 004 aprobada se penaliza como FALTA (base/30 por día).
-        // Se re-verifica la papeleta al cierre, respetando el periodo de gracia. Aditivo: si no
-        // hay días de omisión (dato preexistente), no cambia nada.
-        BigDecimal descOmision = calcularDescuentoOmisionCierre(asist, empleadoId, periodo);
-        if (descOmision.signum() > 0) {
-            grabarDetalle(movimiento.getId(), conceptoPorMef(MEF_DESC_FALTA), descOmision,
-                    "Falta por omisión de marcación no justificada al cierre (sin papeleta 004)");
-            total = total.add(descOmision);
         }
 
         // Salida anticipada (P1, decisión RR.HH. 2026-08-07): marcó salida antes de lo esperado,
@@ -964,75 +958,6 @@ public class GeneradorPlanillaService {
         }
 
         return total;
-    }
-
-    /**
-     * Regla de cierre: cuenta los días {@code OMISION_MARCACION} de la asistencia activa que, al
-     * momento de generar la planilla, NO están cubiertos por una papeleta 004 aprobada, y devuelve
-     * su descuento como falta (remuneración/30 por día). Si hay papeleta, el día ya fue convertido
-     * a ASISTENCIA_JUSTIFICADA en la carga y no llega aquí como omisión.
-     *
-     * <p>Decisión RR.HH. 2026-08-07: además de cobrar el descuento, el registro de asistencia se
-     * reescribe a {@code FALTA} en el mismo instante — así el badge de "Condición" del modal Ver
-     * Detalle deja de divergir de lo que ya se descontó en planilla. Es idempotente: en una
-     * regeneración posterior, el día ya no aparece como {@code OMISION_MARCACION} (el filtro de
-     * arriba no lo vuelve a traer), así que este método no lo vuelve a cobrar — pero como también
-     * se incrementan {@code DIAS_FALTA}/{@code DESCUENTO_FALTA} de la cabecera, el bloque normal de
-     * Falta (más arriba en {@link #calcularDescuentoAsistencia}) sí lo sigue cobrando, sin perder
-     * ni duplicar el descuento. Si una papeleta 004 llega antes de que el período quede
-     * CERRADO/APROBADO, {@code AsistenciaService.reconciliarDetalleCabecera} revierte el día con su
-     * propio guard (LEY-05) — el cambio de aquí no lo bloquea porque ese guard mira el ESTADO del
-     * período, no el TIPO_DIA de la fila.
-     */
-    private BigDecimal calcularDescuentoOmisionCierre(
-            AsistenciaCabecera asist, Long empleadoId, String periodo) {
-        if (asist.getId() == null) {
-            return BigDecimal.ZERO;
-        }
-        List<AsistenciaDetalle> omisiones = asistenciaDetalleRepository
-                .findByCabeceraIdOrderByDia(asist.getId()).stream()
-                .filter(d -> "OMISION_MARCACION".equals(d.getTipoDia()))
-                .toList();
-        if (omisiones.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        LocalDate finPeriodo = periodoRepository.findByPeriodoAndActivo(periodo, 1)
-                .map(PeriodoPlanilla::getFechaFin)
-                .orElse(null);
-        List<com.indeci.rrhh.entity.SolicitudRrhh> justificantes =
-                papeletaJustificacionResolver.cargarJustificantes(empleadoId, finPeriodo);
-        List<AsistenciaDetalle> noJustificadas = omisiones.stream()
-                .filter(d -> !papeletaJustificacionResolver.omisionJustificada(d.getDia(), justificantes))
-                .toList();
-        if (noJustificadas.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-
-        for (AsistenciaDetalle d : noJustificadas) {
-            d.setTipoDia("FALTA");
-            String obsPrevia = d.getObservacion();
-            String obsCierre = "Actualizado a FALTA por omisión de marcación no justificada al cierre de planilla.";
-            d.setObservacion(obsPrevia == null || obsPrevia.isBlank() ? obsCierre : obsPrevia + " | " + obsCierre);
-            asistenciaDetalleRepository.save(d);
-        }
-
-        double base = asist.getRemuneracionBase() != null ? asist.getRemuneracionBase() : 0.0;
-        double descuentoOmision = com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator
-                .calcularDescuentoFalta(base, noJustificadas.size());
-
-        // Mantiene la cabecera sincronizada para que una regeneración posterior no pierda el
-        // descuento (ver nota de idempotencia arriba): el día ya no vuelve a contarse como
-        // omisión, pero sí queda contado como falta "normal" desde ahora en adelante.
-        int diasFaltaPrevios = asist.getDiasFalta() != null ? asist.getDiasFalta() : 0;
-        double descuentoFaltaPrevio = asist.getDescuentoFalta() != null ? asist.getDescuentoFalta() : 0.0;
-        asist.setDiasFalta(diasFaltaPrevios + noJustificadas.size());
-        asist.setDescuentoFalta(BigDecimal.valueOf(descuentoFaltaPrevio)
-                .add(BigDecimal.valueOf(descuentoOmision))
-                .setScale(2, RoundingMode.HALF_UP)
-                .doubleValue());
-        asistenciaCabeceraRepository.save(asist);
-
-        return toBigDecimal(descuentoOmision);
     }
 
     /**

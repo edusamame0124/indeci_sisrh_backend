@@ -1188,9 +1188,13 @@ public class AsistenciaImportService {
     }
 
     /**
-     * Convierte los días {@code OMISION_MARCACION} cubiertos por una papeleta 004 APROBADA en
-     * {@code ASISTENCIA_JUSTIFICADA}. Reutiliza el cargador de justificantes (que ya filtra solo
-     * papeletas aprobadas). Si no hay omisiones o no hay papeletas, devuelve la lista sin cambios.
+     * Convierte los días {@code OMISION_MARCACION} cubiertos por una papeleta aprobada en su
+     * condición correspondiente: 004 (Justificación de Omisión) primero →
+     * {@code ASISTENCIA_JUSTIFICADA}; si no hay 004, prueba la reconciliación genérica
+     * (Vacaciones/Licencia/Teletrabajo/Permiso vía {@code JUSTIFICA_ASISTENCIA}) — decisión RR.HH.
+     * 2026-08-07 (RIS INDECI Art. 25.5). Reutiliza el cargador de justificantes (que ya filtra
+     * solo papeletas aprobadas). Si no hay omisiones o no hay papeletas, devuelve la lista sin
+     * cambios.
      */
     private List<AsistenciaDiaDto> justificarOmisiones(
             Long empleadoId, List<AsistenciaDiaDto> dias, java.time.LocalDate finPeriodo) {
@@ -1206,6 +1210,7 @@ public class AsistenciaImportService {
         return dias.stream()
                 .map(d -> "OMISION_MARCACION".equals(d.getTipoDia())
                         ? papeletaJustificacionResolver.justificarOmision(d.getDia(), justificantes)
+                                .or(() -> papeletaJustificacionResolver.justificar(d.getDia(), justificantes))
                                 .orElse(d)
                         : d)
                 .toList();

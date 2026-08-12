@@ -279,4 +279,19 @@ public class AsistenciaController {
         int corregidos = service.backfillTurno24h();
         return new ApiResponse<>("OK", "Días de turno 24h corregidos: " + corregidos, corregidos);
     }
+
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — RIS INDECI Art. 25.5
+     * (2026-08-07): recalcula el resumen (DIAS_FALTA/DESCUENTO_FALTA) de todas las cabeceras
+     * activas que tienen algún día en Omisión de marca, para que cuenten como Falta sin esperar
+     * a una reimportación o edición manual día por día. No toca periodos CERRADO/APROBADO.
+     * Idempotente. Gateado a SUPER_ADMIN — quitar este endpoint una vez ejecutado en cada
+     * ambiente.
+     */
+    @PostMapping("/backfill-omision-como-falta")
+    @PreAuthorize(SisrhSecurityExpressions.SUPER_ADMIN)
+    public ApiResponse<Integer> backfillOmisionComoFalta() {
+        int corregidas = service.backfillRecalcularOmisionComoFalta();
+        return new ApiResponse<>("OK", "Cabeceras recalculadas: " + corregidas, corregidas);
+    }
 }

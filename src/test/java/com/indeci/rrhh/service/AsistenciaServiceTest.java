@@ -493,6 +493,63 @@ class AsistenciaServiceTest {
     }
 
     /**
+     * RIS INDECI Art. 25.5 (2026-08-07): una Omisión de marca sin papeleta 004 debe poder
+     * reconciliarse igual por el TIPO de papeleta que efectivamente cubre el día — aquí un
+     * Teletrabajo aprobado, sin ninguna papeleta 004. Antes solo se probaba la 004 y el día se
+     * quedaba atascado en Omisión aunque hubiera una papeleta válida cubriéndolo.
+     */
+    @Test
+    void reconciliarPorPapeletaAprobada_omision_sin_004_se_reconcilia_por_tipo_de_papeleta() {
+        SolicitudRrhh solicitud = new SolicitudRrhh();
+        solicitud.setId(400L);
+        solicitud.setEmpleadoId(EMPLEADO_ID);
+        solicitud.setFechaInicio(LocalDate.of(2026, 7, 13));
+        solicitud.setFechaFin(LocalDate.of(2026, 7, 16));
+
+        TipoSolicitudRrhh tipo = new TipoSolicitudRrhh();
+        tipo.setCodigo("TELETRABAJO");
+        tipo.setNombre("Reporte de Teletrabajo");
+        tipo.setJustificaAsistencia(1);
+        solicitud.setTipoSolicitud(tipo);
+
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(999L);
+        cab.setEmpleadoId(EMPLEADO_ID);
+        cab.setPeriodo("2026-07");
+
+        AsistenciaDetalle det = new AsistenciaDetalle();
+        det.setDia(LocalDate.of(2026, 7, 14));
+        det.setTipoDia("OMISION_MARCACION");
+
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.empty());
+        when(cabeceraRepository.findByEmpleadoIdAndPeriodoAndActivo(EMPLEADO_ID, "2026-07", 1))
+                .thenReturn(Optional.of(cab));
+        when(detalleRepository.findByCabeceraIdOrderByDia(999L))
+                .thenReturn(List.of(det));
+
+        List<SolicitudRrhh> justificantes = List.of(solicitud);
+        when(papeletaJustificacionResolver.cargarJustificantes(EMPLEADO_ID, LocalDate.of(2026, 7, 16)))
+                .thenReturn(justificantes);
+        // Sin papeleta 004 cubriendo la fecha.
+        when(papeletaJustificacionResolver.justificarOmision(LocalDate.of(2026, 7, 14), justificantes))
+                .thenReturn(Optional.empty());
+
+        AsistenciaDiaDto reconciliado = new AsistenciaDiaDto();
+        reconciliado.setDia(LocalDate.of(2026, 7, 14));
+        reconciliado.setTipoDia("TELETRABAJO");
+        reconciliado.setMinutosTardanza(0);
+        reconciliado.setOrigen("PAPELETA");
+        when(papeletaJustificacionResolver.justificar(LocalDate.of(2026, 7, 14), justificantes))
+                .thenReturn(Optional.of(reconciliado));
+
+        service.reconciliarPorPapeletaAprobada(solicitud, tipo);
+
+        assertThat(det.getTipoDia()).isEqualTo("TELETRABAJO");
+        verify(detalleRepository).save(det);
+    }
+
+    /**
      * P3 (2026-08-07): si la cabecera existe pero su planilla ya está CERRADA/APROBADA
      * (LEY-05, inmutable), reconciliarDetalleCabecera no toca nada — y ahora
      * reconciliarPorPapeletaAprobada debe devolver el período como advertencia, para que
@@ -1181,5 +1238,78 @@ class AsistenciaServiceTest {
 
         assertThat(corregidos).isEqualTo(0);
         verify(turno24hReconciliador, never()).reconciliar(any());
+    }
+
+    // ── Backfill de recálculo — RIS INDECI Art. 25.5 (2026-08-07) ──
+
+    /**
+     * Caso real que motivó este backfill: DNI 06025079, período 2026-07 — antes de este fix, 2
+     * días en Omisión de marca no se reflejaban en DIAS_FALTA (quedaba en 0 aportado por ellos).
+     */
+    @Test
+    void backfillRecalcularOmisionComoFalta_recalcula_cabecera_con_omision() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(3084L);
+        cab.setEmpleadoId(1320L);
+        cab.setPeriodo("2026-07");
+        cab.setRemuneracionBase(1567.73);
+        // Valores desactualizados (pre-fix): las 2 omisiones de abajo aún no contaban.
+        cab.setDiasFalta(0);
+        cab.setDescuentoFalta(0.0);
+
+        AsistenciaDetalle omision1 = detalleEnFecha("OMISION_MARCACION", LocalDate.of(2026, 7, 14));
+        AsistenciaDetalle omision2 = detalleEnFecha("OMISION_MARCACION", LocalDate.of(2026, 7, 22));
+        AsistenciaDetalle laboral = detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 15));
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(detalleRepository.findByCabeceraIdOrderByDia(3084L))
+                .thenReturn(List.of(omision1, omision2, laboral));
+
+        int corregidas = service.backfillRecalcularOmisionComoFalta();
+
+        assertThat(corregidas).isEqualTo(1);
+        // recalcularCabeceraDesdeDetalle reemplaza el agregado completo: las 2 omisiones ahora
+        // cuentan como Falta (RIS Art. 25.5) → 2 días, 2 × (1567.73/30) = S/ 104.52.
+        assertThat(cab.getDiasFalta()).isEqualTo(2);
+        assertThat(cab.getDescuentoFalta()).isEqualTo(104.52);
+        verify(cabeceraRepository).save(cab);
+    }
+
+    @Test
+    void backfillRecalcularOmisionComoFalta_sin_omision_no_se_toca() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(3085L);
+        cab.setEmpleadoId(1321L);
+        cab.setPeriodo("2026-07");
+
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1)).thenReturn(Optional.empty());
+        when(detalleRepository.findByCabeceraIdOrderByDia(3085L))
+                .thenReturn(List.of(detalleEnFecha("LABORAL", LocalDate.of(2026, 7, 15))));
+
+        int corregidas = service.backfillRecalcularOmisionComoFalta();
+
+        assertThat(corregidas).isZero();
+        verify(cabeceraRepository, never()).save(any());
+    }
+
+    @Test
+    void backfillRecalcularOmisionComoFalta_periodo_bloqueado_no_se_toca() {
+        AsistenciaCabecera cab = new AsistenciaCabecera();
+        cab.setId(3086L);
+        cab.setEmpleadoId(1322L);
+        cab.setPeriodo("2026-07");
+
+        com.indeci.rrhh.entity.PeriodoPlanilla periodoAprobado = new com.indeci.rrhh.entity.PeriodoPlanilla();
+        periodoAprobado.setEstado("APROBADO");
+        when(cabeceraRepository.findByActivo(1)).thenReturn(List.of(cab));
+        when(periodoPlanillaRepository.findByPeriodoAndActivo("2026-07", 1))
+                .thenReturn(Optional.of(periodoAprobado));
+
+        int corregidas = service.backfillRecalcularOmisionComoFalta();
+
+        assertThat(corregidas).isZero();
+        verify(detalleRepository, never()).findByCabeceraIdOrderByDia(any());
     }
 }

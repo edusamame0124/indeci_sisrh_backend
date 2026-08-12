@@ -16,8 +16,8 @@ public final class AsistenciaResumenCalculator {
     // TELETRABAJO = trabajo efectivo remoto (Ley 31572): cuenta como laborado, no descuenta.
     // ASISTENCIA_JUSTIFICADA = omisión de marcación cubierta por papeleta 004: tiempo completo.
     // PERMISO (con goce aprobado) NO está aquí: justificado, no descuenta y no cuenta laborado.
-    // OMISION_MARCACION NO está aquí: pendiente de papeleta 004 — no cuenta laborado ni descuenta
-    //   (neutro) hasta el cierre, donde el motor la penaliza como FALTA si no se justificó.
+    // OMISION_MARCACION NO está aquí: no cuenta como laborado (ver diasFalta abajo — RIS INDECI
+    //   Art. 25.5 la trata como inasistencia desde el primer cálculo, no solo al cierre).
     private static final Set<String> TIPOS_LABORADOS =
             Set.of("LABORAL", "TARDANZA", "TELETRABAJO", "ASISTENCIA_JUSTIFICADA");
 
@@ -35,7 +35,13 @@ public final class AsistenciaResumenCalculator {
             if (tipo != null && TIPOS_LABORADOS.contains(tipo)) {
                 diasLaborados++;
             }
-            if ("FALTA".equals(tipo) || "SANCION_PAD".equals(tipo) || esObservadoNoAutorizado(d)) {
+            // RIS INDECI Art. 25.5: "no registrar ingreso y/o salida... son consideradas
+            // inasistencias" — Omisión de marca sin justificar recibe el mismo tratamiento que
+            // Falta (mismo conteo, misma fórmula), aunque la Condición se siga mostrando como
+            // "Omisión de marca" (roja) para trazabilidad. Se autocorrige en cuanto una papeleta
+            // reconcilia el día (deja de ser OMISION_MARCACION antes de llegar aquí).
+            if ("FALTA".equals(tipo) || "SANCION_PAD".equals(tipo) || "OMISION_MARCACION".equals(tipo)
+                    || esObservadoNoAutorizado(d)) {
                 diasFalta++;
             }
             if ("TARDANZA".equals(tipo) && d.getMinutosTardanza() != null) {

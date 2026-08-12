@@ -1035,6 +1035,47 @@ public class AsistenciaService {
         return corregidos;
     }
 
+    /**
+     * Backfill ÚNICO (temporal, independiente de los anteriores) — RIS INDECI Art. 25.5
+     * (2026-08-07): la Omisión de marca sin justificar cuenta como Falta desde
+     * {@link com.indeci.rrhh.service.asistencia.AsistenciaResumenCalculator}, pero ese cálculo
+     * solo corre cuando se importa o edita asistencia — las cabeceras que ya estaban cargadas
+     * ANTES de este fix se quedaron con {@code DIAS_FALTA}/{@code DESCUENTO_FALTA} desactualizados
+     * (no cuentan sus omisiones), y nadie debería tener que entrar día por día a "Editar" para
+     * forzar el recálculo. Este backfill lo hace de una sola vez para todos.
+     *
+     * <p>Solo recalcula cabeceras que efectivamente tienen algún día en
+     * {@code OMISION_MARCACION} (evita tocar cabeceras no afectadas). No cambia ningún
+     * {@code TIPO_DIA} — solo dispara {@link #recalcularCabeceraDesdeDetalle} para que el
+     * agregado de la cabecera refleje la regla vigente. Respeta el mismo guard que los backfills
+     * hermanos: no toca periodos CERRADO/APROBADO (inmutables, LEY-05). Idempotente: recalcular
+     * una cabecera ya al día no cambia nada.
+     */
+    @Transactional
+    public int backfillRecalcularOmisionComoFalta() {
+        List<AsistenciaCabecera> activas = cabeceraRepository.findByActivo(1);
+        int corregidas = 0;
+
+        for (AsistenciaCabecera cab : activas) {
+            boolean periodoBloqueado = periodoPlanillaRepository.findByPeriodoAndActivo(cab.getPeriodo(), 1)
+                    .map(p -> "CERRADO".equals(p.getEstado()) || "APROBADO".equals(p.getEstado()))
+                    .orElse(false);
+            if (periodoBloqueado) {
+                continue;
+            }
+
+            boolean tieneOmision = detalleRepository.findByCabeceraIdOrderByDia(cab.getId()).stream()
+                    .anyMatch(det -> "OMISION_MARCACION".equals(det.getTipoDia()));
+            if (!tieneOmision) {
+                continue;
+            }
+
+            recalcularCabeceraDesdeDetalle(cab);
+            corregidas++;
+        }
+        return corregidas;
+    }
+
     /** Año (yyyy) del período "yyyy-MM"; null si el formato no es el esperado. */
     private Integer anioDePeriodo(String periodo) {
         if (periodo == null || periodo.length() < 4) {
@@ -1070,7 +1111,14 @@ public class AsistenciaService {
             String tipoActual = det.getTipoDia();
             Optional<AsistenciaDiaDto> justificado;
             if ("OMISION_MARCACION".equals(tipoActual)) {
-                justificado = papeletaJustificacionResolver.justificarOmision(dia, justificantes);
+                // Decisión RR.HH. 2026-08-07 (RIS INDECI Art. 25.5): la condición final depende
+                // del tipo de papeleta que efectivamente cubre el día — 004 (justificación
+                // específica de la omisión) primero; si no hay 004, se prueba la reconciliación
+                // genérica (Vacaciones/Licencia/Teletrabajo/Permiso vía JUSTIFICA_ASISTENCIA),
+                // igual que ya se hace para FALTA. Antes solo se probaba la 004 y una Vacaciones/
+                // Licencia/Teletrabajo/Permiso que cubriera el día se quedaba sin reconciliar.
+                justificado = papeletaJustificacionResolver.justificarOmision(dia, justificantes)
+                        .or(() -> papeletaJustificacionResolver.justificar(dia, justificantes));
             } else if ("FALTA".equals(tipoActual)) {
                 justificado = papeletaJustificacionResolver.justificar(dia, justificantes);
             } else if ("LABORAL".equals(tipoActual) || "TARDANZA".equals(tipoActual)) {
